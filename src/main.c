@@ -469,6 +469,12 @@ static void cb_enter(void *ud, int16_t x, int16_t y, uint32_t seq, uint16_t mask
 {
     (void)seq;
     app_state *s = ud;
+#ifdef OTG_HAVE_UHID
+    if (s->uhid && !otg_uhid_wake(&s->uhid_transport)) {
+        fprintf(stderr, "ERROR: UHID wake report could not be sent\n");
+        return;
+    }
+#endif
     otg_bridge_enter(&s->bridge, x, y, mask);
     if (s->unlock_adb_gate && s->display) {
         s->unlock_lock_query_pending = true;

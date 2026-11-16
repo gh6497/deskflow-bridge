@@ -285,6 +285,12 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   先 bridge close（范围结束、键盘释放、DESTROY）再 session stop（有界排空、关闭、清理）。
   启动检查 /dev/uhid 的实际打开权限且响应取消；官方无 CREATE ACK，不能把描述符已发送视为
   真机成功。GUI UHID 用 ADB 发现，目标栏必填，不回退 AOA serial，隐藏 libusb 自动连接。
+  UHID 单独注册 ID=3 的 Generic Desktop/System Control/System Wake Up（usage0x83）设备。
+  每次 CINN 先发送唤醒按下/释放，再走 bridge enter 和 GUI 的 ADB 锁屏检测；注册本身不唤醒。
+  BUS_VIRTUAL 键鼠在 Android 被视为内部设备，不能依靠普通 Enter/移动唤醒。只发 KEY_WAKEUP，
+  不发会切换亮灭的 Power/Sleep，不使用 SDK 输入注入；关闭释放唤醒键并销毁三台UHID设备。
+  2026-11-16 用户确认当前 Linux 真机 UHID 息屏切入的唤醒和自动解锁均正常，
+  不外推为所有 ROM 或 Windows/macOS 验收。
   `uhid_protocol`/`uhid_cli`/Qt 为离线测试，详见 `docs/UHID.md`。
 
 - **所有下拉框禁止通过鼠标滚轮修改值**，无论是否获得焦点；新增下拉框也必须遵守。

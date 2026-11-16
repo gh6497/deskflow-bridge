@@ -252,6 +252,8 @@ Windows 空闲 BLE provider 也保留其目标占用。Linux 常驻服务仍遵�
    libusb 插入自动连接属于 AOA 模式，在此隐藏。
 
 绝对坐标指针描述符保持一致，不是 scrcpy 自带的相对 `--mouse=uhid` 模式。
+每次切入手机先通过独立 HID **System Wake Up** 发送按下/释放，唤醒息屏手机，
+不会把已经点亮的屏幕再次关闭。GUI 自动 PIN 解锁仍先检查 Android 锁屏状态，再执行上滑/PIN 流程。
 手机系统须允许 shell 打开 `/dev/uhid`；无需 root、投屏或安装伴侣应用。
 要求、CLI 用法、生命周期和验证范围见 [UHID 说明](docs/UHID.md)。
 

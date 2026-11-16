@@ -165,6 +165,9 @@ profile this is the preferred connection type; saved AOA/BLE profiles retain the
    reconnect manually. The libusb insertion auto-connect option belongs to AOA and is hidden here.
 
 The absolute pointer descriptor is unchanged: this is not scrcpy's relative `--mouse=uhid` mode.
+Each screen entry sends a dedicated HID **System Wake Up** press/release before normal input,
+so it can wake a sleeping phone without toggling an already-lit screen off. GUI automatic PIN
+unlock still checks Android's lock state before running the swipe/PIN sequence.
 Android must allow the shell to open `/dev/uhid`; no root, video or installed companion is required.
 See [UHID requirements, CLI and lifecycle](docs/UHID.md) for details and validation limits.
 

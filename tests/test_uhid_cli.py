@@ -30,6 +30,13 @@ if args[0] == 'forward':
     else: (root / 'port').write_text(args[1].split(':')[1])
     sys.exit(0)
 if args == ['shell', 'cmd', 'media_session', 'dispatch', 'pause']: sys.exit(0)
+if args[0] == 'shell' and 'wm size;' in args[-1]:
+    print('Physical size: 1080x1920\nSurfaceOrientation: 0')
+    if mode != 'unlock-unknown':
+        print('Broadcast completed: result=0, data="%s"' %
+              ('unlocked' if mode == 'unlock-unlocked' else 'locked'))
+    if (root / 'awake').exists(): (root / 'entry-lock-query').touch()
+    sys.exit(0)
 assert args[0] == 'shell' and 'com.genymobile.scrcpy.Server' in args
 assert 'video=false' in args and 'control=true' in args and 'power_on=false' in args
 assert ('clipboard_autosync=true' in args) == (mode in ('clipboard', 'both'))
@@ -57,6 +64,7 @@ def read(n):
         out += data
     return out
 created = set()
+pin_keys = set()
 with (root / 'reports').open('w', buffering=1) as log:
     while True:
         kind = read(1)
@@ -66,8 +74,10 @@ with (root / 'reports').open('w', buffering=1) as log:
             header = read(7); ident, vendor, product, length = struct.unpack('>HHHB', header)
             name = read(length).decode()
             desc = read(struct.unpack('>H', read(2))[0])
-            assert ident in (1, 2) and ident not in created
-            assert desc[:4] == (b'\x05\x01\x09\x06' if ident == 1 else b'\x05\x0d\x09\x01')
+            assert ident in (1, 2, 3) and ident not in created
+            expected = {1: b'\x05\x01\x09\x06', 2: b'\x05\x0d\x09\x01', 3: b'\x05\x01\x09\x80'}
+            assert desc[:4] == expected[ident]
+            if ident == 3: assert b'\x09\x83' in desc
             created.add(ident)
             log.write(json.dumps(['create', ident, name]) + '\n')
             if ident == 1:
@@ -75,8 +85,20 @@ with (root / 'reports').open('w', buffering=1) as log:
                 control.sendall(b'\x01\x00\x01\x00')
         elif kind == 13:
             ident, size = struct.unpack('>HH', read(4)); data = read(size)
-            assert ident in created and size == 8
+            assert ident in created and size == (1 if ident == 3 else 8)
             log.write(json.dumps(['input', ident, data.hex()]) + '\n')
+            if ident == 3:
+                assert data in (b'\0', b'\x01')
+                if data == b'\x01': (root / 'awake').touch()
+            else:
+                # Starting/rejecting/cancelling a handshake may send neutral
+                # release reports, but actual input must follow the wake pulse.
+                if any(data): assert (root / 'awake').exists()
+            if ident == 1 and mode.startswith('unlock'):
+                pin_keys.update(k for k in data[2:] if k in (0x1e, 0x1f, 0x20, 0x21))
+                if data[2] == 0x28:
+                    if len(pin_keys) == 4: (root / 'pin-submitted').touch()
+                    else: (root / 'unlock-scheduled').touch()
             if ident == 1 and data[2] == 4:
                 (root / 'key-down').touch()
                 if mode in ('clipboard', 'both'):
@@ -121,7 +143,8 @@ def receive(sock):
 
 
 cli, audio, clipboard = sys.argv[1:]
-cases = ['plain', 'drop', 'reject', 'cancel-handshake', 'denied', 'cancel-probe']
+cases = ['plain', 'drop', 'reject', 'cancel-handshake', 'denied', 'cancel-probe',
+         'unlock-locked', 'unlock-unlocked', 'unlock-unknown', 'unlock-cancel']
 if clipboard == 'ON': cases.append('clipboard')
 if audio == 'ON' and clipboard == 'ON': cases.append('both')
 for mode in cases:
@@ -132,6 +155,10 @@ for mode in cases:
         adb.write_text(f'#!{sys.executable}\n' + FAKE_ADB)
         adb.chmod(0o700)
         env = dict(os.environ, OTG_UHID_TEST_ROOT=directory, OTG_UHID_TEST_MODE=mode)
+        env.pop('OTG_UNLOCK_PIN', None); env.pop('OTG_UNLOCK_ADB_GATE', None)
+        if mode.startswith('unlock'):
+            env['OTG_UNLOCK_PIN'] = '1234'  # Synthetic test credential; never a real phone.
+            env['OTG_UNLOCK_ADB_GATE'] = '1'
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0)); listener.listen(1); listener.settimeout(8)
         args = [cli, '--gui', '--transport', 'uhid', '--adb', str(adb), '--adb-serial', 'UHID_PHONE',
@@ -160,8 +187,29 @@ for mode in cases:
                         packet(connection, b'DSOP' + struct.pack('>I', 0))
                         packet(connection, b'CINN' + struct.pack('>HHIH', 0, 0, 1, 0))
                         packet(connection, b'DMMV' + struct.pack('>HH', 1079, 1919))
-                        packet(connection, b'DKDN' + struct.pack('>HHH', 97, 0, 1))
-                        wait_file(root / 'key-down', proc)
+                        if mode.startswith('unlock'):
+                            wait_file(root / 'awake', proc)
+                            if mode == 'unlock-locked':
+                                wait_file(root / 'pin-submitted', proc)
+                            elif mode == 'unlock-cancel':
+                                wait_file(root / 'unlock-scheduled', proc)
+                                packet(connection, b'COUT')
+                                time.sleep(1.8)
+                                assert not (root / 'pin-submitted').exists()
+                            else:
+                                wait_file(root / 'entry-lock-query', proc)
+                                time.sleep(1.8)
+                                assert not (root / 'pin-submitted').exists()
+                        else:
+                            packet(connection, b'DKDN' + struct.pack('>HHH', 97, 0, 1))
+                            wait_file(root / 'key-down', proc)
+                            if mode == 'plain':
+                                (root / 'key-down').unlink()
+                                packet(connection, b'DKUP' + struct.pack('>HHH', 97, 0, 1))
+                                packet(connection, b'COUT')
+                                packet(connection, b'CINN' + struct.pack('>HHIH', 1079, 1919, 2, 0))
+                                packet(connection, b'DKDN' + struct.pack('>HHH', 97, 0, 1))
+                                wait_file(root / 'key-down', proc)
                         if mode in ('clipboard', 'both'):
                             for _ in range(32):
                                 if receive(connection).startswith(b'CCLP'): break
@@ -176,7 +224,7 @@ for mode in cases:
             else:
                 out, err = proc.communicate(b'stop\n', timeout=6)
             events = [json.loads(line)['event'] for line in out.splitlines()]
-            connected = mode in ('plain', 'clipboard', 'both', 'drop')
+            connected = mode in ('plain', 'clipboard', 'both', 'drop') or mode.startswith('unlock')
             assert ('connected' in events) == connected, (mode, events, err.decode())
             assert 'usb-ready' not in events and b'fake scrcpy diagnostic' not in out
             calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]
@@ -188,12 +236,22 @@ for mode in cases:
                 assert (root / 'done').exists(), (mode, err.decode())
                 assert b'fake scrcpy diagnostic' in err
                 reports = [json.loads(line) for line in (root / 'reports').read_text().splitlines()]
-                assert [r[1] for r in reports if r[0] == 'create'] == [1, 2]
+                assert [r[1] for r in reports if r[0] == 'create'] == [1, 2, 3]
+                wake = [r[2] for r in reports if r[:2] == ['input', 3]]
+                assert wake.count('01') == (2 if mode == 'plain' else int(connected)), wake
+                if connected:
+                    inputs = [r for r in reports if r[0] == 'input']
+                    assert inputs[:2] == [['input', 3, '01'], ['input', 3, '00']], inputs[:2]
                 if mode != 'drop':
-                    assert reports[-2:] == [['destroy', 1], ['destroy', 2]], reports
+                    assert reports[-3:] == [['destroy', 1], ['destroy', 2], ['destroy', 3]], reports
                 if connected and mode != 'drop':
                     keys = [bytes.fromhex(r[2]) for r in reports if r[:2] == ['input', 1]]
-                    assert any(k[2] == 4 for k in keys) and keys[-1] == bytes(8), keys
+                    assert keys[-1] == bytes(8), keys
+                    if not mode.startswith('unlock'):
+                        assert any(k[2] == 4 for k in keys), keys
+                    else:
+                        digits = [k[2] for k in keys if k[2] in (0x1e, 0x1f, 0x20, 0x21)]
+                        assert digits == ([0x1e, 0x1f, 0x20, 0x21] if mode == 'unlock-locked' else []), digits
                     pointers = [bytes.fromhex(r[2]) for r in reports if r[:2] == ['input', 2]]
                     assert any(p[2:6] == b'\xff\x7f\xff\x7f' for p in pointers), pointers
                     assert pointers[-1][:2] == b'\0\0', pointers

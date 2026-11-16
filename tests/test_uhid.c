@@ -110,7 +110,14 @@ static void read_create(df_socket fd, unsigned id, bool absolute)
     CHECK(io_read_full(fd, desc, size) == 1);
     CHECK(desc[0] == 5);
     if (id == 1) CHECK(desc[1] == 1 && desc[3] == 6); /* Keyboard */
-    else CHECK(desc[1] == (absolute ? 0x0d : 1) && desc[3] == (absolute ? 1 : 2));
+    else if (id == 2) CHECK(desc[1] == (absolute ? 0x0d : 1) && desc[3] == (absolute ? 1 : 2));
+    else {
+        /* Only System Wake Up (0x83); neither Power Down (0x81) nor Sleep
+         * (0x82) is exposed. One data bit and seven constant padding bits. */
+        const uint8_t wake[] = {5,1,9,0x80,0xa1,1,0x15,0,0x25,1,9,0x83,
+                               0x75,1,0x95,1,0x81,2,0x75,7,0x95,1,0x81,3,0xc0};
+        CHECK(id == OTG_UHID_ID_WAKE && size == sizeof(wake) && !memcmp(desc, wake, size));
+    }
 }
 
 static void bridge_wire(bool absolute)
@@ -124,28 +131,47 @@ static void bridge_wire(bool absolute)
     CHECK(!otg_bridge_open_transport(&bridge, otg_uhid_ops(), &hid, 1080, 2340,
                                      absolute ? OTG_MOUSE_ABSOLUTE : OTG_MOUSE_RELATIVE));
     read_create(fds[1], 1, absolute); read_create(fds[1], 2, absolute);
+    read_create(fds[1], OTG_UHID_ID_WAKE, absolute);
     CHECK(otg_bridge_ready(&bridge));
+    CHECK(!df_socket_wait_timeout(fds[1], 0)); /* Registration does not wake. */
+    CHECK(otg_uhid_wake(&hid));
+    CHECK(otg_uhid_wake(&hid)); /* Repeated entry is a wake-only press/release. */
     /* Absolute transport carries authoritative corner coordinates. Relative
      * mode is covered at registration without flooding the socket with warp. */
     if (absolute) {
         otg_bridge_enter(&bridge, 0, 0, 0);
         otg_bridge_key(&bridge, 'a', true);
+        CHECK(bridge.keys[4]);
+        CHECK(otg_uhid_wake(&hid));
+        CHECK(bridge.keys[4]); /* Wake device must not modify real keyboard state. */
         otg_bridge_mouse_move(&bridge, 1079, 2339);
         otg_bridge_mouse_button(&bridge, 1, true);
         otg_bridge_mouse_wheel(&bridge, 0, 120);
     }
     otg_bridge_close(&bridge);
     unsigned destroyed = 0, key_down = 0, key_release = 0, corner = 0, drag = 0, wheel = 0, out = 0;
-    while (destroyed != 6) {
+    unsigned wake_down = 0, wake_up = 0;
+    bool wake_held = false;
+    while (destroyed != 14) {
         uint8_t header[5], report[8];
         CHECK(io_read_full(fds[1], header, 3) == 1);
         unsigned id = be16(header + 1);
-        CHECK(id == 1 || id == 2);
-        if (header[0] == 14) { destroyed |= 1U << id; continue; }
+        CHECK(id >= 1 && id <= OTG_UHID_ID_WAKE);
+        if (header[0] == 14) { CHECK(!wake_held); destroyed |= 1U << id; continue; }
         CHECK(header[0] == 13 && !destroyed);
-        CHECK(io_read_full(fds[1], header + 3, 2) == 1 && be16(header + 3) == 8);
-        CHECK(io_read_full(fds[1], report, 8) == 1);
+        unsigned size = id == OTG_UHID_ID_WAKE ? 1 : 8;
+        CHECK(io_read_full(fds[1], header + 3, 2) == 1 && be16(header + 3) == size);
+        CHECK(io_read_full(fds[1], report, size) == 1);
+        if (wake_held) CHECK(id == OTG_UHID_ID_WAKE && !report[0]);
+        if (id == OTG_UHID_ID_WAKE) {
+            CHECK(report[0] <= 1);
+            wake_held = report[0] != 0;
+            if (wake_held) ++wake_down;
+            else ++wake_up;
+            continue;
+        }
         if (id == 1) {
+            CHECK(report[2] != 0x28); /* No synthetic Enter for wake-only input. */
             if (report[2] == 4) ++key_down;
             if (key_down && !memcmp(report, "\0\0\0\0\0\0\0\0", 8)) ++key_release;
         } else {
@@ -156,7 +182,9 @@ static void bridge_wire(bool absolute)
         }
     }
     if (absolute) CHECK(key_down && key_release && corner && drag && wheel && out);
+    CHECK(wake_down == (absolute ? 3U : 2U) && wake_up == wake_down + 1 && !wake_held);
     CHECK(!hid.registered);
+    CHECK(!otg_uhid_wake(&hid));
     otg_clipboard_channel_close(&channel);
     df_close_socket(fds[0]); df_close_socket(fds[1]);
 }
