@@ -171,8 +171,9 @@ static void multiplex(void)
     struct otg_clipboard_channel c;
     CHECK(!otg_clipboard_channel_open(&c, (intptr_t)fds[0]));
     c.shared_uhid = true;
-    int small = 4096;
-    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&small, sizeof(small)));
+    /* winsock2.h/rpcndr.h defines `small` as a macro, so keep another name. */
+    int sndbuf = 4096;
+    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sizeof(sndbuf)));
     size_t text_size = 200000;
     char *text = malloc(text_size); CHECK(text); memset(text, 'a', text_size);
     CHECK(!otg_clipboard_channel_set(&c, text, text_size));
@@ -219,8 +220,8 @@ static void backpressure(void)
     df_socket fds[2]; pair(fds);
     struct otg_clipboard_channel c;
     CHECK(!otg_clipboard_channel_open(&c, (intptr_t)fds[0]));
-    int small = 1024;
-    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&small, sizeof(small)));
+    int sndbuf = 1024;
+    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sizeof(sndbuf)));
     uint8_t data[4096] = {13};
     unsigned i;
     for (i = 0; i < 4096; ++i)
@@ -229,7 +230,7 @@ static void backpressure(void)
     df_close_socket(fds[0]); df_close_socket(fds[1]);
     pair(fds);
     CHECK(!otg_clipboard_channel_open(&c, (intptr_t)fds[0]));
-    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&small, sizeof(small)));
+    CHECK(!setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sizeof(sndbuf)));
     while (!c.tx) CHECK(!otg_control_channel_send(&c, data, sizeof(data)));
     c.tx_deadline_ms = 0;
     CHECK(otg_control_channel_flush(&c) == -1 && !c.ready);
