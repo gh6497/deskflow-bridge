@@ -1,6 +1,6 @@
 # deskflow-bridge
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · [User guide](docs/USER_GUIDE.md)
 
 A bridge connecting [Deskflow](https://github.com/deskflow/deskflow) (keyboard and mouse sharing) with Android HID transports, including scrcpy's **OTG mode** (USB AOA HID), BLE HID, and ADB + UHID.
 
@@ -26,6 +26,17 @@ Both a command-line interface and an optional **Qt desktop GUI** are provided. T
 ```
 
 In Deskflow, the phone appears as a normal "screen" that can be placed to the left, right, above, or below the host screen.
+
+## User guide
+
+**New to Deskflow Bridge? Start with the [illustrated user guide](docs/USER_GUIDE.md).**
+It covers downloads and installation, choosing a connection type, your first GUI connection,
+everyday controls, clipboard/audio, file sharing and troubleshooting. No compilation is required.
+
+[![Deskflow Bridge desktop GUI — demo device](docs/screenshots/device-en.png)](docs/USER_GUIDE.md)
+
+The screenshot shows the actual Linux interface with a simulated device. Appearance and available
+features vary by platform and release. A [Chinese user guide](docs/USER_GUIDE.zh-CN.md) is also available.
 
 ## How it works
 

@@ -1,5 +1,7 @@
 # deskflow-bridge
 
+[English](README.md) · [用户指南](docs/USER_GUIDE.zh-CN.md)
+
 一个把 [Deskflow](https://github.com/deskflow/deskflow)（键盘鼠标共享）和 Android HID 传输连接起来的桥接程序，
 支持 [scrcpy](https://github.com/Genymobile/scrcpy) 的 **OTG 模式**（USB AOA HID）、BLE HID 以及 ADB＋UHID。
 
@@ -31,6 +33,17 @@ AOA/BLE 仅在启用增强功能时需要 ADB。手动填写 AOA 设备信息、
 ```
 
 手机在 Deskflow 里表现为一块普通的"屏幕"，放在主机屏幕的左/右/上/下即可。
+
+## 用户指南
+
+**第一次使用？请从[图文用户指南](docs/USER_GUIDE.zh-CN.md)开始。**
+指南介绍下载安装、连接方式选择、GUI 首次连接、日常操作、剪贴板/音频、文件分享和常见问题，
+无需编译代码即可按步骤使用。
+
+[![Deskflow Bridge 桌面界面——演示设备](docs/screenshots/device-zh-CN.png)](docs/USER_GUIDE.zh-CN.md)
+
+截图来自实际 Linux 界面，使用模拟设备；不同系统和发布版本的外观及可用功能可能不同。
+另有 [English user guide](docs/USER_GUIDE.md)。
 
 ## 工作原理
 
