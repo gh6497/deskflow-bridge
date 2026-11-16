@@ -43,6 +43,16 @@ protected:
 };
 
 class AutoConnectTestWindow : public TrayTestWindow {
+public:
+    AutoConnectTestWindow()
+    {
+        // These fixtures exercise AOA unless a test explicitly selects UHID.
+        // Production fresh Windows profiles are tested separately below.
+        auto *transport = findChild<QComboBox *>("transportSelector");
+        transport->setCurrentIndex(transport->findData(QSettings().value("transport", "usb")));
+        if (transport->currentData() == "usb")
+            findChild<QCheckBox *>("adbEnabled")->setChecked(QSettings().value("adbEnabled", false).toBool());
+    }
 protected:
     QString bridgeExecutable() const override
     {
@@ -57,6 +67,91 @@ protected:
 class WindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void uhidDefaults()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings; settings.setValue("adb", "");
+        MainWindow window;
+        auto *transport = window.findChild<QComboBox *>("transportSelector");
+#ifdef Q_OS_WIN
+        QCOMPARE(transport->currentData().toString(), "uhid");
+#else
+        QCOMPARE(transport->currentData().toString(), "usb");
+#endif
+        window.findChild<QAction *>("trayQuit")->trigger();
+#endif
+    }
+
+    void uhidDiscoveryAndSettings()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        const auto peer = QCoreApplication::applicationDirPath() + "/test_peer"
+#ifdef Q_OS_WIN
+            ".exe"
+#endif
+            ;
+        settings.setValue("adb", peer);
+        settings.setValue("transport", "uhid");
+        settings.setValue("serial", "OLD_AOA_SERIAL");
+        settings.setValue("adbEnabled", false);
+        settings.setValue("manageServer", false);
+        const auto logPath = dir.filePath("commands.jsonl");
+        qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_UHID_LOG"); });
+        {
+            AutoConnectTestWindow window; window.show();
+            auto *transport = window.findChild<QComboBox *>("transportSelector");
+            auto *target = window.findChild<QLineEdit *>("adbSerial");
+            auto *serial = window.findChild<QLineEdit *>("usbSerial");
+            auto *enabled = window.findChild<QCheckBox *>("adbEnabled");
+            auto *connect = window.findChild<QPushButton *>("connectButton");
+            QVERIFY(transport && target && serial && enabled && connect);
+            QTRY_COMPARE(target->text(), "TEST123");
+            QTRY_COMPARE(window.findChild<QSpinBox *>("screenWidth")->value(), 1600);
+            QCOMPARE(serial->text(), "OLD_AOA_SERIAL");
+            QVERIFY(serial->isHidden());
+            QVERIFY(enabled->isChecked() && !enabled->isEnabled());
+            QVERIFY(!window.findChild<QCheckBox *>("autoConnectEnabled")->isEnabled());
+            QVERIFY(window.findChild<QCheckBox *>("autoRotate")->isEnabled());
+            target->clear(); QVERIFY(!connect->isEnabled());
+            target->setText("MANUAL_ADB_TARGET"); QVERIFY(connect->isEnabled());
+            auto *language = window.findChild<QComboBox *>("languageSelector");
+            language->setCurrentIndex(language->findData("zh_CN"));
+            QVERIFY(transport->currentText().contains("UHID"));
+            language->setCurrentIndex(language->findData("en"));
+            QCOMPARE(transport->currentData().toString(), "uhid");
+            const auto screenshot = qEnvironmentVariable("OTG_TEST_UHID_SCREENSHOT");
+            if (!screenshot.isEmpty()) {
+                QCoreApplication::processEvents();
+                QVERIFY(window.grab().save(screenshot));
+            }
+            window.findChild<QAction *>("trayQuit")->trigger();
+        }
+        QCOMPARE(settings.value("transport").toString(), "uhid");
+        QCOMPARE(settings.value("adbSerial").toString(), "MANUAL_ADB_TARGET");
+        settings.beginReadArray("devices"); settings.setArrayIndex(0);
+        QCOMPARE(settings.value("profile").toMap().value("transport").toString(), "uhid");
+        settings.endArray();
+        {
+            AutoConnectTestWindow restored;
+            QCOMPARE(restored.findChild<QComboBox *>("transportSelector")->currentData().toString(), "uhid");
+            QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), "MANUAL_ADB_TARGET");
+            restored.findChild<QAction *>("trayQuit")->trigger();
+        }
+        QFile log(logPath); QVERIFY(log.open(QIODevice::ReadOnly));
+        const auto commands = log.readAll();
+        QVERIFY(commands.contains("devices"));
+        QVERIFY(!commands.contains("--usb-scan") && !commands.contains("get-devpath"));
+#endif
+    }
+
     void commandOwnerDestruction_data()
     {
         QTest::addColumn<bool>("started");
@@ -810,6 +905,9 @@ private slots:
             QCOMPARE(list->count(), 2);
             const auto secondId = list->currentItem()->data(Qt::UserRole).toString();
             QVERIFY(secondId != "initial");
+            auto *transport = window.findChild<QComboBox *>("transportSelector");
+            transport->setCurrentIndex(transport->findData("usb"));
+            window.findChild<QCheckBox *>("adbEnabled")->setChecked(false);
             serial->setText("B"); alias->setText("Pixel 8"); width->setValue(1080);
             connectButton->click();
             QTRY_COMPARE(manager->state(secondId), Session::State::Connected);
@@ -937,12 +1035,20 @@ private slots:
         auto *transport = window.findChild<QComboBox *>("transportSelector");
         QVERIFY(transport);
         QCOMPARE(transport->itemData(0).toString(), "usb");
-#if (defined(Q_OS_LINUX) && defined(OTG_GUI_HAVE_BLE)) || (defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN))
-        QCOMPARE(transport->count(), 2);
-        QCOMPARE(transport->itemData(1).toString(), "ble");
+        int count = 1;
+#ifdef OTG_GUI_HAVE_UHID
+        ++count;
+        QVERIFY(transport->findData("uhid") >= 0);
 #else
-        QCOMPARE(transport->count(), 1);
+        QCOMPARE(transport->findData("uhid"), -1);
 #endif
+#if (defined(Q_OS_LINUX) && defined(OTG_GUI_HAVE_BLE)) || (defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN))
+        ++count;
+        QVERIFY(transport->findData("ble") >= 0);
+#else
+        QCOMPARE(transport->findData("ble"), -1);
+#endif
+        QCOMPARE(transport->count(), count);
         window.findChild<QAction *>("trayQuit")->trigger();
     }
     void bleSettingsAndNoAdb()

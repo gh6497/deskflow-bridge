@@ -11,7 +11,7 @@
 #endif
 #include "scrcpy_session.h"
 #include "adb_target.h"
-#if defined(OTG_HAVE_AUDIO) || defined(OTG_HAVE_CLIPBOARD)
+#if defined(OTG_HAVE_AUDIO) || defined(OTG_HAVE_CLIPBOARD) || defined(OTG_HAVE_UHID)
 #ifdef OTG_HAVE_AUDIO
 #include "audio_player.h"
 #endif
@@ -39,6 +39,13 @@
 #define LOG_ERR(...)  fprintf(stderr, "ERROR: " __VA_ARGS__)
 #define LOG_WARN(...) fprintf(stderr, "WARN:  " __VA_ARGS__)
 #define LOG_INFO(...) fprintf(stderr, "INFO:  " __VA_ARGS__)
+
+/* Startup is main-thread-only. Cleanup must finish even after cancellation. */
+static int (*startup_stop_requested)(void);
+static bool startup_cancelled(void)
+{
+    return startup_stop_requested && startup_stop_requested();
+}
 
 static int read_full(int fd, void *buffer, size_t size)
 {
@@ -82,7 +89,7 @@ static int wait_child_timeout(pid_t pid, unsigned timeout_ms)
         pid_t result = waitpid(pid, &status, WNOHANG);
         if (result == pid) break;
         if (result < 0 && errno != EINTR) return -1;
-        if (auxiliary_now_ms() >= deadline) {
+        if (startup_cancelled() || auxiliary_now_ms() >= deadline) {
             (void)kill(pid, SIGKILL);
             while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
             return -1;
@@ -174,6 +181,23 @@ static int adb_push(const char *adb, const char *serial, const char *source,
     return wait_child_timeout(pid, timeout_ms);
 }
 
+static int check_uhid(const char *adb, const char *serial)
+{
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        int null_fd = open("/dev/null", O_RDONLY);
+        if (null_fd < 0 || dup2(null_fd, STDIN_FILENO) < 0 ||
+            dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(127);
+        if (null_fd > STDERR_FILENO) close(null_fd);
+        /* Open read/write, not just a mode-bit test (SELinux may deny open). */
+        execlp(adb, adb, "-s", serial, "shell",
+               "test -c /dev/uhid && : <> /dev/uhid", (char *)NULL);
+        _exit(127);
+    }
+    return wait_child(pid);
+}
+
 /* After a USB re-enumeration libusb can see the phone before adbd has
  * recreated its transport.  HID is already usable at this point, so keep the
  * bridge alive briefly instead of making the GUI treat a transient ADB race
@@ -183,7 +207,7 @@ static int adb_push_retry(const char *adb, const char *serial, const char *sourc
     uint64_t deadline = auxiliary_now_ms() + ADB_PUSH_TIMEOUT_MS;
     for (int attempt = 0; attempt < ADB_PUSH_RETRIES; ++attempt) {
         uint64_t now = auxiliary_now_ms();
-        if (now >= deadline) break;
+        if (startup_cancelled() || now >= deadline) break;
         if (adb_push(adb, serial, source, (unsigned)(deadline - now)) == 0) return 0;
         now = auxiliary_now_ms();
         if (attempt + 1 == ADB_PUSH_RETRIES || now >= deadline) break;
@@ -267,6 +291,7 @@ static int wait_for_stream(int fd)
     struct pollfd descriptor = { .fd = fd, .events = POLLIN };
     unsigned char byte;
     for (int attempt = 0; attempt < 50; ++attempt) {
+        if (startup_cancelled()) return -1;
         int result = poll(&descriptor, 1, 100);
         if (result < 0) {
             if (errno == EINTR) continue;
@@ -281,7 +306,7 @@ static int wait_for_stream(int fd)
 }
 
 static int start_server_process(struct scrcpy_session *session, unsigned scid,
-                                const char *server_version, bool audio, bool control)
+                                const char *server_version, bool audio, bool control, bool clipboard)
 {
     char scid_arg[32];
     pid_t pid;
@@ -289,16 +314,15 @@ static int start_server_process(struct scrcpy_session *session, unsigned scid,
     pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        int null_fd = open("/dev/null", O_RDWR);
-        if (null_fd >= 0) {
-            (void)dup2(null_fd, STDOUT_FILENO);
-            (void)dup2(null_fd, STDERR_FILENO);
-            if (null_fd > STDERR_FILENO) close(null_fd);
-        }
+        int null_fd = open("/dev/null", O_RDONLY);
+        if (null_fd < 0 || dup2(null_fd, STDIN_FILENO) < 0 ||
+            dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(127);
+        if (null_fd > STDERR_FILENO) close(null_fd);
         execlp(session->adb_path, session->adb_path, "-s", session->adb_serial,
               "shell", "CLASSPATH=" SCRCPY_REMOTE_PATH, "app_process", "/",
               "com.genymobile.scrcpy.Server", server_version, audio ? "audio=true" : "audio=false", "video=false",
-              control ? "control=true" : "control=false", "clipboard_autosync=true",
+              control ? "control=true" : "control=false",
+              clipboard ? "clipboard_autosync=true" : "clipboard_autosync=false",
               "power_on=false", "cleanup=true", "tunnel_forward=true",
               "send_device_meta=false", "send_dummy_byte=true",
               "send_stream_meta=true",
@@ -327,7 +351,8 @@ static void cleanup_process(struct scrcpy_session *session)
 
 int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
                          const char *adb_serial, const char *server_path,
-                         const char *server_version, bool audio, bool clipboard)
+                         const char *server_version, bool audio, bool clipboard, bool uhid,
+                         int (*stop_requested)(void))
 {
 #ifndef OTG_HAVE_AUDIO
     if (audio) return -1;
@@ -342,15 +367,20 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     session->audio_fd = -1;
     session->control_fd = -1;
     if (!adb_path || !adb_serial || !server_path || !server_version || !*adb_serial ||
-        !*server_path || !*server_version || (!audio && !clipboard)) {
+        !*server_path || !*server_version || (!audio && !clipboard && !uhid)) {
         LOG_ERR("scrcpy session requires ADB path, ADB serial, server/version and an enabled feature\n");
         return -1;
     }
     session->adb_path = copy_string(adb_path);
+    startup_stop_requested = stop_requested;
     session->adb_serial = copy_string(adb_serial);
     session->server_path = copy_string(server_path);
     if (!session->adb_path || !session->adb_serial || !session->server_path) goto fail;
     if (otg_adb_target_prepare(session->adb_serial, adb_target_command, session->adb_path)) goto fail;
+    if (uhid && check_uhid(session->adb_path, session->adb_serial)) {
+        LOG_ERR("UHID unavailable: Android shell cannot open /dev/uhid; check device/ROM support\n");
+        goto fail;
+    }
     if (adb_push_retry(session->adb_path, session->adb_serial, session->server_path) != 0) {
         LOG_ERR("adb push of scrcpy-server failed\n");
         goto fail;
@@ -360,15 +390,15 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     scid = (unsigned)getpid() & 0x7fffffffU;
     snprintf(remote, sizeof(remote), "localabstract:scrcpy_%08x", scid);
     snprintf(local, sizeof(local), "tcp:%d", port);
-    bool control = clipboard;
-    if (start_server_process(session, scid, server_version, audio, control) != 0) goto fail;
+    bool control = clipboard || uhid;
+    if (start_server_process(session, scid, server_version, audio, control, clipboard) != 0) goto fail;
     session->forward_port = port;
     if (adb_forward(session->adb_path, session->adb_serial, local, remote) != 0) {
         LOG_ERR("adb forward to %s failed\n", remote);
         goto fail;
     }
     uint64_t deadline = auxiliary_now_ms() + 5000;
-    while (auxiliary_now_ms() < deadline) {
+    while (!startup_cancelled() && auxiliary_now_ms() < deadline) {
         session->audio_fd = connect_local(port);
         if (session->audio_fd >= 0) {
             if (wait_for_stream((int)session->audio_fd) == 0) break;
@@ -389,7 +419,9 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
         if (audio) session->control_fd = connect_local(port);
         else { session->control_fd = session->audio_fd; session->audio_fd = -1; }
         if (session->control_fd < 0) goto fail;
-        if (clipboard && otg_clipboard_channel_open(&session->clipboard, session->control_fd)) goto fail;
+        if (otg_clipboard_channel_open(&session->clipboard, session->control_fd)) goto fail;
+        session->clipboard.shared_uhid = uhid;
+        if (!clipboard) otg_clipboard_channel_disable(&session->clipboard);
     }
 #ifdef OTG_HAVE_AUDIO
     if (audio) {
@@ -398,10 +430,12 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     }
 #endif
     session->started = true;
-    LOG_INFO("scrcpy auxiliary session started (audio=%s, clipboard=%s)\n",
-             audio ? "on" : "off", clipboard ? "on" : "off");
+    startup_stop_requested = NULL;
+    LOG_INFO("scrcpy session started (audio=%s, clipboard=%s, uhid=%s)\n",
+             audio ? "on" : "off", clipboard ? "on" : "off", uhid ? "on" : "off");
     return 0;
 fail:
+    startup_stop_requested = NULL;
     scrcpy_session_stop(session);
     return -1;
 }
@@ -409,6 +443,12 @@ fail:
 void scrcpy_session_stop(struct scrcpy_session *session)
 {
     if (!session || !session->initialized) return;
+    /* Bridge close precedes this call: give releases/destroys a bounded flush. */
+    uint64_t deadline = auxiliary_now_ms() + 500;
+    while (otg_control_channel_pending(&session->clipboard) && auxiliary_now_ms() < deadline) {
+        if (otg_control_channel_flush(&session->clipboard)) break;
+        if (otg_control_channel_pending(&session->clipboard)) (void)poll(NULL, 0, 5);
+    }
 #ifdef OTG_HAVE_AUDIO
     /* Dispatch media pause before closing the audio stream.
      * Failed startup and clipboard-only sessions must not affect playback. */

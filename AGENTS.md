@@ -276,6 +276,17 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
 
 ## 可选桌面 GUI
 
+- `BUILD_UHID=ON` 默认提供 `--transport uhid --adb-serial TARGET`（三平台），GUI Windows 新配置
+  优先选择，旧 AOA/BLE 配置保留。`src/uhid.c` 复用 bridge 描述符/报告，以 scrcpy 12/13/14
+  创建/发送/销毁设备，不使用 SDK 输入注入。仅显式 ADB 目标，UHID 不接受 USB serial/BLE 参数。
+  `scrcpy_session` 的 control 由 UHID 或 clipboard 开启；两者与可选音频复用 server/forward。
+  `clipboard.c` 单读写器处理有界64条 HID FIFO、完整消息、部分写入与LED输出；不要另开读写线程
+  争用同一 socket。共享剪贴板 ACK 失败只禁用其策略，socket/背压失败终止 UHID/Deskflow。
+  先 bridge close（范围结束、键盘释放、DESTROY）再 session stop（有界排空、关闭、清理）。
+  启动检查 /dev/uhid 的实际打开权限且响应取消；官方无 CREATE ACK，不能把描述符已发送视为
+  真机成功。GUI UHID 用 ADB 发现，目标栏必填，不回退 AOA serial，隐藏 libusb 自动连接。
+  `uhid_protocol`/`uhid_cli`/Qt 为离线测试，详见 `docs/UHID.md`。
+
 - **所有下拉框禁止通过鼠标滚轮修改值**，无论是否获得焦点；新增下拉框也必须遵守。
   复用 `gui/main_window.cpp` 的 `NoWheelWidget<QComboBox>`（其他窗口应复用或提取同等公共实现），
   在 `wheelEvent()` 中调用 `event->ignore()`，让父级滚动区域仍可滚动；保留点击选择和键盘切换。

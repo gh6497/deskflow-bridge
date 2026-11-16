@@ -23,7 +23,7 @@ int main(int argc, char **argv)
                  !strcmp(argv[2], "audio-fail");
     bool clipboard = strcmp(argv[2], "audio") != 0 && strcmp(argv[2], "audio-fail") != 0;
     int result = scrcpy_session_start(&s, argv[1], argc == 4 ? argv[3] : "FAKE_PHONE",
-                                     "fake-server", "5.0.1", audio, clipboard);
+                                     "fake-server", "5.0.1", audio, clipboard, false, NULL);
     if (!strcmp(argv[2], "fail") || !strcmp(argv[2], "audio-fail") ||
         getenv("OTG_TEST_AUX_EXPECT_FAIL")) {
         scrcpy_session_stop(&s);

@@ -119,7 +119,9 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
         if (it.key() == id) continue;
         const bool reserved = state(it.key()) != Session::State::Idle;
         if (reserved && (options.phone.compare(it->options.phone, Qt::CaseInsensitive) == 0 ||
-            (options.transport == "usb" && it->options.transport == "usb" && options.serial == it->options.serial)))
+            (options.transport == "usb" && it->options.transport == "usb" && options.serial == it->options.serial) ||
+            (options.transport == "uhid" && it->options.transport == "uhid" &&
+             options.adbSerial.trimmed() == it->options.adbSerial.trimmed())))
             return reject(id, "otg.multi.duplicate_device");
         // Keep one BLE target, including a Windows provider parked while idle.
         if (options.transport == "ble" && ((reserved && it->options.transport == "ble") ||

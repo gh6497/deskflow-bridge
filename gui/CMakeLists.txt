@@ -42,6 +42,9 @@ endif()
 if(BUILD_BLE_WIN)
   target_compile_definitions(otg_gui_support PUBLIC OTG_GUI_HAVE_BLE_WIN=1)
 endif()
+if(BUILD_UHID)
+  target_compile_definitions(otg_gui_support PUBLIC OTG_GUI_HAVE_UHID=1)
+endif()
 # Keep all display text in the two catalogs; code references stable IDs only.
 # Catalogs are maintained explicitly, not regenerated from source literals.
 qt_add_lrelease(otg_gui_support
@@ -106,7 +109,7 @@ if(APPLE)
 else()
   set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-otg-gui>/share/deskflow-otg")
 endif()
-if(BUILD_AUDIO OR BUILD_CLIPBOARD)
+if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
   add_custom_target(otg_gui_scrcpy_runtime ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${OTG_GUI_BUILD_DATA_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SCRCPY_SERVER}"
@@ -238,7 +241,7 @@ if(BUILD_TESTING)
   add_test(NAME gui_runtime_files COMMAND "${CMAKE_COMMAND}"
     "-DDATA_DIR=${OTG_GUI_BUILD_DATA_DIR}"
     "-DGUI_DIR=$<TARGET_FILE_DIR:deskflow-otg-gui>"
-    "-DHAVE_SCRCPY=$<OR:$<BOOL:${BUILD_AUDIO}>,$<BOOL:${BUILD_CLIPBOARD}>>"
+    "-DHAVE_SCRCPY=$<OR:$<BOOL:${BUILD_AUDIO}>,$<BOOL:${BUILD_CLIPBOARD}>,$<BOOL:${BUILD_UHID}>>"
     "-DSERVER=${SCRCPY_SERVER}" "-DVERSION=${SCRCPY_VERSION}"
     "-DADB_DIR=${ADB_BUNDLE_DIR}" "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
     "-DCOMPANION_APK=${companion_apk}"

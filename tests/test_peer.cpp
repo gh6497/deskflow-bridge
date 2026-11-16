@@ -23,6 +23,12 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     const auto args = app.arguments();
+    const auto uhidLog = qEnvironmentVariable("OTG_TEST_UHID_LOG");
+    if (!uhidLog.isEmpty()) {
+        QFile log(uhidLog);
+        if (log.open(QIODevice::WriteOnly | QIODevice::Append))
+            log.write(QJsonDocument(QJsonArray::fromStringList(args.mid(1))).toJson(QJsonDocument::Compact) + '\n');
+    }
     if (args.contains("mdns") || args.contains("pair") || args.contains("connect")) {
         const auto mode = qEnvironmentVariable("OTG_TEST_WIRELESS_ADB");
         if (args.contains("mdns")) {
@@ -148,7 +154,8 @@ int main(int argc, char **argv)
         return 0;
     }
     if (args.contains("devices")) {
-        output("List of devices attached\nTEST123 device usb:1-2 model:Pixel_Test transport_id:1\n");
+        const auto devices = qgetenv("OTG_TEST_ADB_DEVICES");
+        output(devices.isEmpty() ? "List of devices attached\nTEST123 device usb:1-2 model:Pixel_Test transport_id:1\n" : devices.constData());
         return 0;
     }
     if (args.contains("get-devpath")) {
@@ -246,6 +253,10 @@ int main(int argc, char **argv)
             }
         }
         const bool ble = args.value(args.indexOf("--transport") + 1) == "ble";
+        const bool uhid = args.value(args.indexOf("--transport") + 1) == "uhid";
+        if (uhid && (args.contains("--serial") || !args.contains("--adb-serial") ||
+                     !args.contains("--scrcpy-server") || !args.contains("--scrcpy-version") ||
+                     args.contains("--ble-peer"))) return 14;
         if (ble && (!args.contains("--ble-peer") || args.contains("--serial") ||
                     args.value(args.indexOf("--mouse-mode") + 1) != "absolute")) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
@@ -290,7 +301,8 @@ int main(int argc, char **argv)
             return 5;
         // Bypass libc stream cleanup: the fake's input thread is blocked in getchar().
         if (serial == "crash") QTimer::singleShot(600, &app, [] { std::_Exit(12); });
-        if (!ble) output("{\"event\":\"usb-ready\",\"usb-id\":\"1:2\"}\n");
+        if (uhid) output("{\"event\":\"uhid-ready\"}\n");
+        else if (!ble) output("{\"event\":\"usb-ready\",\"usb-id\":\"1:2\"}\n");
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_RECONNECT") &&
             !qEnvironmentVariableIsSet("OTG_TEST_BLE_WAIT")) {
             QTimer::singleShot(250, &app, [] { output("{\"event\":\"disconnected\"}\n"); });

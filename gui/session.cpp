@@ -160,11 +160,10 @@ static bool adbDeviceState(const QString &output)
     return output.trimmed() == QStringLiteral("device");
 }
 
-/* Keep the ADB boundary in one place.  HID itself never needs ADB, while
- * these three bridge features do: scrcpy audio/clipboard and PIN unlock. */
+/* AOA/BLE input is independent; UHID and the optional features require ADB. */
 static bool adbRequested(const ConnectionOptions &options)
 {
-    return options.audio || options.clipboard || options.unlockAdb;
+    return options.transport == "uhid" || options.audio || options.clipboard || options.unlockAdb;
 }
 
 static bool adbRequired(const ConnectionOptions &options)
@@ -216,15 +215,20 @@ void Session::start(const ConnectionOptions &options)
         fail("otg.error.adb_disabled");
         return;
     }
-    if ((options.audio || options.clipboard) &&
+    const bool uhid = options.transport == "uhid";
+#ifndef OTG_GUI_HAVE_UHID
+    if (uhid) { fail("otg.uhid.unsupported"); return; }
+#endif
+    if ((uhid || options.audio || options.clipboard) &&
         (options.scrcpyServer.isEmpty() || options.scrcpyVersion.isEmpty())) {
         fail("otg.error.scrcpy_runtime");
         return;
     }
     static const QRegularExpression peerPattern("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$");
-    if ((!ble && options.serial.isEmpty()) ||
+    if ((options.transport == "usb" && options.serial.isEmpty()) ||
         (adbRequired(options) && (options.adb.isEmpty() || adbTarget(options).isEmpty())) ||
-        (options.transport != "usb" && !ble) ||
+        (options.transport != "usb" && !ble && !uhid) ||
+        (uhid && options.adbSerial.trimmed().isEmpty()) ||
         (ble && (!peerPattern.match(options.blePeer).hasMatch() || options.mouseMode != "absolute")) ||
         (options.middleButtonAction != "normal" && options.middleButtonAction != "home") ||
         (options.rightButtonAction != "normal" && options.rightButtonAction != "back") ||
@@ -437,7 +441,8 @@ void Session::launchBridge()
     if (m_options.unlockAdb)
         environment.insert("OTG_UNLOCK_ADB_GATE", "1");
     m_bridge.setProcessEnvironment(environment);
-    emit log(qtTrId(ble ? "otg.ble.waiting" : "otg.log.usb_initializing"));
+    emit log(qtTrId(ble ? "otg.ble.waiting" : m_options.transport == "uhid" ?
+                   "otg.uhid.initializing" : "otg.log.usb_initializing"));
     QStringList args = {"--gui", "--host", m_options.manageServer ? "127.0.0.1" : m_options.host,
                     "--port", QString::number(m_options.port), "--name", m_options.phone,
                      "--width", QString::number(m_options.width),
@@ -452,7 +457,7 @@ void Session::launchBridge()
         if (m_options.audio) args << "--audio";
         if (m_options.clipboard) args << "--clipboard";
         args << "--adb" << m_options.adb;
-        if (m_options.audio || m_options.clipboard) {
+        if (m_options.transport == "uhid" || m_options.audio || m_options.clipboard) {
             args << "--scrcpy-server" << m_options.scrcpyServer
                  << "--scrcpy-version" << m_options.scrcpyVersion;
         }
@@ -481,6 +486,8 @@ void Session::launchBridge()
             return;
         }
 #endif
+    } else if (m_options.transport == "uhid") {
+        args << "--transport" << "uhid";
     } else {
         args << "--serial" << m_options.serial;
     }
@@ -588,6 +595,8 @@ void Session::handleBridgeEvent(const QJsonObject &object)
                m_state == State::Connected) {
         m_audioReady = false;
         setState(State::Starting, "otg.ble.reconnecting");
+    } else if (event == "uhid-ready") {
+        emit log(qtTrId("otg.uhid.ready"));
     } else if (event == "usb-ready") {
         const auto id = object.value("usb-id").toString();
         if (!id.isEmpty())

@@ -9,7 +9,8 @@
 
 int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
                           const char *adb_serial, const char *server_path,
-                          const char *server_version, bool audio, bool clipboard)
+                          const char *server_version, bool audio, bool clipboard, bool uhid,
+                          int (*stop_requested)(void))
 {
     (void)session;
     (void)adb_path;
@@ -18,6 +19,8 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     (void)server_version;
     (void)audio;
     (void)clipboard;
+    (void)uhid;
+    (void)stop_requested;
     fprintf(stderr, "ERROR: scrcpy ADB features are not enabled in this build\n");
     return -1;
 }

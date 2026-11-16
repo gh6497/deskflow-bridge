@@ -2,6 +2,10 @@
 
 ## 结论
 
+若可以开启并授权 USB 调试，优先选择 GUI 的 **ADB＋UHID**，或 CLI `--transport uhid`。
+该路径使用正常 ADB 驱动，保留绝对坐标指针，不需要下面的 AOA/libusb 驱动替换。
+用法和手机要求见 [ADB＋UHID](UHID.md)。以下内容针对 **USB（AOA HID）** 模式。
+
 Windows 并不是不支持 USB OTG。`deskflow-otg` 的 USB 模式和
 `scrcpy --otg` 一样，直接通过 libusb 向 Android 设备发送 AOA HID 控制请求，
 不使用 ADB 传输键鼠事件，也不需要 ADB daemon 或 RSA 授权。

@@ -256,6 +256,55 @@ private slots:
         QTest::newRow("audio-and-clipboard") << true << false;
         QTest::newRow("clipboard-failure-keeps-hid") << false << true;
     }
+    void uhidSession_data()
+    {
+        QTest::addColumn<bool>("extras");
+        QTest::newRow("uhid-only") << false;
+        QTest::newRow("uhid-audio-clipboard") << true;
+    }
+    void uhidSession()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QFETCH(bool, extras);
+        QTemporaryDir dir;
+        const auto logPath = dir.filePath("calls.jsonl");
+        qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_UHID_LOG"); });
+        ConnectionOptions options;
+        options.manageServer = false;
+        options.transport = "uhid"; options.serial = "STALE_USB_ID";
+        options.adbSerial = "USB_ADB_ID";
+        options.adb = options.bridge = peerPath();
+        options.scrcpyServer = "fake-server"; options.scrcpyVersion = "5.0.1";
+        options.audio = options.clipboard = extras;
+        Session session;
+        QSignalSpy usb(&session, &Session::usbAttached);
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Connected);
+        QCOMPARE(usb.size(), 0);
+        session.stop(); QTRY_COMPARE(session.state(), Session::State::Idle);
+        QVERIFY(!session.hasFailure());
+        QFile log(logPath); QVERIFY(log.open(QIODevice::ReadOnly));
+        bool launched = false;
+        for (const auto &line : log.readAll().split('\n')) {
+            const auto args = QJsonDocument::fromJson(line).array();
+            if (!args.contains("--gui")) continue;
+            QVERIFY(!args.contains("--serial"));
+            QVERIFY(args.contains("uhid") && args.contains("USB_ADB_ID"));
+            QVERIFY(args.contains("--scrcpy-server"));
+            QCOMPARE(args.contains("--clipboard"), extras);
+            QCOMPARE(args.contains("--audio"), extras);
+            launched = true;
+        }
+        QVERIFY(launched);
+        options.adbSerial.clear(); // No fallback to stale USB identity, on any OS.
+        session.start(options); QCOMPARE(session.state(), Session::State::Idle);
+        QVERIFY(session.hasFailure());
+        options.adbSerial = "USB_ADB_ID"; options.adbEnabled = false;
+        session.start(options); QCOMPARE(session.state(), Session::State::Idle);
+        QVERIFY(session.hasFailure());
+#endif
+    }
     void clipboardSession()
     {
         QFETCH(bool, audio); QFETCH(bool, unavailable);
