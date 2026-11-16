@@ -15,7 +15,7 @@ def main():
         print("SKIP: JDK required for Android USB disconnect policy regression")
         return 77
     root = Path(__file__).resolve().parent.parent
-    app = root / "android/deskflow-otg/app/src"
+    app = root / "android/deskflow-bridge/app/src"
     package = "com/github/gh6497/deskflowotg"
     with tempfile.TemporaryDirectory(prefix="otg-usb-disconnect-") as directory:
         subprocess.run([javac, "-encoding", "UTF-8", "-Xlint:all", "-Werror", "-d", directory,

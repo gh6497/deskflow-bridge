@@ -25,10 +25,10 @@ bool LanguageManager::setLanguage(const QString &language)
         return false;
     if (language == m_language)
         return true;
-    if (m_english.isEmpty() && !m_english.load(":/i18n/deskflow_otg_en.qm"))
+    if (m_english.isEmpty() && !m_english.load(":/i18n/deskflow_bridge_en.qm"))
         return false;
     if (language == "zh_CN" && m_chinese.isEmpty() &&
-        !m_chinese.load(":/i18n/deskflow_otg_zh_CN.qm"))
+        !m_chinese.load(":/i18n/deskflow_bridge_zh_CN.qm"))
         return false;
     if (m_language.isEmpty())
         QCoreApplication::installTranslator(&m_english);

@@ -10,7 +10,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 
-APP = Path(__file__).resolve().parents[1] / "android/deskflow-otg/app/src/main"
+APP = Path(__file__).resolve().parents[1] / "android/deskflow-bridge/app/src/main"
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 LAYOUTS = {
     "activity_main": {
@@ -125,7 +125,7 @@ class AndroidLayoutsTest(unittest.TestCase):
     def test_theme_uses_a_known_system_font_family(self):
         resources = ET.parse(APP / "res/values/styles.xml").getroot()
         theme = next(style for style in resources.findall("style")
-                     if style.get("name") == "Theme.DeskflowOtg")
+                     if style.get("name") == "Theme.DeskflowBridge")
         family = next(item for item in theme.findall("item")
                       if item.get("name") == "android:fontFamily")
         # Layoutlib interprets unknown names (including "sans") as font paths.

@@ -466,7 +466,7 @@ private slots:
         QVERIFY(dir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
-        const auto bundled = QCoreApplication::applicationDirPath() + "/deskflow-otg-companion.apk";
+        const auto bundled = QCoreApplication::applicationDirPath() + "/deskflow-bridge-companion.apk";
         const bool existed = QFile::exists(bundled);
         if (!existed) {
             QFile file(bundled);

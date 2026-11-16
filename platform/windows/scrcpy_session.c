@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define REMOTE_PATH "/data/local/tmp/deskflow-otg-scrcpy-server.jar"
+#define REMOTE_PATH "/data/local/tmp/deskflow-bridge-scrcpy-server.jar"
 #define ADB_PUSH_RETRIES 20
 #define ADB_PUSH_RETRY_DELAY_MS 250
 #define ADB_PUSH_TIMEOUT_MS 5000

@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef DESKFLOW_OTG_BRIDGE_H
-#define DESKFLOW_OTG_BRIDGE_H
+#ifndef DESKFLOW_BRIDGE_BRIDGE_H
+#define DESKFLOW_BRIDGE_BRIDGE_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -183,4 +183,4 @@ void otg_bridge_reset_input(struct otg_bridge *b);
  * transport registration. The caller gates old Deskflow motion until CIAK. */
 bool otg_bridge_resize(struct otg_bridge *b, int32_t width, int32_t height);
 
-#endif /* DESKFLOW_OTG_BRIDGE_H */
+#endif /* DESKFLOW_BRIDGE_BRIDGE_H */

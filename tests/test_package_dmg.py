@@ -22,19 +22,19 @@ class PackageDmgTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             stage = root / "stage"
-            app = stage / "deskflow-otg-gui.app"
-            for relative in ("Contents/MacOS/deskflow-otg-gui",
-                             "Contents/MacOS/deskflow-otg",
-                             "Contents/MacOS/deskflow-otg-companion.apk",
+            app = stage / "deskflow-bridge-gui.app"
+            for relative in ("Contents/MacOS/deskflow-bridge-gui",
+                             "Contents/MacOS/deskflow-bridge",
+                             "Contents/MacOS/deskflow-bridge-companion.apk",
                              "Contents/MacOS/platform-tools/adb"):
                 file = app / relative
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text("binary")
-            docs = stage / "share/deskflow-otg"
+            docs = stage / "share/deskflow-bridge"
             (docs / "licenses").mkdir(parents=True)
             (docs / "LICENSE").write_text("project license")
             (docs / "licenses/libusb-LGPL-2.1.txt").write_text("libusb license")
-            resources = app / "Contents/Resources/deskflow-otg"
+            resources = app / "Contents/Resources/deskflow-bridge"
             if existing_resources:
                 (resources / "licenses").mkdir(parents=True)
                 (resources / "scrcpy-server").write_bytes(b"scrcpy runtime")
@@ -49,10 +49,10 @@ class PackageDmgTest(unittest.TestCase):
                 image = pathlib.Path(command[command.index("-srcfolder") + 1])
                 self.assertEqual((image / "Applications").readlink(), pathlib.Path("/Applications"))
                 installed = image / app.name
-                self.assertTrue((installed / "Contents/MacOS/deskflow-otg").is_file())
-                self.assertEqual((installed / "Contents/MacOS/deskflow-otg-companion.apk").read_text(),
+                self.assertTrue((installed / "Contents/MacOS/deskflow-bridge").is_file())
+                self.assertEqual((installed / "Contents/MacOS/deskflow-bridge-companion.apk").read_text(),
                                  "binary")
-                bundled_resources = installed / "Contents/Resources/deskflow-otg"
+                bundled_resources = installed / "Contents/Resources/deskflow-bridge"
                 self.assertEqual((bundled_resources / "LICENSE").read_text(), "project license")
                 self.assertEqual((bundled_resources / "licenses/libusb-LGPL-2.1.txt").read_text(),
                                  "libusb license")

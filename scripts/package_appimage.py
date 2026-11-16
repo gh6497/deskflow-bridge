@@ -22,10 +22,10 @@ def main():
     args = parser.parse_args()
 
     stage = args.stage.resolve()
-    gui = stage / "bin/deskflow-otg-gui"
-    bridge = stage / "bin/deskflow-otg"
+    gui = stage / "bin/deskflow-bridge-gui"
+    bridge = stage / "bin/deskflow-bridge"
     if not gui.is_file() or not bridge.is_file():
-        parser.error("--stage must contain bin/deskflow-otg-gui and bin/deskflow-otg "
+        parser.error("--stage must contain bin/deskflow-bridge-gui and bin/deskflow-bridge "
                      "(build with BUILD_GUI=ON and run cmake --install first)")
     tool = args.appimagetool.resolve()
     if not tool.is_file():
@@ -36,8 +36,8 @@ def main():
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="deskflow-otg-appimage-") as temp:
-        appdir = pathlib.Path(temp) / "DeskflowOTG.AppDir"
+    with tempfile.TemporaryDirectory(prefix="deskflow-bridge-appimage-") as temp:
+        appdir = pathlib.Path(temp) / "DeskflowBridge.AppDir"
         shutil.copytree(stage, appdir / "usr", symlinks=True)
 
         # The portable Qt installation is in usr/lib. The bridge also needs
@@ -56,14 +56,14 @@ def main():
             '#!/bin/sh\n'
             'HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
             'export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n'
-            'exec "$HERE/usr/bin/deskflow-otg-gui" "$@"\n', encoding="utf-8")
+            'exec "$HERE/usr/bin/deskflow-bridge-gui" "$@"\n', encoding="utf-8")
         apprun.chmod(0o755)
-        (appdir / "deskflow-otg.desktop").write_text(
-            "[Desktop Entry]\nType=Application\nName=Deskflow OTG\n"
+        (appdir / "deskflow-bridge.desktop").write_text(
+            "[Desktop Entry]\nType=Application\nName=Deskflow Bridge\n"
             "Comment=Control an Android device with Deskflow via USB or Bluetooth LE\n"
-            "Exec=deskflow-otg-gui\nIcon=deskflow-otg\n"
+            "Exec=deskflow-bridge-gui\nIcon=deskflow-bridge\n"
             "Terminal=false\nCategories=Utility;\n", encoding="utf-8")
-        icon = pathlib.Path(__file__).resolve().parent.parent / "packaging/deskflow-otg.svg"
+        icon = pathlib.Path(__file__).resolve().parent.parent / "packaging/deskflow-bridge.svg"
         shutil.copyfile(icon, appdir / icon.name)
         (appdir / ".DirIcon").symlink_to(icon.name)
 

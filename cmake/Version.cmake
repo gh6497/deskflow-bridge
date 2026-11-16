@@ -36,4 +36,4 @@ configure_file("${PROJECT_SOURCE_DIR}/cmake/build_version.h.in"
   "${PROJECT_BINARY_DIR}/generated/build_version.h" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/cmake/BUILD_VERSION.txt.in"
   "${PROJECT_BINARY_DIR}/BUILD_VERSION.txt" @ONLY)
-message(STATUS "Deskflow OTG version: ${OTG_BUILD_VERSION} (commit ${OTG_GIT_COMMIT})")
+message(STATUS "Deskflow Bridge version: ${OTG_BUILD_VERSION} (commit ${OTG_GIT_COMMIT})")

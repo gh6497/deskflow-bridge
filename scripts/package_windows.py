@@ -17,9 +17,9 @@ DOCS = ("LICENSE", "README.md", "THIRD_PARTY.md")
 
 def validate_stage(stage):
     required = [stage / "bin" / name for name in (
-        "deskflow-otg-gui.exe", "deskflow-otg.exe", "platform-tools/adb.exe")]
-    required += [stage / "share/deskflow-otg" / name for name in DOCS]
-    licenses = stage / "share/deskflow-otg/licenses"
+        "deskflow-bridge-gui.exe", "deskflow-bridge.exe", "platform-tools/adb.exe")]
+    required += [stage / "share/deskflow-bridge" / name for name in DOCS]
+    licenses = stage / "share/deskflow-bridge/licenses"
     if any(not path.is_file() for path in required) or not licenses.is_dir() or not any(
             licenses.rglob("*.txt")):
         raise ValueError("--stage must contain the GUI, bridge, bundled ADB and dependency licenses")
@@ -38,9 +38,9 @@ def make_script(stage, output, version):
                          key=lambda p: (len(p.parts), p.as_posix()))
     lines = [
         'Unicode true',
-        f'Name "Deskflow OTG {version}"',
+        f'Name "Deskflow Bridge {version}"',
         f'OutFile "{output}"',
-        'InstallDir "$LOCALAPPDATA\\Programs\\Deskflow OTG"',
+        'InstallDir "$LOCALAPPDATA\\Programs\\Deskflow Bridge"',
         'RequestExecutionLevel user',
         'ShowInstDetails show',
         'ShowUninstDetails show',
@@ -48,7 +48,7 @@ def make_script(stage, output, version):
         'UninstPage instfiles',
         'Section "Install"',
         '  IfFileExists "$INSTDIR\\Uninstall.exe" 0 +4',
-        '    ExecWait \'$\"$INSTDIR\\Uninstall.exe$\" /S\' $0',
+        "    ExecWait '$\"$INSTDIR\\Uninstall.exe$\" /S' $0",
         '    IntCmp $0 0 +2',
         '      Abort "Could not remove the previous version"',
     ]
@@ -60,21 +60,21 @@ def make_script(stage, output, version):
                 lines.append(f'  File "{path}"')
     lines += [
         '  WriteUninstaller "$INSTDIR\\Uninstall.exe"',
-        '  CreateDirectory "$SMPROGRAMS\\Deskflow OTG"',
-        '  CreateShortCut "$SMPROGRAMS\\Deskflow OTG\\Deskflow OTG.lnk" "$INSTDIR\\bin\\deskflow-otg-gui.exe"',
-        '  CreateShortCut "$SMPROGRAMS\\Deskflow OTG\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"',
-        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "DisplayName" "Deskflow OTG"',
-        f'  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "DisplayVersion" "{version}"',
-        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "UninstallString" \'$\"$INSTDIR\\Uninstall.exe$\"\'',
-        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "DisplayIcon" "$INSTDIR\\bin\\deskflow-otg-gui.exe"',
-        '  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "NoModify" 1',
-        '  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG" "NoRepair" 1',
+        '  CreateDirectory "$SMPROGRAMS\\Deskflow Bridge"',
+        '  CreateShortCut "$SMPROGRAMS\\Deskflow Bridge\\Deskflow Bridge.lnk" "$INSTDIR\\bin\\deskflow-bridge-gui.exe"',
+        '  CreateShortCut "$SMPROGRAMS\\Deskflow Bridge\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"',
+        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "DisplayName" "Deskflow Bridge"',
+        f'  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "DisplayVersion" "{version}"',
+        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "UninstallString" \'$"$INSTDIR\\Uninstall.exe$"\'',
+        '  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "DisplayIcon" "$INSTDIR\\bin\\deskflow-bridge-gui.exe"',
+        '  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "NoModify" 1',
+        '  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge" "NoRepair" 1',
         'SectionEnd',
         'Section "Uninstall"',
-        '  Delete "$SMPROGRAMS\\Deskflow OTG\\Deskflow OTG.lnk"',
-        '  Delete "$SMPROGRAMS\\Deskflow OTG\\Uninstall.lnk"',
-        '  RMDir "$SMPROGRAMS\\Deskflow OTG"',
-        '  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-OTG"',
+        '  Delete "$SMPROGRAMS\\Deskflow Bridge\\Deskflow Bridge.lnk"',
+        '  Delete "$SMPROGRAMS\\Deskflow Bridge\\Uninstall.lnk"',
+        '  RMDir "$SMPROGRAMS\\Deskflow Bridge"',
+        '  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskflow-Bridge"',
     ]
     for path in files:
         rel = str(path.relative_to(stage)).replace('/', '\\')
@@ -108,7 +108,7 @@ def main():
     except ValueError as exc:
         parser.error(str(exc))
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='deskflow-otg-nsis-') as temp:
+    with tempfile.TemporaryDirectory(prefix='deskflow-bridge-nsis-') as temp:
         path = pathlib.Path(temp) / 'package.nsi'
         path.write_text(script, encoding='utf-8-sig')
         subprocess.run(['makensis', '/V2', str(path)], check=True)

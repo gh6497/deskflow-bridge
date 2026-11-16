@@ -44,13 +44,13 @@ public final class TransferPublisher {
         String relative;
         if (mime.startsWith("image/")) {
             collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-            relative = "Pictures/deskflow-otg";
+            relative = "Pictures/deskflow-bridge";
         } else if (mime.startsWith("video/")) {
             collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-            relative = "Movies/deskflow-otg";
+            relative = "Movies/deskflow-bridge";
         } else {
             collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-            relative = "Music/deskflow-otg";
+            relative = "Music/deskflow-bridge";
         }
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, entry.name);

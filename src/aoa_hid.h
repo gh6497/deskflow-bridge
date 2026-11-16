@@ -14,8 +14,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef DESKFLOW_OTG_AOA_HID_H
-#define DESKFLOW_OTG_AOA_HID_H
+#ifndef DESKFLOW_BRIDGE_AOA_HID_H
+#define DESKFLOW_BRIDGE_AOA_HID_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -87,4 +87,4 @@ bool aoa_hid_is_disconnected(const struct aoa_hid *a);
  */
 bool aoa_hid_poll(struct aoa_hid *a);
 
-#endif /* DESKFLOW_OTG_AOA_HID_H */
+#endif /* DESKFLOW_BRIDGE_AOA_HID_H */

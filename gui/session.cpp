@@ -256,7 +256,7 @@ void Session::start(const ConnectionOptions &options)
          * the PIN out of argv and hand it to the unprivileged child through
          * a private temporary file whose path survives the supervisor. */
         if (!m_unlockPinFile.fileName().isEmpty()) m_unlockPinFile.remove();
-        m_unlockPinFile.setFileTemplate(QDir::tempPath() + "/deskflow-otg-unlock-XXXXXX");
+        m_unlockPinFile.setFileTemplate(QDir::tempPath() + "/deskflow-bridge-unlock-XXXXXX");
         const auto pin = options.unlockPin.toUtf8();
         if (!m_unlockPinFile.open() || m_unlockPinFile.write(pin) != pin.size() ||
             !m_unlockPinFile.flush() ||

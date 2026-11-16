@@ -1,5 +1,5 @@
 /*
- * deskflow-otg - Android companion application.
+ * deskflow-bridge - Android companion application.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

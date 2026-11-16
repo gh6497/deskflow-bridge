@@ -61,7 +61,7 @@ QString defaultTlsClientCertificate()
 {
     auto directory = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     if (directory.isEmpty())
-        directory = QDir::homePath() + QStringLiteral("/.config/deskflow-otg");
+        directory = QDir::homePath() + QStringLiteral("/.config/deskflow-bridge");
     return QDir(directory).filePath(QStringLiteral("tls/client.pem"));
 }
 
@@ -175,7 +175,7 @@ QString MainWindow::bridgeExecutable() const
 
 void MainWindow::setupTray()
 {
-    const QIcon icon(":/icons/deskflow-otg.svg");
+    const QIcon icon(":/icons/deskflow-bridge.svg");
     setWindowIcon(icon);
     m_tray = new QSystemTrayIcon(icon, this);
     m_tray->setObjectName("systemTray");
@@ -219,7 +219,7 @@ void MainWindow::updateTray()
 {
     if (!m_tray)
         return;
-    m_tray->setToolTip(QString("Deskflow OTG · %1\n%2").arg(m_summary->text(), m_connections.status(m_selectedId)));
+    m_tray->setToolTip(QString("Deskflow Bridge · %1\n%2").arg(m_summary->text(), m_connections.status(m_selectedId)));
     m_trayDisconnect->setEnabled(m_connections.busy());
 }
 
@@ -268,7 +268,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
     auto *central = new QWidget;
     auto *root = new QVBoxLayout(central);
     root->setContentsMargins(20, 16, 20, 16);
-    auto *heading = new QLabel("Deskflow OTG");
+    auto *heading = new QLabel("Deskflow Bridge");
     QFont titleFont = heading->font();
     titleFont.setPointSize(20);
     titleFont.setBold(true);
@@ -290,7 +290,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
                            QMessageBox::Ok, this);
         auto *github = dialog.addButton(qtTrId("otg.about.github"), QMessageBox::ActionRole);
         connect(github, &QAbstractButton::clicked, this, [] {
-            QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/gh6497/deskflow-otg")));
+            QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/gh6497/deskflow-bridge")));
         });
         dialog.exec();
     });

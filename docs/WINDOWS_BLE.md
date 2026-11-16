@@ -23,7 +23,7 @@ cmake --build build-win-ble --config Release --parallel
 ctest --test-dir build-win-ble -C Release --output-on-failure
 ```
 
-产物：`build-win-ble/Release/deskflow-otg.exe`。
+产物：`build-win-ble/Release/deskflow-bridge.exe`。
 Windows CI 也编译此 CLI 后端并执行不访问蓝牙的回归测试。
 `BUILD_FEATURES.json` 的 `windowsBleCli` 为兼容保留的特性标记，也适用于 GUI 的 Windows 后端；
 原有 `ble` 仍指 Linux 常驻后端。
@@ -31,7 +31,7 @@ Windows CI 也编译此 CLI 后端并执行不访问蓝牙的回归测试。
 ### GUI 构建与使用
 
 安装 Qt 6.8+ 后，在上述配置中改用 `-DBUILD_GUI=ON`，并通过 `-DCMAKE_PREFIX_PATH`
-指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-otg-gui.exe`，选择
+指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，选择
 「低功耗蓝牙（Windows，实验性）」，填写手机地址与屏幕尺寸即可连接。GUI 可自动配置并
 启动自己管理的 Deskflow server，也可使用已有的明文 server；蓝牙模式不调用 ADB、不自动连接 USB。
 
@@ -73,7 +73,7 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 不会根据设备名称授权，也不会回退到任意手机。隐私地址/身份地址解析差异尚未普遍验证。
 
 ```powershell
-.\build-win-ble\Release\deskflow-otg.exe --transport ble `
+.\build-win-ble\Release\deskflow-bridge.exe --transport ble `
   --ble-peer AA:BB:CC:DD:EE:FF `
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340
 ```
@@ -82,7 +82,7 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 丢失 HID 订阅），使用 `--background`：
 
 ```powershell
-.\build-win-ble\Release\deskflow-otg.exe --transport ble `
+.\build-win-ble\Release\deskflow-bridge.exe --transport ble `
   --ble-peer AA:BB:CC:DD:EE:FF `
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340 `
   --background
@@ -92,7 +92,7 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 同一用户只允许一个后台实例；停止时使用：
 
 ```powershell
-.\build-win-ble\Release\deskflow-otg.exe --background-stop
+.\build-win-ble\Release\deskflow-bridge.exe --background-stop
 ```
 
 `--background-stop` 会请求后台进程优雅释放 HID 输入、停止广播并退出。后台模式不接入 GUI，

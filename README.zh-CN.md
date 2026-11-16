@@ -1,7 +1,7 @@
-# deskflow-otg
+# deskflow-bridge
 
-一个把 [Deskflow](https://github.com/deskflow/deskflow)（键盘鼠标共享）和
-[scrcpy](https://github.com/Genymobile/scrcpy) 的 **OTG 模式**（USB AOA HID）连接起来的桥接程序。
+一个把 [Deskflow](https://github.com/deskflow/deskflow)（键盘鼠标共享）和 Android HID 传输连接起来的桥接程序，
+支持 [scrcpy](https://github.com/Genymobile/scrcpy) 的 **OTG 模式**（USB AOA HID）、BLE HID 以及 ADB＋UHID。
 
 在你的主机电脑上运行一个 Deskflow **server**，再运行本程序，手机通过 USB 线插在主机上，
 当鼠标滑到"手机"这块屏幕时，就可以用主机的键盘鼠标直接操控安卓手机 ——
@@ -25,7 +25,7 @@ AOA/BLE 仅在启用增强功能时需要 ADB。手动填写 AOA 设备信息、
 │        │                                                               │
 │        │  Deskflow 协议 (TCP :24800)                                    │
 │        ▼                                                               │
-│   deskflow-otg  ──(USB AOA HID)──▶ 安卓手机                              │
+│   deskflow-bridge  ──(AOA / BLE / UHID HID)──▶ 安卓手机                    │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -38,14 +38,14 @@ AOA/BLE 仅在启用增强功能时需要 ADB。手动填写 AOA 设备信息、
   用 C 语言直接讲 Deskflow / Synergy / Barrier 的 TCP 二进制协议（握手、屏幕信息交换、
   键鼠事件流、keep-alive、CNOP 应答）。协议格式参考 deskflow 的
   `src/lib/deskflow/ProtocolTypes.h`。
-- **scrcpy/OTG 侧**：本程序通过 libusb 直接向手机发送 **AOA 2.0 HID** 控制请求
+- **HID 传输侧**：AOA 传输通过 libusb 直接向手机发送 **AOA 2.0 HID** 控制请求
   （`ACCESSORY_REGISTER_HID`=54 / `SET_HID_REPORT_DESC`=56 / `SEND_HID_EVENT`=57），
-  把键鼠事件编码成标准 USB HID 报告注入手机。USB 传输、键盘和相对鼠标参考 scrcpy 的
+  BLE 和 UHID 则使用各平台的 HID 接口。USB 传输、键盘和相对鼠标参考 scrcpy 的
   `app/src/usb/aoa_hid.c`、`app/src/hid/hid_keyboard.c`、`app/src/hid/hid_mouse.c`。
   默认指针使用支持悬停的 **HID 数位板绝对坐标**，把 Deskflow 坐标映射到手机全屏，
   避免 Android 鼠标加速造成坐标漂移；可选移动倍率可独立放大移动距离，不改变桥接分辨率。
 
-两者串起来就是：`主机键盘鼠标 → deskflow → 本程序 → AOA HID → 手机`。
+完整链路是：`主机键盘鼠标 → deskflow → deskflow-bridge → 选定的 HID 传输 → 手机`。
 
 Linux/Windows 实验性音频模式沿用 scrcpy 的 Android Server：AOA HID/BLE HID 负责键鼠，ADB 独立
 转发 Android 音频到主机（Linux 使用 ALSA，Windows 使用 WASAPI）。构建和使用见[音频转发](docs/AUDIO.md)；不启用
@@ -62,7 +62,7 @@ Windows GUI 的「无线 ADB 配置助手」可以发现 mDNS 配对/连接服�
 并保存选定的 `host:port` 目标。配对仍需输入 Android 系统显示的一次性配对码，伴侣 App 不能读取或绕过该配对码。
 
 Linux 另提供 **Bluetooth LE HID** 传输，可不接 USB 控制手机。CLI 与 GUI 使用同一
-`deskflow-otg` 程序，常驻 GATT 服务和桥接会话是不同进程，不是额外的可执行程序。
+`deskflow-bridge` 程序，常驻 GATT 服务和桥接会话是不同进程，不是额外的可执行程序。
 CLI 默认仍为 USB；Windows GUI 新配置优先使用 ADB＋UHID。macOS 暂不提供蓝牙后端。Windows 提供需显式编译开启的
 [实验性 BLE 后端](docs/WINDOWS_BLE.md)，可由 CLI 或 GUI 使用。
 
@@ -123,7 +123,7 @@ Linux 安装包会纳入构建所用 Qt 自带的 GTK 与桌面门户主题插�
 不强制 GTK、不修改主题环境变量。缺少适用插件或可选运行库时使用 Qt 默认外观；DEB 仅在包含 GTK 插件时
 推荐安装 GTK 3。配色、字体取决于目标电脑的已安装主题，不保证各发行版完全一致，也不附带第三方 KDE/Qt 样式插件。
 使用 Qt 官方 ID 式国际化，代码通过 `qtTrId("otg.action.connect")` 等稳定 ID 引用文案。
-中英文分别维护在 `gui/translations/deskflow_otg_zh_CN.xml` 和 `deskflow_otg_en.xml`，
+中英文分别维护在 `gui/translations/deskflow_bridge_zh_CN.xml` 和 `deskflow_bridge_en.xml`，
 构建时使用 `lrelease -idbased -nounfinished` 编译并嵌入程序，无需额外复制翻译文件。
 英文目录始终作为回退层，中文翻译缺失时显示英文，而不是直接显示 ID。
 
@@ -138,7 +138,7 @@ Linux 安装包会纳入构建所用 Qt 自带的 GTK 与桌面门户主题插�
 以下流程描述 **USB（AOA HID）**。Windows 推荐方式见
 [ADB＋UHID 连接](#adbuhid-连接)，其设备发现在各平台均通过 ADB。
 
-1. 启动 `bin/deskflow-otg-gui`（Windows 为 `.exe`）；macOS 打开 `deskflow-otg-gui.app`。
+1. 启动 `bin/deskflow-bridge-gui`（Windows 为 `.exe`）；macOS 打开 `deskflow-bridge-gui.app`。
 2. 在设备页按设备选择是否「启用 ADB 增强功能」。没有 USB 调试的手机保持关闭；此时设备发现
    使用 `usb-scan`，屏幕尺寸手动填写，HID 仍可正常使用。启用后，Linux/macOS 可使用 USB ADB
    发现设备及读取屏幕信息；ADB 可执行文件路径仍是全局设置。
@@ -224,7 +224,7 @@ GUI 左侧管理设备列表，右侧分为「设备配置」「屏幕布局」�
    `computer ↔ android ↔ android-2`，也可放在电脑的不同方向；预览不按实际分辨率缩放。
    重名、边缘冲突、屏幕重叠、未知相邻屏幕和未连通电脑的布局会被拒绝。
 3. 「共享服务」只配置一次 Deskflow 程序、电脑屏幕名、地址和端口。自动模式只启动一个
-   Deskflow server；每台手机独立启动同一个 `deskflow-otg` 可执行文件的桥接进程，不弹终端。
+   Deskflow server；每台手机独立启动同一个 `deskflow-bridge` 可执行文件的桥接进程，不弹终端。
    使用外部服务时，请在 Deskflow 中自行配置所有手机屏幕和布局；GUI 不改写或停止外部服务。
 4. 可以单独连接、断开，也可以全部连接、全部断开。切换左侧设备只切换查看对象，不中断连接；
    连接中的设备输入参数只读，其他未连接设备的尺寸和连接参数仍可编辑。
@@ -288,7 +288,7 @@ Windows 空闲 BLE provider 也保留其目标占用。Linux 常驻服务仍遵�
 在 GUI 为目标设备勾选「USB 插入时自动连接此设备」（默认关闭），再手动连接手机一次。
 只有状态变为「已连接」后，程序才记住该 USB 序列号及其配置；旧版本仅保存过表单的手机
 也需要重新成功连接一次。可不开启 USB 调试，直接填写 USB 序列号、原始屏幕宽高。
-不知道序列号时，可运行 `deskflow-otg --usb-scan` 查看可读设备的 `serial` 字段。
+不知道序列号时，可运行 `deskflow-bridge --usb-scan` 查看可读设备的 `serial` 字段。
 
 - 程序优先使用 libusb 热插拔事件通知（运行时检测后端能力，Linux/macOS 通常支持），
   不支持的后端（如常见 Windows 后端）、监听启动失败或异常退出时，自动回退到每 2 秒轮询。
@@ -350,7 +350,7 @@ cmake -S . -B build -DBUILD_GUI=ON \
     -DADB_BUNDLE_DIR="$PWD/adb-bundle/platform-tools"
 cmake --build build --config Release --parallel
 cmake --install build --config Release --prefix "$PWD/stage"
-python scripts/fetch_licenses.py --output stage/share/deskflow-otg/licenses
+python scripts/fetch_licenses.py --output stage/share/deskflow-bridge/licenses
 ```
 
 发布的目录包可解压运行；Windows 入口在 `stage/bin`，macOS 入口为 `stage/*.app`。
@@ -395,13 +395,13 @@ ctest --test-dir build -C Release --output-on-failure
 `-DOTG_PROFILE=manual -DBUILD_BLE=OFF -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF`。
 
 ```bash
-git clone https://your-host/deskflow-otg.git
-cd deskflow-otg
+git clone https://your-host/deskflow-bridge.git
+cd deskflow-bridge
 cmake -S . -B build -DOTG_PROFILE=manual -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF \
     -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF -DBUILD_BLE=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
-# 产物: build/deskflow-otg
+# 产物: build/deskflow-bridge
 ```
 
 macOS 构建命令相同，默认会查找 Apple Silicon 的 `/opt/homebrew` 和 Intel 的
@@ -421,18 +421,18 @@ Apple Silicon 编译器。构建和 socket 回归测试可用 `ctest --test-dir 
 #### 统一版本管理
 
 CLI 和 GUI 共用仓库根目录的 `VERSION`（当前 `0.1.9`），不单独维护版本。
-`deskflow-otg --version`、`deskflow-otg-gui --version` 和 GUI 右上角「关于」显示版本及 Git 提交号。
+`deskflow-bridge --version`、`deskflow-bridge-gui --version` 和 GUI 右上角「关于」显示版本及 Git 提交号。
 开发构建使用 `0.1.9+git.<提交号>`，已跟踪文件有未提交修改时追加 `.dirty`；无 Git 信息时用 `unknown`。
 版本信息在 CMake 配置时生成，切换提交或修改源码后应重新运行 `cmake -S . -B ...`。
 
 发布时先修改并提交 `VERSION`，再创建相同版本的 `vX.Y.Z` 标签。CI 通过
 `-DOTG_RELEASE_TAG=vX.Y.Z` 校验标签与版本文件一致且已跟踪文件干净；正式版使用纯 `X.Y.Z`。
-本地正式构建也需传此参数；开发构建留空。安装目录的 `share/deskflow-otg/BUILD_VERSION.txt`
+本地正式构建也需传此参数；开发构建留空。安装目录的 `share/deskflow-bridge/BUILD_VERSION.txt`
 记录实际构建版本，DEB 和 Windows 打包脚本默认读取它，`--version` 仅用于一致性检查
 （旧安装目录没有此文件时允许手动指定）。因此不会把新包版本贴到旧二进制上。
 
 推送以 `v` 开头的版本标签后，GitHub Actions 会在四个平台构建、测试、打包，全部成功后
-自动创建对应的 [Release](https://github.com/gh6497/deskflow-otg/releases)，并将 Linux x86_64、
+自动创建对应的 [Release](https://github.com/gh6497/deskflow-bridge/releases)，并将 Linux x86_64、
 macOS arm64 / x86_64 和 Windows x86_64 的包放在 **Assets** 中。例如：
 
 ```bash
@@ -441,12 +441,12 @@ git push origin v0.1.0
 ```
 
 普通分支提交和 PR 构建 CLI、GUI、测试并检查桌面包部署，不会创建 Release。
-标签发布同时提供 `deskflow-otg-*` 命令行包和 `deskflow-otg-gui-*` 桌面包。
+标签发布同时提供 `deskflow-bridge-*` 命令行包和 `deskflow-bridge-gui-*` 桌面包。
 Linux CLI 包运行时需要安装 libusb-1.0 运行库；macOS CLI 压缩包运行时需要先
 `brew install libusb`。Windows 包使用静态链接的 libusb。
 
-Windows GUI 发布版另提供 `deskflow-otg-gui-windows-x86_64-setup.exe` 安装包。
-运行后按当前用户安装到 `%LOCALAPPDATA%\Programs\Deskflow OTG`，可通过开始菜单启动或在
+Windows GUI 发布版另提供 `deskflow-bridge-gui-windows-x86_64-setup.exe` 安装包。
+运行后按当前用户安装到 `%LOCALAPPDATA%\Programs\Deskflow Bridge`，可通过开始菜单启动或在
 「已安装的应用」卸载，无需管理员权限；同时保留原有的免安装 ZIP。安装包含桥接程序、
 Qt、ADB 和依赖许可证，不包含 Deskflow。Windows USB 驱动仍需自行配置（见下文）。
 安装包尚未签名，Windows 可能提示未知发布者；请核对下载来源。升级时安装程序会先卸载
@@ -454,30 +454,30 @@ Qt、ADB 和依赖许可证，不包含 Deskflow。Windows USB 驱动仍需自�
 上文的 GUI 构建、`cmake --install` 和许可证收集，并安装 NSIS（`makensis` 在 PATH 中）：
 
 ```powershell
-python scripts/package_windows.py --stage stage --output dist/deskflow-otg-gui-windows-x86_64-setup.exe
+python scripts/package_windows.py --stage stage --output dist/deskflow-bridge-gui-windows-x86_64-setup.exe
 ```
 
-macOS GUI 发布版另提供 `deskflow-otg-gui-macos-arm64.dmg` 和
-`deskflow-otg-gui-macos-x86_64.dmg`。选择与 Mac 架构匹配的镜像，打开后将
-`deskflow-otg-gui.app` 拖入「Applications」即可安装；App 内含桥接程序、Qt、libusb、
+macOS GUI 发布版另提供 `deskflow-bridge-gui-macos-arm64.dmg` 和
+`deskflow-bridge-gui-macos-x86_64.dmg`。选择与 Mac 架构匹配的镜像，打开后将
+`deskflow-bridge-gui.app` 拖入「Applications」即可安装；App 内含桥接程序、Qt、libusb、
 ADB 和依赖许可证，但不包含 Deskflow。无需为 GUI 安装 Homebrew libusb（单独的 CLI
 压缩包仍需要）。当前镜像未签名、公证，首次打开可能被 macOS Gatekeeper 拦截；确认来源后
 可在「系统设置 → 隐私与安全性」中选择「仍要打开」。本地制作镜像：
 
 ```bash
 python3 scripts/package_dmg.py --stage stage \
-    --output dist/deskflow-otg-gui-macos-arm64.dmg
+    --output dist/deskflow-bridge-gui-macos-arm64.dmg
 ```
 
 先按上文以 `BUILD_GUI=ON` 构建、安装到 `stage`，下载 ADB 并收集许可证；输出文件名的
 架构应与构建机器一致。镜像仅提供拖拽安装，不会修改系统设置或自动安装 Deskflow。
 
 Linux GUI 发布版还提供 `.deb`（amd64），包含 GUI、GUI 必需的桥接程序及发布目录中的 Qt/ADB，
-不单独打包或安装 CLI 命令。安装后可从应用菜单启动，或运行 `deskflow-otg-gui`；仍需自行安装
+不单独打包或安装 CLI 命令。安装后可从应用菜单启动，或运行 `deskflow-bridge-gui`；仍需自行安装
 Deskflow，USB 访问仍需 root 或 udev 规则。下载 Release 中的 deb 后执行：
 
 ```bash
-sudo apt install ./deskflow-otg-gui-<版本>-linux-amd64.deb
+sudo apt install ./deskflow-bridge-gui-<版本>-linux-amd64.deb
 ```
 
 也可以从本地 GUI 安装目录制作 deb（需先按上文下载 ADB、以 `BUILD_GUI=ON`
@@ -486,18 +486,18 @@ sudo apt install ./deskflow-otg-gui-<版本>-linux-amd64.deb
 ```bash
 cmake --install build --prefix "$PWD/stage"
 python3 scripts/package_deb.py --stage stage \
-    --output dist/deskflow-otg-gui-0.1.0-$(dpkg --print-architecture).deb
+    --output dist/deskflow-bridge-gui-0.1.0-$(dpkg --print-architecture).deb
 ```
 
-deb 安装到 `/opt/deskflow-otg` 并在 `/usr/bin` 提供 GUI 入口；不能与手动安装在相同路径
+deb 安装到 `/opt/deskflow-bridge` 并在 `/usr/bin` 提供 GUI 入口；不能与手动安装在相同路径
 的版本混用。GUI 打包需要有图形桌面运行时库；包内不包含 Deskflow。
 
-Linux GUI 发布版同时提供无需安装的 `deskflow-otg-gui-linux-x86_64.AppImage`，
+Linux GUI 发布版同时提供无需安装的 `deskflow-bridge-gui-linux-x86_64.AppImage`，
 内含桥接程序、Qt、libusb 和 ADB（不含 Deskflow）。下载后执行：
 
 ```bash
-chmod +x deskflow-otg-gui-linux-x86_64.AppImage
-./deskflow-otg-gui-linux-x86_64.AppImage
+chmod +x deskflow-bridge-gui-linux-x86_64.AppImage
+./deskflow-bridge-gui-linux-x86_64.AppImage
 ```
 
 系统需要图形桌面和 FUSE；缺少 FUSE 时可加 `--appimage-extract-and-run`。
@@ -508,7 +508,7 @@ USB 权限规则与 deb 相同。要从本地 GUI 安装目录生成 AppImage，
 python3 scripts/package_appimage.py --stage stage \
     --appimagetool appimagetool-x86_64.AppImage \
     --runtime runtime-x86_64 \
-    --output dist/deskflow-otg-gui-linux-x86_64.AppImage
+    --output dist/deskflow-bridge-gui-linux-x86_64.AppImage
 ```
 
 Windows（PowerShell，使用 Visual Studio x64 工具链；`VCPKG_ROOT` 指向 vcpkg 目录）：
@@ -517,7 +517,7 @@ Windows（PowerShell，使用 Visual Studio x64 工具链；`VCPKG_ROOT` 指向 
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
-./build/Release/deskflow-otg.exe --help
+./build/Release/deskflow-bridge.exe --help
 ```
 
 ## 使用
@@ -535,7 +535,7 @@ ctest --test-dir build -C Release --output-on-failure
 用 USB 线把手机插到主机上，然后：
 
 ```bash
-sudo ./build/deskflow-otg \
+sudo ./build/deskflow-bridge \
     --host 127.0.0.1 \
     --port 24800 \
     --name android \
@@ -545,7 +545,7 @@ sudo ./build/deskflow-otg \
 > **Linux**：需要 root 或 udev 规则才能访问 USB 设备。不想要 `sudo` 的话，配置一条
 > udev 规则即可（见下文）。**macOS**：先不带 `sudo` 运行；不使用 udev，见下面的说明。
 
-**Windows**：在 PowerShell 中运行 `./build/Release/deskflow-otg.exe --host 127.0.0.1
+**Windows**：在 PowerShell 中运行 `./build/Release/deskflow-bridge.exe --host 127.0.0.1
 --name android --width 1080 --height 1920 -s <手机USB序列号>`。需安装可供 libusb 使用的
 USB 驱动（例如通过 Zadig 将手机对应 USB 接口绑定 WinUSB）；更换驱动可能影响 MTP/ADB，
 请确认选中的设备/接口并备份原驱动。若手机无法识别，先看
@@ -554,7 +554,7 @@ USB 驱动（例如通过 Zadig 将手机对应 USB 接口绑定 WinUSB）；更
 ### macOS 运行与权限
 
 ```bash
-./build/deskflow-otg --host 127.0.0.1 --name android \
+./build/deskflow-bridge --host 127.0.0.1 --name android \
     --width 1080 --height 1920 -s <手机USB序列号>
 ```
 
@@ -576,17 +576,17 @@ USB 驱动（例如通过 Zadig 将手机对应 USB 接口绑定 WinUSB）；更
 
 Linux 可将电脑作为 BLE HID peripheral 广播，手机作为 HID Host 连接。该模式不依赖 USB，
 但需要手机完成配对并订阅键盘、指针两个 HID input characteristic；仅蓝牙连接或 Deskflow
-握手成功都不会被当作输入通道就绪。程序运行期间会临时将适配器名称设置为「Deskflow OTG」，
+握手成功都不会被当作输入通道就绪。程序运行期间会临时将适配器名称设置为「Deskflow Bridge」，
 退出时恢复原名称；不会自动配对、信任或删除配对。只有显式使用 `--ble-isolate` 才会临时
 修改适配器模式，普通 `--transport ble` 不切换模式。
 
 ```bash
-./build/deskflow-otg --transport ble --adapter hci0 --ble-peer AA:BB:CC:DD:EE:FF \
+./build/deskflow-bridge --transport ble --adapter hci0 --ble-peer AA:BB:CC:DD:EE:FF \
     --host 127.0.0.1 --port 24800 --name android \
     --width 1080 --height 2340
 ```
 
-手机蓝牙设置中连接广播的「Deskflow OTG」，按系统提示确认配对后再将鼠标移入手机屏幕。
+手机蓝牙设置中连接广播的「Deskflow Bridge」，按系统提示确认配对后再将鼠标移入手机屏幕。
 必须用 `--ble-peer` 指定目标手机在 BlueZ 中的身份地址（可查 `bluetoothctl devices`，
 不是轮换的广播地址）。仅目标已配对、且适配器上只有这一个连接时才允许输入；
 键鼠 Value 信号仅发送给 BlueZ，不在系统 D-Bus 广播。多个连接时失败关闭输入，不猜测目标。
@@ -608,7 +608,7 @@ util-linux 的 `/usr/sbin/runuser`；不依赖 Python、独立验证目录或任
 先停止旧桥接并等待恢复完成；不要同时运行多个隔离入口。
 
 ```bash
-sudo ./build/deskflow-otg --transport ble --ble-isolate --adapter hci0 --ble-peer AA:BB:CC:DD:EE:FF \
+sudo ./build/deskflow-bridge --transport ble --ble-isolate --adapter hci0 --ble-peer AA:BB:CC:DD:EE:FF \
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340
 ```
 
@@ -636,10 +636,10 @@ Report Map 的 offset 读取，避免每次重新注册时句柄漂移。该范�
 
 完全退出时，原生启动器核对恢复原 BR/EDR、LE、电源、安全、可发现/可配对及名称设置。
 恢复成功后才能清理快照。异常退出或恢复失败会保留 root 专用的
-`/run/deskflow-otg-ble-hci0.state`，再次启动拒绝覆盖原快照；用同一个二进制恢复：
+`/run/deskflow-bridge-ble-hci0.state`，再次启动拒绝覆盖原快照；用同一个二进制恢复：
 
 ```bash
-sudo ./build/deskflow-otg --ble-restore --adapter hci0
+sudo ./build/deskflow-bridge --ble-restore --adapter hci0
 ```
 
 快照绑定适配器地址；控制器重试上电后仍失败时明确报错，不伪称恢复成功，不重启
@@ -655,19 +655,19 @@ Android 可能缓存 HID 描述符并在重连时不重写 CCC；BlueZ 则在应
 2. 在普通用户终端运行常驻服务（**不加 sudo**），保持该终端运行：
 
    ```bash
-   ./build/deskflow-otg --ble-service --adapter hci0
+   ./build/deskflow-bridge --ble-service --adapter hci0
    ```
 
 3. 另开终端启动会话，仍由原生 root supervisor 隔离并在会话退出时恢复模式：
 
    ```bash
-    sudo ./build/deskflow-otg --transport ble --ble-session --ble-isolate --adapter hci0 \
+    sudo ./build/deskflow-bridge --transport ble --ble-session --ble-isolate --adapter hci0 \
       --ble-peer AA:BB:CC:DD:EE:FF --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340
    ```
 
    系统已为 BLE 配置妥当时，去掉 `sudo` 与 `--ble-isolate` 即可，不切换模式。
 
-会话经 `/run/user/UID/deskflow-otg/ble-hci0.sock` 的私有 Unix seqpacket 连接服务；目录 0700、
+会话经 `/run/user/UID/deskflow-bridge/ble-hci0.sock` 的私有 Unix seqpacket 连接服务；目录 0700、
 socket 0600，核对双方 UID、协议版本与包长度，每个适配器/用户仅允许一个活动会话。
 CLI 的 `--ble-service` 以前台普通用户运行。首次会话注册 GATT，
 以后会话复用它；必须使用相同 HID 描述符，目前只支持 absolute 指针，尺寸可按会话修改。
@@ -702,19 +702,19 @@ CLI 的 `--ble-service` 以前台普通用户运行。首次会话注册 GATT，
    CLI 等价操作：
 
    ```bash
-   deskflow-otg --ble-status --adapter hci0
-   deskflow-otg --ble-stop-service --adapter hci0
+   deskflow-bridge --ble-status --adapter hci0
+   deskflow-bridge --ble-stop-service --adapter hci0
    ```
 
 服务在生命周期内固定绑定目标，不能用其他会话静默换手机。配置保存在 GUI 的 QSettings；
 自动后台服务日志在 Qt AppLocalDataLocation 的 `ble-hci0.log`（通常为
-`~/.local/share/deskflow-otg/deskflow-otg-gui/`，以实际应用标识为准）。首次从旧实验服务迁移
+`~/.local/share/deskflow-bridge/deskflow-bridge-gui/`，以实际应用标识为准）。首次从旧实验服务迁移
 协议时，必须先显式结束旧会话/服务；GUI 不会擅自替换正在运行的服务。
 
-DEB 自动携带 CLI 快捷入口及可选的 `deskflow-otg-ble@.service` 用户单元，按构建元数据为
+DEB 自动携带 CLI 快捷入口及可选的 `deskflow-bridge-ble@.service` 用户单元，按构建元数据为
 BLE 包声明 BlueZ、GLib 和 pkexec 依赖；安装包**不自动启动/启用**服务、不改系统蓝牙配置。
 希望由用户 systemd 托管时，在没有现存常驻服务的情况下显式运行
-`systemctl --user start deskflow-otg-ble@hci0`，GUI 会复用该服务；不需要 root 常驻守护程序。
+`systemctl --user start deskflow-bridge-ble@hci0`，GUI 会复用该服务；不需要 root 常驻守护程序。
 AppImage/解压分发仍依赖主机 BlueZ、GLib 和桌面认证代理；FUSE 挂载可能不允许 root 执行，
 需要仅 BLE 隔离时优先安装 DEB 或解压到固定目录后运行，不以挂载中的 AppImage 承诺提权兼容。
 
@@ -787,7 +787,7 @@ GUI 的服务器地址、端口与实际 Deskflow 监听一致。
 例如，手机分辨率为 `1080 × 2340` 时，可以同时使用半尺寸桥接和 `2×` 移动倍率：
 
 ```bash
-sudo ./build/deskflow-otg --host 127.0.0.1 --port 24800 --name android \
+sudo ./build/deskflow-bridge --host 127.0.0.1 --port 24800 --name android \
     --width 540 --height 1170 --sensitivity 2 -s <手机USB序列号>
 ```
 
@@ -880,7 +880,7 @@ Linux GUI 构建及全部 20 项测试通过；2026-11-03 用户使用新版 Lin
 SHA-256 指纹数据库，启用 TLS 时必须指定服务端信任指纹：
 
 ```bash
-sudo ./build/deskflow-otg --host 127.0.0.1 --port 24800 --name android \
+sudo ./build/deskflow-bridge --host 127.0.0.1 --port 24800 --name android \
     --width 1080 --height 1920 -s <手机序列号> --tls \
     --tls-fingerprint 001122...aabbccdd
 ```
@@ -888,7 +888,7 @@ sudo ./build/deskflow-otg --host 127.0.0.1 --port 24800 --name android \
 也可以直接使用 Deskflow 的指纹数据库（`v2:sha256:...`）：
 
 ```bash
-./build/deskflow-otg ... --tls --tls-fingerprint-file ~/.config/deskflow/tls/trustedServers.txt
+./build/deskflow-bridge ... --tls --tls-fingerprint-file ~/.config/deskflow/tls/trustedServers.txt
 ```
 
 如果服务端启用了客户端证书认证，再添加 `--tls-cert <PEM文件>`；该 PEM 文件需要同时包含

@@ -9,7 +9,7 @@ import android.util.Log;
 
 /** Receives USB removal even when the notification listener is not currently bound. */
 public final class UsbDisconnectReceiver extends BroadcastReceiver {
-    private static final String TAG = "deskflow-otg";
+    private static final String TAG = "deskflow-bridge";
     private static final String ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE";
     private static final String EXTRA_CONNECTED = "connected";
     private static final String PREFS = "usb_disconnect";

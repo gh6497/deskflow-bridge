@@ -842,8 +842,8 @@ private slots:
     }
     void catalogs()
     {
-        const auto english = readCatalog(":/i18n-test/gui/translations/deskflow_otg_en.xml");
-        const auto chinese = readCatalog(":/i18n-test/gui/translations/deskflow_otg_zh_CN.xml");
+        const auto english = readCatalog(":/i18n-test/gui/translations/deskflow_bridge_en.xml");
+        const auto chinese = readCatalog(":/i18n-test/gui/translations/deskflow_bridge_zh_CN.xml");
         QVERIFY2(english.error.isEmpty(), qPrintable(english.error));
         QVERIFY2(chinese.error.isEmpty(), qPrintable(chinese.error));
         QCOMPARE(english.language, "en");
@@ -963,7 +963,7 @@ private slots:
     void failedCommand()
     {
         bool finished = false;
-        runCommand(this, "/nonexistent/deskflow-otg-command", {}, [&](bool ok, const QString &error) {
+        runCommand(this, "/nonexistent/deskflow-bridge-command", {}, [&](bool ok, const QString &error) {
             QVERIFY(!ok);
             QVERIFY(!error.isEmpty());
             finished = true;
@@ -990,7 +990,7 @@ private slots:
         ConnectionOptions options;
         options.manageServer = false;
         options.serial = "ABC";
-        options.bridge = "/nonexistent/deskflow-otg";
+        options.bridge = "/nonexistent/deskflow-bridge";
         session.start(options);
         QTRY_COMPARE(session.state(), Session::State::Idle);
         const QString detail = session.statusMessage().mid(QString("桥接启动失败：").size());

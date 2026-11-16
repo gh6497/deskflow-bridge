@@ -40,7 +40,7 @@ jobs:
       - name: Test signing helper
         run: python -m unittest discover -s tests -p test_sign_companion_apk.py
       - name: Build and test release APK
-        working-directory: android/deskflow-otg
+        working-directory: android/deskflow-bridge
         run: ./gradlew --no-daemon :app:testReleaseUnitTest :app:assembleRelease
       # PR code must never receive signing credentials (including same-repo PRs).
       # Unsigned test artifacts are not distributed to desktop packages.
@@ -51,20 +51,20 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: python scripts/sign_companion_apk.py --input android/deskflow-otg/app/build/outputs/apk/release/app-release-unsigned.apk --output companion-bundle/deskflow-otg-companion.apk
+        run: python scripts/sign_companion_apk.py --input android/deskflow-bridge/app/build/outputs/apk/release/app-release-unsigned.apk --output companion-bundle/deskflow-bridge-companion.apk
       - name: Share signed APK with desktop builds
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: companion-signed
-          path: companion-bundle/deskflow-otg-companion.apk
+          path: companion-bundle/deskflow-bridge-companion.apk
           if-no-files-found: error
 
   build:
     if: ${{ !startsWith(github.ref_name, 'doc/') && !startsWith(github.head_ref, 'doc/') }}
     needs: companion
     env:
-      COMPANION_APK: ${{ github.event_name != 'pull_request' && format('{0}/companion-bundle/deskflow-otg-companion.apk', github.workspace) || '' }}
+      COMPANION_APK: ${{ github.event_name != 'pull_request' && format('{0}/companion-bundle/deskflow-bridge-companion.apk', github.workspace) || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +126,7 @@ jobs:
           ctest --test-dir build-usb --output-on-failure
       - name: Check CLI
         if: runner.os != 'Windows'
-        run: ./build/deskflow-otg --help
+        run: ./build/deskflow-bridge --help
       - name: USB-only Windows GUI compatibility
         if: runner.os == 'Windows'
         run: |
@@ -135,7 +135,7 @@ jobs:
           ctest --test-dir build-usb -C Release --output-on-failure
       - name: Check CLI (Windows)
         if: runner.os == 'Windows'
-        run: ./build/Release/deskflow-otg.exe --help
+        run: ./build/Release/deskflow-bridge.exe --help
       - name: Standalone UHID without audio or clipboard (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -146,10 +146,10 @@ jobs:
         # Qt's qt.conf generator requires an absolute install prefix.
         run: cmake --install build --config Release --prefix "${{ github.workspace }}/stage"
       - name: Include dependency licenses
-        run: python scripts/fetch_licenses.py --output stage/share/deskflow-otg/licenses
+        run: python scripts/fetch_licenses.py --output stage/share/deskflow-bridge/licenses
       - name: Check installed companion APK matches the signed artifact
         if: github.event_name != 'pull_request'
-        run: cmake "-DGUI_DIR=${{ github.workspace }}/stage/${{ runner.os == 'macOS' && 'deskflow-otg-gui.app/Contents/MacOS' || 'bin' }}" "-DCOMPANION_APK=${{ env.COMPANION_APK }}" -P tests/test_gui_runtime.cmake
+        run: cmake "-DGUI_DIR=${{ github.workspace }}/stage/${{ runner.os == 'macOS' && 'deskflow-bridge-gui.app/Contents/MacOS' || 'bin' }}" "-DCOMPANION_APK=${{ env.COMPANION_APK }}" -P tests/test_gui_runtime.cmake
       - name: Check Linux theme deployment
         if: runner.os == 'Linux'
         run: |
@@ -175,52 +175,52 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python scripts/package_windows.py --stage stage --output "dist/deskflow-otg-gui-windows-x86_64-setup.exe"
+          python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-windows-x86_64-setup.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "dist/deskflow-otg-gui-windows-x86_64-setup.exe")) { throw 'Installer missing' }
+          if (-not (Test-Path "dist/deskflow-bridge-gui-windows-x86_64-setup.exe")) { throw 'Installer missing' }
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $installDir = Join-Path $env:LOCALAPPDATA 'Programs/Deskflow OTG'
-          $installer = (Resolve-Path 'dist/deskflow-otg-gui-windows-x86_64-setup.exe').Path
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs/Deskflow Bridge'
+          $installer = (Resolve-Path 'dist/deskflow-bridge-gui-windows-x86_64-setup.exe').Path
           $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
-          foreach ($file in @('bin/deskflow-otg-gui.exe', 'bin/deskflow-otg.exe', 'bin/platform-tools/adb.exe', 'share/deskflow-otg/licenses/libusb-LGPL-2.1.txt')) {
+          foreach ($file in @('bin/deskflow-bridge-gui.exe', 'bin/deskflow-bridge.exe', 'bin/platform-tools/adb.exe', 'share/deskflow-bridge/licenses/libusb-LGPL-2.1.txt')) {
             if (-not (Test-Path (Join-Path $installDir $file))) { throw "Missing installed file: $file" }
           }
           if ($env:COMPANION_APK) {
-            $installedApk = Join-Path $installDir 'bin/deskflow-otg-companion.apk'
+            $installedApk = Join-Path $installDir 'bin/deskflow-bridge-companion.apk'
             if ((Get-FileHash $installedApk).Hash -ne (Get-FileHash $env:COMPANION_APK).Hash) { throw 'Installed APK mismatch' }
           }
           $process = Start-Process -FilePath (Join-Path $installDir 'Uninstall.exe') -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Uninstaller failed: $($process.ExitCode)" }
-          if (Test-Path (Join-Path $installDir 'bin/deskflow-otg-gui.exe')) { throw 'Uninstaller left GUI behind' }
+          if (Test-Path (Join-Path $installDir 'bin/deskflow-bridge-gui.exe')) { throw 'Uninstaller left GUI behind' }
       - name: Package DMG (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p dist
-          python scripts/package_dmg.py --stage stage --output "dist/deskflow-otg-gui-${{ matrix.asset }}.dmg"
-          hdiutil verify "dist/deskflow-otg-gui-${{ matrix.asset }}.dmg"
+          python scripts/package_dmg.py --stage stage --output "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
+          hdiutil verify "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
           mount_dir="$(mktemp -d)"
           trap 'hdiutil detach "$mount_dir" || true; rmdir "$mount_dir"' EXIT
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "dist/deskflow-otg-gui-${{ matrix.asset }}.dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
           test -L "$mount_dir/Applications"
-          test -x "$mount_dir/deskflow-otg-gui.app/Contents/MacOS/deskflow-otg"
-          test -x "$mount_dir/deskflow-otg-gui.app/Contents/MacOS/platform-tools/adb"
+          test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge"
+          test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/platform-tools/adb"
           if [ -n "$COMPANION_APK" ]; then
-            cmp "$COMPANION_APK" "$mount_dir/deskflow-otg-gui.app/Contents/MacOS/deskflow-otg-companion.apk"
+            cmp "$COMPANION_APK" "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge-companion.apk"
           fi
-          test -f "$mount_dir/deskflow-otg-gui.app/Contents/Resources/deskflow-otg/licenses/libusb-LGPL-2.1.txt"
+          test -f "$mount_dir/deskflow-bridge-gui.app/Contents/Resources/deskflow-bridge/licenses/libusb-LGPL-2.1.txt"
       - name: Package Debian (Linux)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Linux'
         shell: bash
         run: |
-          python scripts/package_deb.py --stage stage --version "${GITHUB_REF_NAME#v}" --output "dist/deskflow-otg-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb"
-          dpkg-deb --field "dist/deskflow-otg-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" Package Version Architecture Depends
-          dpkg-deb --contents "dist/deskflow-otg-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | grep 'opt/deskflow-otg/bin/deskflow-otg-gui'
-          dpkg-deb --fsys-tarfile "dist/deskflow-otg-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | tar -xOf - ./opt/deskflow-otg/bin/deskflow-otg-companion.apk | cmp "$COMPANION_APK" -
+          python scripts/package_deb.py --stage stage --version "${GITHUB_REF_NAME#v}" --output "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb"
+          dpkg-deb --field "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" Package Version Architecture Depends
+          dpkg-deb --contents "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | grep 'opt/deskflow-bridge/bin/deskflow-bridge-gui'
+          dpkg-deb --fsys-tarfile "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | tar -xOf - ./opt/deskflow-bridge/bin/deskflow-bridge-companion.apk | cmp "$COMPANION_APK" -
       - name: Download verified appimagetool (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -234,13 +234,13 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python scripts/package_appimage.py --stage stage --appimagetool appimagetool-x86_64.AppImage --runtime runtime-x86_64 --output "dist/deskflow-otg-gui-linux-x86_64.AppImage"
-          ./dist/deskflow-otg-gui-linux-x86_64.AppImage --appimage-extract >/dev/null
+          python scripts/package_appimage.py --stage stage --appimagetool appimagetool-x86_64.AppImage --runtime runtime-x86_64 --output "dist/deskflow-bridge-gui-linux-x86_64.AppImage"
+          ./dist/deskflow-bridge-gui-linux-x86_64.AppImage --appimage-extract >/dev/null
           test -x squashfs-root/AppRun
-          test -f squashfs-root/usr/bin/deskflow-otg-gui
+          test -f squashfs-root/usr/bin/deskflow-bridge-gui
           test -f squashfs-root/usr/lib/libusb-1.0.so.0
           if [ -n "$COMPANION_APK" ]; then
-            cmp "$COMPANION_APK" squashfs-root/usr/bin/deskflow-otg-companion.apk
+            cmp "$COMPANION_APK" squashfs-root/usr/bin/deskflow-bridge-companion.apk
           fi
       - name: Package (Linux / macOS)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os != 'Windows'
@@ -248,22 +248,22 @@ jobs:
         run: |
           mkdir -p dist
           mkdir -p build/cli-package
-          cp build/deskflow-otg build/cli-package/deskflow-otg
+          cp build/deskflow-bridge build/cli-package/deskflow-bridge
           cp third_party/scrcpy/scrcpy-server-v5.0.1 build/cli-package/scrcpy-server
           cp build/SCRCPY_VERSION.txt build/cli-package/SCRCPY_VERSION.txt
-          tar -czf "dist/deskflow-otg-${{ matrix.asset }}.tar.gz" -C build/cli-package .
-          tar -czf "dist/deskflow-otg-gui-${{ matrix.asset }}.tar.gz" -C stage .
+          tar -czf "dist/deskflow-bridge-${{ matrix.asset }}.tar.gz" -C build/cli-package .
+          tar -czf "dist/deskflow-bridge-gui-${{ matrix.asset }}.tar.gz" -C stage .
       - name: Package (Windows)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force
           New-Item -ItemType Directory -Path build/cli-package -Force
-          Copy-Item build/Release/deskflow-otg.exe build/cli-package/
+          Copy-Item build/Release/deskflow-bridge.exe build/cli-package/
           Copy-Item third_party/scrcpy/scrcpy-server-v5.0.1 build/cli-package/scrcpy-server
           Copy-Item build/SCRCPY_VERSION.txt build/cli-package/
-          Compress-Archive -Path build/cli-package/* -DestinationPath "dist/deskflow-otg-${{ matrix.asset }}.zip"
-          Compress-Archive -Path stage/* -DestinationPath "dist/deskflow-otg-gui-${{ matrix.asset }}.zip"
+          Compress-Archive -Path build/cli-package/* -DestinationPath "dist/deskflow-bridge-${{ matrix.asset }}.zip"
+          Compress-Archive -Path stage/* -DestinationPath "dist/deskflow-bridge-gui-${{ matrix.asset }}.zip"
       - name: Save release package
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4

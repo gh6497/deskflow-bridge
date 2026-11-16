@@ -46,7 +46,7 @@
 
 - Linux Mint、BlueZ 5.72、Intel AX210；测试手机为 Redmi K20 Pro，虚拟尺寸 1080×2340。
 - 双模下 Android 会把电脑连接成音频设备。仅改广告名称、临时改 Adapter Alias 不能解决
-  音频 Profile 选择问题；名称从 `Deskflow OTG` 变为电脑名称也不独立证明连接失败原因。
+  音频 Profile 选择问题；名称从 `Deskflow Bridge` 变为电脑名称也不独立证明连接失败原因。
 - 显式仅 BLE 隔离后，用户报告正式桥接键盘和鼠标都可用，但鼠标存在延迟和单光标拖尾，
   不是同时出现两个光标。
 - 一次有效 btmon 抓包记录到连接间隔 **45ms**、peripheral latency=0；原约 30Hz 通知
@@ -105,7 +105,7 @@
   默认 USB、普通 `--transport ble` 不会静默切换模式。GUI 没有新增 BLE 控件。
 - root 父进程使用 Linux MGMT API，不调用 Python、btmgmt，不改配置文件、不重启 bluetoothd。
   使用固定的 `/usr/sbin/runuser` 以 sudo 发起者的普通用户身份运行自己的桥接子进程。
-- `/run/deskflow-otg-ble-hciN.lock` 防并发；root 专用 `.state` 快照绑定适配器地址。
+- `/run/deskflow-bridge-ble-hciN.lock` 防并发；root 专用 `.state` 快照绑定适配器地址。
   已有快照不覆盖，恢复不成功不删除快照；上电有有限重试，最终重新读取标志核对。
 - 正常退出/可捕获信号触发恢复。普通桥接子进程 SIGKILL 后，存活的常驻服务/父进程可清理；
   root supervisor 自身 SIGKILL、断电不能自动清理；`/run` 不跨重启持久化。
@@ -125,7 +125,7 @@ cmake -S . -B build -DBUILD_BLE=ON -DBUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-sudo ./build/deskflow-otg --transport ble --ble-isolate --adapter hci0 \
+sudo ./build/deskflow-bridge --transport ble --ble-isolate --adapter hci0 \
   --host 127.0.0.1 --port 24800 --name android \
   --width 1080 --height 2340
 ```
@@ -136,7 +136,7 @@ Linux 默认编译 BLE；非 Linux 默认关闭。BLE 开发依赖见 README。
 原生异常恢复（需要用户在终端输入 sudo 密码）：
 
 ```bash
-sudo ./build/deskflow-otg --ble-restore --adapter hci0
+sudo ./build/deskflow-bridge --ble-restore --adapter hci0
 ```
 
 ### 首轮真机验收顺序
@@ -233,7 +233,7 @@ sudo ./build/deskflow-otg --ble-restore --adapter hci0
   **链路/密钥复用成功不等于 HID 输入恢复。**
 - 经已授权 USB ADB 只读诊断，实测系统为 Android 14/API 34（不要由手机型号推断系统版本）。
   Android Bluetooth 日志在 14:34:01 报 HID Host 连接成功，使用 164 字节的描述符创建 UHID；
-  `dumpsys input` 存在蓝牙 `Deskflow OTG`，Sources 为 KEYBOARD/MOUSE/STYLUS。
+  `dumpsys input` 存在蓝牙 `Deskflow Bridge`，Sources 为 KEYBOARD/MOUSE/STYLUS。
   与抓包对照表明 Android 使用已有 HID 状态，但电脑缺少实际订阅；缓存/服务生命周期不一致
   是待验证方向，尚不能宣布唯一根因或将“手机已连接”视为恢复成功。
 - 修正独立的 HCI filter ABI 问题：原代码 `setsockopt(HCI_FILTER)` 写死长度 14，
@@ -359,7 +359,7 @@ Alias=`len-mint`、ActiveInstances=0、`.state` 已清理。
 ## 8. Linux CLI / GUI / 安装包接入（2026-10-16）
 
 用户确认蓝牙具备 OTG 同等的操控能力，并批准按 Linux CLI + GUI + 安装包范围接入。
-没有新增独立可执行文件：同一个 `deskflow-otg` 负责服务和会话两种角色。
+没有新增独立可执行文件：同一个 `deskflow-bridge` 负责服务和会话两种角色。
 
 - BLE 桥接新增必填 `--ble-peer AA:BB:CC:DD:EE:FF`（BlueZ 身份地址）。服务生命周期内
   固定该目标，换手机须显式停止空闲服务。输入仍须目标已配对、唯一在线、真实两路订阅。
@@ -391,7 +391,7 @@ Alias=`len-mint`、ActiveInstances=0、`.state` 已清理。
   及切回 USB。`/tmp/opencode/ble-product-gui.png` 为模拟界面截图，不是真实手机连接截图。
 
 开发构建：`/tmp/opencode/ble-product-build`；USB-only：`/tmp/opencode/ble-product-usb`；
-sanitizer：`/tmp/opencode/ble-product-asan`。本地 DEB 在 `/tmp/opencode/deskflow-otg-ble-linux-amd64.deb`，
+sanitizer：`/tmp/opencode/ble-product-asan`。本地 DEB 在 `/tmp/opencode/deskflow-bridge-ble-linux-amd64.deb`，
 尚未安装/发布，构建版本为 0.1.4 的 tracked-dirty 开发版；源码提交状态以 Git 为准。
 
 **下一步仍须用户批准后切换旧服务，再真机验证新版 GUI 启动、桌面认证/取消、会话退出恢复、
@@ -415,7 +415,7 @@ device 参数也必须指向当前认证对象。增加去重的 BLE waiting 日
 
 用户明确批准正常重启会话/服务以验证。经 pidfd 核对只向普通桥接发送 SIGINT，监督器正常
 退出、恢复快照已删除；再通过同 UID 空闲停止请求结束旧服务。未强杀 root、未删除配对。
-修正版常驻服务从 `/tmp/opencode/ble-identity-build/deskflow-otg` 启动，PID 64403；
+修正版常驻服务从 `/tmp/opencode/ble-identity-build/deskflow-bridge` 启动，PID 64403；
 日志 `/tmp/opencode/ble-identity-run/service.log`，不是原 GUI 自动后台服务日志。
 原安装包 GUI/桥接与修正版服务保持 IPC v2 兼容，已重新启动隔离会话。
 
@@ -460,11 +460,11 @@ device 参数也必须指向当前认证对象。增加去重的 BLE waiting 日
 
 这是软件输入/IPC 开销，不含 GATT 指针节流、无线传输与手机显示时间，也不是实际鼠标
 事件频率测量。复现夹具和结果在 `/tmp/opencode/ble-latency-review/`，新 CLI 构建在
-`/tmp/opencode/ble-latency-build/deskflow-otg`。本轮未切换正在运行的用户连接；新版桥接和
+`/tmp/opencode/ble-latency-build/deskflow-bridge`。本轮未切换正在运行的用户连接；新版桥接和
 常驻服务均需更新并正常重启后才完整生效，仍需真机验证移动/停止、按键、拖拽和滚轮。
 
 后续已构建 GUI + BLE Release DEB，14 项 CTest 与解包运行/版本/依赖检查通过。
-包为 `dist/deskflow-otg-gui-0.1.4+git.32a7d90258e9.dirty-ble-latency-fix-linux-amd64.deb`。
+包为 `dist/deskflow-bridge-gui-0.1.4+git.32a7d90258e9.dirty-ble-latency-fix-linux-amd64.deb`。
 用户安装后确认“跟手了，但是有顿挫”。当时桥接已更新，但常驻服务 PID 73136 仍运行被
 替换前的旧可执行文件，日志仍为实际 12.5ms、pacing 16.67ms。
 

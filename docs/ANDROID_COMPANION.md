@@ -1,6 +1,6 @@
 # Android 伴侣应用与桌面 GUI
 
-`android/deskflow-otg` 是可选的手机端伴侣应用。0.1.1 同时监听系统 USB 连接状态及 accessory 拔出广播，
+`android/deskflow-bridge` 是可选的手机端伴侣应用。0.1.1 同时监听系统 USB 连接状态及 accessory 拔出广播，
 通过已授权的通知监听服务调用活动媒体会话的 `pause()`。不是新的键鼠连接方式，也不替代
 USB AOA / BLE、scrcpy 音频或剪贴板；不安装它仍可使用原有功能。
 
@@ -133,7 +133,7 @@ MediaStore，其他文件使用用户授权的 SAF 目录；所有文件先私�
    使用 `install -r --user current` 保留应用数据；签名不匹配、降级或手机拒绝安装时报告错误，
    **不会先卸载旧应用**，不使用 `-d`、`-g`。
 4. 点击「打开手机端设置」，启动固定包 `com.github.gh6497.deskflowotg` 的 `MainActivity`。
-   在手机内点击通知使用权按钮，手动开启 deskflow-otg。桌面端不静默授予权限。
+   在手机内点击通知使用权按钮，手动开启 deskflow-bridge。桌面端不静默授予权限。
 5. 点击「检查授权状态」，查询当前 Android 用户的安装和通知使用权设置。
    不读取通知正文，不记录其他应用的通知授权列表。
 6. 按下节完成手机的自启动和电池策略设置，确认监听服务运行后，再测试拔线暂停。
@@ -152,7 +152,7 @@ Windows 的 ADB 与 WinUSB 可能不能同时访问同一 USB 接口；可先用
 `UsbDisconnectReceiver` 接收，不依赖 `DeskflowNotificationListenerService` 当时已经绑定；通知使用权
 仍是读取和控制媒体会话的必要授权。应用被强制停止或 ROM 完全禁止后台运行时，仍可能收不到广播。
 
-请在手机上针对 **deskflow-otg** 检查以下设置：
+请在手机上针对 **deskflow-bridge** 检查以下设置：
 
 1. **通知使用权**：在系统的通知使用权设置中手动启用；这是访问媒体会话的授权，
    不是普通的「允许发送通知」开关。
@@ -173,7 +173,7 @@ GUI「检查授权状态」只查询通知使用权，**不检查自启动、电
 
 ```bash
 adb -s SERIAL shell dumpsys activity services com.github.gh6497.deskflowotg
-adb -s SERIAL logcat -d -v threadtime -s deskflow-otg:V '*:S'
+adb -s SERIAL logcat -d -v threadtime -s deskflow-bridge:V '*:S'
 ```
 
 如果需要检查媒体访问能力，服务列表应能看到 `DeskflowNotificationListenerService` 的服务记录与绑定信息；
@@ -192,13 +192,13 @@ USB 断开广播，应用也收不到。该现象与播放器是否响应 `pause
 
 ```bash
 cmake -S . -B build-gui -DBUILD_GUI=ON \
-  -DCOMPANION_APK=/absolute/path/deskflow-otg-signed.apk \
+  -DCOMPANION_APK=/absolute/path/deskflow-bridge-signed.apk \
   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/gcc_64
 cmake --build build-gui --parallel
 cmake --install build-gui --prefix "$PWD/stage"
 ```
 
-CMake 将文件复制到 GUI 可执行文件旁，统一命名 `deskflow-otg-companion.apk`，
+CMake 将文件复制到 GUI 可执行文件旁，统一命名 `deskflow-bridge-companion.apk`，
 并安装到 Linux/Windows `bin/` 或 macOS `.app/Contents/MacOS/`，沿用现有桌面包收集流程。
 CMake 只检查文件路径及后缀，不验证 Android 签名；签名有效性由发布者检查、手机安装器验证。
 不传 `COMPANION_APK` 的普通本地桌面构建不附带 APK，GUI 仍允许手动选择；

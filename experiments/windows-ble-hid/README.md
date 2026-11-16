@@ -17,7 +17,7 @@ ctest --test-dir build-win-ble-probe -C Release --output-on-failure
 .\experiments\windows-ble-hid\test-descriptors.ps1
 ```
 
-产物：`build-win-ble-probe/Release/deskflow-otg-ble-probe.exe`。
+产物：`build-win-ble-probe/Release/deskflow-bridge-ble-probe.exe`。
 普通用户运行即可；管理员权限不能解决适配器不支持外设角色的问题。
 也提供独立的 GitHub Actions 工作流 **Windows BLE HID prototype**；推送相关文件后或手动
 运行，可从该次运行的 Artifacts 下载程序、本文档及源码快照。CI 只编译/检查报文，不访问蓝牙。
@@ -27,7 +27,7 @@ ctest --test-dir build-win-ble-probe -C Release --output-on-failure
 ### 1. 只检查硬件能力（不广播）
 
 ```powershell
-.\build-win-ble-probe\Release\deskflow-otg-ble-probe.exe --probe
+.\build-win-ble-probe\Release\deskflow-bridge-ble-probe.exe --probe
 ```
 
 需要 `LE supported=1 peripheral supported=1`。为 0 时，先检查当前默认适配器及厂商驱动。
@@ -36,7 +36,7 @@ ctest --test-dir build-win-ble-probe -C Release --output-on-failure
 ### 2. 先测键盘
 
 ```powershell
-.\build-win-ble-probe\Release\deskflow-otg-ble-probe.exe --keyboard-only |
+.\build-win-ble-probe\Release\deskflow-bridge-ble-probe.exe --keyboard-only |
   Tee-Object -FilePath windows-ble-keyboard.log
 ```
 
@@ -63,7 +63,7 @@ ctest --test-dir build-win-ble-probe -C Release --output-on-failure
 不要删除无关蓝牙设备。普通断线重连不应该通过反复删除配对来处理。
 
 ```powershell
-.\build-win-ble-probe\Release\deskflow-otg-ble-probe.exe |
+.\build-win-ble-probe\Release\deskflow-bridge-ble-probe.exe |
   Tee-Object -FilePath windows-ble-pointer.log
 ```
 

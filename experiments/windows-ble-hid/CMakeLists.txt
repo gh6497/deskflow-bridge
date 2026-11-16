@@ -1,22 +1,22 @@
 cmake_minimum_required(VERSION 3.16)
-project(deskflow_otg_windows_ble_probe LANGUAGES CXX)
+project(deskflow_bridge_windows_ble_probe LANGUAGES CXX)
 
 if(NOT WIN32 OR NOT MSVC)
   message(FATAL_ERROR "This experiment needs Windows, MSVC and a Windows 10/11 SDK with C++/WinRT headers")
 endif()
 
-add_executable(deskflow-otg-ble-probe main.cpp)
+add_executable(deskflow-bridge-ble-probe main.cpp)
 # Standard coroutines for asynchronous WinRT GATT request handlers. This does
 # not change the language requirements of the project's C11 bridge or Qt GUI.
-target_compile_features(deskflow-otg-ble-probe PRIVATE cxx_std_20)
-target_compile_definitions(deskflow-otg-ble-probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_compile_options(deskflow-otg-ble-probe PRIVATE /W4 /WX /EHsc /utf-8)
-target_link_libraries(deskflow-otg-ble-probe PRIVATE windowsapp)
+target_compile_features(deskflow-bridge-ble-probe PRIVATE cxx_std_20)
+target_compile_definitions(deskflow-bridge-ble-probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(deskflow-bridge-ble-probe PRIVATE /W4 /WX /EHsc /utf-8)
+target_link_libraries(deskflow-bridge-ble-probe PRIVATE windowsapp)
 # Standalone executable: no Qt, libusb, vcpkg or separately installed VC runtime.
-set_property(TARGET deskflow-otg-ble-probe PROPERTY MSVC_RUNTIME_LIBRARY
+set_property(TARGET deskflow-bridge-ble-probe PROPERTY MSVC_RUNTIME_LIBRARY
   "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 enable_testing()
-add_test(NAME ble_probe_packets COMMAND deskflow-otg-ble-probe --self-test)
+add_test(NAME ble_probe_packets COMMAND deskflow-bridge-ble-probe --self-test)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/test_ble_win_queue.cpp")
   add_executable(test_ble_win_queue ../../tests/test_ble_win_queue.cpp)
   target_include_directories(test_ble_win_queue PRIVATE ../../platform/windows)

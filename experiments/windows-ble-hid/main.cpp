@@ -350,7 +350,7 @@ int main(int argc, char** argv)
         if (arg == "--keyboard-only") only = true;
         else if (arg == "--probe") probe_only = true;
         else if (arg == "--help") {
-            log("deskflow-otg-ble-probe [--probe | --keyboard-only | --self-test]");
+            log("deskflow-bridge-ble-probe [--probe | --keyboard-only | --self-test]");
             help();
             return 0;
         } else { log("Unknown option: " + arg); return 2; }

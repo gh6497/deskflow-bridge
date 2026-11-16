@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "deskflow-otg"
+rootProject.name = "deskflow-bridge"
 include(":app")

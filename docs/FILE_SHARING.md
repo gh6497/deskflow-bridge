@@ -107,7 +107,7 @@ ADB shell 已有 DUMP，普通 App 不能读暂存、上传或伪造清除；分
 ```bash
 python3 tests/test_android_transfer.py
 ctest --test-dir BUILD_DIR --output-on-failure -R 'companion_transfer|android_transfer|gui_window|gui_logic'
-cd android/deskflow-otg
+cd android/deskflow-bridge
 ANDROID_HOME=/path/to/Android/Sdk ./gradlew :app:assembleDebug :app:lintDebug
 ```
 

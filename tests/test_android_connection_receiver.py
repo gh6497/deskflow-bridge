@@ -174,7 +174,7 @@ def main():
         print("SKIP: JDK required for Android receiver host regression")
         return 77
     root = Path(__file__).resolve().parent.parent
-    app = root / "android/deskflow-otg/app/src/main"
+    app = root / "android/deskflow-bridge/app/src/main"
     manifest = ET.parse(app / "AndroidManifest.xml")
     android = "{http://schemas.android.com/apk/res/android}"
     receiver = manifest.find("application/receiver")

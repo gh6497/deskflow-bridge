@@ -1,5 +1,5 @@
 /*
- * deskflow-otg - Android companion application.
+ * deskflow-bridge - Android companion application.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -28,7 +28,7 @@ import java.util.List;
  * model and works after the host-side USB connection has disappeared.
  */
 public final class DeskflowNotificationListenerService extends NotificationListenerService {
-    private static final String TAG = "deskflow-otg";
+    private static final String TAG = "deskflow-bridge";
     private static DeskflowNotificationListenerService connectedListener;
 
     @Override

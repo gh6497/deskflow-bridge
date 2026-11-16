@@ -1,6 +1,6 @@
 /* Linux Bluetooth LE HID over GATT transport. SPDX-License-Identifier: Apache-2.0 */
-#ifndef DESKFLOW_OTG_BLE_HID_H
-#define DESKFLOW_OTG_BLE_HID_H
+#ifndef DESKFLOW_BRIDGE_BLE_HID_H
+#define DESKFLOW_BRIDGE_BLE_HID_H
 
 #include "bridge.h"
 

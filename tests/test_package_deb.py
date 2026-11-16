@@ -17,10 +17,10 @@ class DebPackageTest(unittest.TestCase):
                 root = pathlib.Path(directory)
                 stage = root / "stage"
                 (stage / "bin").mkdir(parents=True)
-                for name in ("deskflow-otg-gui", "deskflow-otg"):
+                for name in ("deskflow-bridge-gui", "deskflow-bridge"):
                     (stage / "bin" / name).write_text("mock binary\n")
-                (stage / "bin/deskflow-otg-companion.apk").write_bytes(b"mock companion APK")
-                metadata = stage / "share/deskflow-otg"
+                (stage / "bin/deskflow-bridge-companion.apk").write_bytes(b"mock companion APK")
+                metadata = stage / "share/deskflow-bridge"
                 metadata.mkdir(parents=True)
                 (metadata / "BUILD_FEATURES.json").write_text('{"ble":%s}' % str(ble).lower())
                 package = root / "test.deb"
@@ -33,10 +33,10 @@ class DebPackageTest(unittest.TestCase):
                 self.assertEqual("pkexec" in deps, ble)
                 extracted = root / "extracted"
                 subprocess.run(["dpkg-deb", "--extract", str(package), str(extracted)], check=True)
-                self.assertTrue((extracted / "usr/bin/deskflow-otg").is_symlink())
-                self.assertEqual((extracted / "opt/deskflow-otg/bin/deskflow-otg-companion.apk").read_bytes(),
+                self.assertTrue((extracted / "usr/bin/deskflow-bridge").is_symlink())
+                self.assertEqual((extracted / "opt/deskflow-bridge/bin/deskflow-bridge-companion.apk").read_bytes(),
                                  b"mock companion APK")
-                unit = extracted / "usr/lib/systemd/user/deskflow-otg-ble@.service"
+                unit = extracted / "usr/lib/systemd/user/deskflow-bridge-ble@.service"
                 self.assertEqual(unit.exists(), ble)
                 if ble:
                     self.assertIn("--ble-service --adapter %i", unit.read_text())
@@ -50,7 +50,7 @@ class DebPackageTest(unittest.TestCase):
             root = pathlib.Path(directory)
             stage = root / "stage"
             (stage / "bin").mkdir(parents=True)
-            for name in ("deskflow-otg-gui", "deskflow-otg"):
+            for name in ("deskflow-bridge-gui", "deskflow-bridge"):
                 (stage / "bin" / name).write_text("mock binary\n")
             package = root / "test.deb"
             subprocess.run([sys.executable, str(repository / "scripts/package_deb.py"),
@@ -58,10 +58,10 @@ class DebPackageTest(unittest.TestCase):
                             "--output", str(package)], check=True)
             extracted = root / "extracted"
             subprocess.run(["dpkg-deb", "--extract", str(package), str(extracted)], check=True)
-            desktop = (extracted / "usr/share/applications/deskflow-otg.desktop").read_text()
-            self.assertIn("\nIcon=deskflow-otg\n", desktop)
-            icon = extracted / "usr/share/icons/hicolor/scalable/apps/deskflow-otg.svg"
-            self.assertEqual(icon.read_bytes(), (repository / "packaging/deskflow-otg.svg").read_bytes())
+            desktop = (extracted / "usr/share/applications/deskflow-bridge.desktop").read_text()
+            self.assertIn("\nIcon=deskflow-bridge\n", desktop)
+            icon = extracted / "usr/share/icons/hicolor/scalable/apps/deskflow-bridge.svg"
+            self.assertEqual(icon.read_bytes(), (repository / "packaging/deskflow-bridge.svg").read_bytes())
 
     def test_optional_system_theme(self):
         repository = pathlib.Path(__file__).resolve().parent.parent
@@ -70,7 +70,7 @@ class DebPackageTest(unittest.TestCase):
                 root = pathlib.Path(directory)
                 stage = root / "stage"
                 (stage / "bin").mkdir(parents=True)
-                for name in ("deskflow-otg-gui", "deskflow-otg"):
+                for name in ("deskflow-bridge-gui", "deskflow-bridge"):
                     (stage / "bin" / name).write_text("mock binary\n")
                 themes = stage / "plugins/platformthemes"
                 themes.mkdir(parents=True)
@@ -88,10 +88,10 @@ class DebPackageTest(unittest.TestCase):
                 self.assertEqual("libgtk-3-0t64 | libgtk-3-0" in recommends, gtk)
                 extracted = root / "extracted"
                 subprocess.run(["dpkg-deb", "--extract", str(package), str(extracted)], check=True)
-                installed = extracted / "opt/deskflow-otg/plugins/platformthemes"
+                installed = extracted / "opt/deskflow-bridge/plugins/platformthemes"
                 self.assertTrue((installed / "libqxdgdesktopportal.so").is_file())
                 self.assertEqual((installed / "libqgtk3.so").is_file(), gtk)
-                desktop = (extracted / "usr/share/applications/deskflow-otg.desktop").read_text()
+                desktop = (extracted / "usr/share/applications/deskflow-bridge.desktop").read_text()
                 self.assertNotIn("QT_QPA_PLATFORMTHEME", desktop)
                 self.assertNotIn("QT_PLUGIN_PATH", desktop)
                 self.assertNotIn("QT_STYLE_OVERRIDE", desktop)
