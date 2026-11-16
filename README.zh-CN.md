@@ -435,6 +435,10 @@ CLI 和 GUI 共用仓库根目录的 `VERSION`（当前 `0.1.9`），不单独�
 自动创建对应的 [Release](https://github.com/gh6497/deskflow-bridge/releases)，并将 Linux x86_64、
 macOS arm64 / x86_64 和 Windows x86_64 的包放在 **Assets** 中。例如：
 
+所有 Release 资产文件名都包含不带 `v` 的 `X.Y.Z` 版本号，例如
+`deskflow-bridge-gui-0.1.9-linux-x86_64.AppImage` 和
+`deskflow-bridge-0.1.9-windows-x86_64.zip`。
+
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
@@ -445,7 +449,7 @@ git push origin v0.1.0
 Linux CLI 包运行时需要安装 libusb-1.0 运行库；macOS CLI 压缩包运行时需要先
 `brew install libusb`。Windows 包使用静态链接的 libusb。
 
-Windows GUI 发布版另提供 `deskflow-bridge-gui-windows-x86_64-setup.exe` 安装包。
+Windows GUI 发布版另提供 `deskflow-bridge-gui-<版本>-windows-x86_64-setup.exe` 安装包。
 运行后按当前用户安装到 `%LOCALAPPDATA%\Programs\Deskflow Bridge`，可通过开始菜单启动或在
 「已安装的应用」卸载，无需管理员权限；同时保留原有的免安装 ZIP。安装包含桥接程序、
 Qt、ADB 和依赖许可证，不包含 Deskflow。Windows USB 驱动仍需自行配置（见下文）。
@@ -454,11 +458,12 @@ Qt、ADB 和依赖许可证，不包含 Deskflow。Windows USB 驱动仍需自�
 上文的 GUI 构建、`cmake --install` 和许可证收集，并安装 NSIS（`makensis` 在 PATH 中）：
 
 ```powershell
-python scripts/package_windows.py --stage stage --output dist/deskflow-bridge-gui-windows-x86_64-setup.exe
+$version = (Get-Content VERSION -Raw).Trim()
+python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-$version-windows-x86_64-setup.exe"
 ```
 
-macOS GUI 发布版另提供 `deskflow-bridge-gui-macos-arm64.dmg` 和
-`deskflow-bridge-gui-macos-x86_64.dmg`。选择与 Mac 架构匹配的镜像，打开后将
+macOS GUI 发布版另提供 `deskflow-bridge-gui-<版本>-macos-arm64.dmg` 和
+`deskflow-bridge-gui-<版本>-macos-x86_64.dmg`。选择与 Mac 架构匹配的镜像，打开后将
 `deskflow-bridge-gui.app` 拖入「Applications」即可安装；App 内含桥接程序、Qt、libusb、
 ADB 和依赖许可证，但不包含 Deskflow。无需为 GUI 安装 Homebrew libusb（单独的 CLI
 压缩包仍需要）。当前镜像未签名、公证，首次打开可能被 macOS Gatekeeper 拦截；确认来源后
@@ -466,7 +471,7 @@ ADB 和依赖许可证，但不包含 Deskflow。无需为 GUI 安装 Homebrew l
 
 ```bash
 python3 scripts/package_dmg.py --stage stage \
-    --output dist/deskflow-bridge-gui-macos-arm64.dmg
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-macos-arm64.dmg"
 ```
 
 先按上文以 `BUILD_GUI=ON` 构建、安装到 `stage`，下载 ADB 并收集许可证；输出文件名的
@@ -486,18 +491,18 @@ sudo apt install ./deskflow-bridge-gui-<版本>-linux-amd64.deb
 ```bash
 cmake --install build --prefix "$PWD/stage"
 python3 scripts/package_deb.py --stage stage \
-    --output dist/deskflow-bridge-gui-0.1.0-$(dpkg --print-architecture).deb
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-linux-$(dpkg --print-architecture).deb"
 ```
 
 deb 安装到 `/opt/deskflow-bridge` 并在 `/usr/bin` 提供 GUI 入口；不能与手动安装在相同路径
 的版本混用。GUI 打包需要有图形桌面运行时库；包内不包含 Deskflow。
 
-Linux GUI 发布版同时提供无需安装的 `deskflow-bridge-gui-linux-x86_64.AppImage`，
+Linux GUI 发布版同时提供无需安装的 `deskflow-bridge-gui-<版本>-linux-x86_64.AppImage`，
 内含桥接程序、Qt、libusb 和 ADB（不含 Deskflow）。下载后执行：
 
 ```bash
-chmod +x deskflow-bridge-gui-linux-x86_64.AppImage
-./deskflow-bridge-gui-linux-x86_64.AppImage
+chmod +x deskflow-bridge-gui-<版本>-linux-x86_64.AppImage
+./deskflow-bridge-gui-<版本>-linux-x86_64.AppImage
 ```
 
 系统需要图形桌面和 FUSE；缺少 FUSE 时可加 `--appimage-extract-and-run`。
@@ -508,7 +513,7 @@ USB 权限规则与 deb 相同。要从本地 GUI 安装目录生成 AppImage，
 python3 scripts/package_appimage.py --stage stage \
     --appimagetool appimagetool-x86_64.AppImage \
     --runtime runtime-x86_64 \
-    --output dist/deskflow-bridge-gui-linux-x86_64.AppImage
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-linux-x86_64.AppImage"
 ```
 
 Windows（PowerShell，使用 Visual Studio x64 工具链；`VCPKG_ROOT` 指向 vcpkg 目录）：

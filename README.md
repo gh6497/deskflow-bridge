@@ -300,7 +300,7 @@ The CLI and GUI share the `VERSION` file at the repository root (currently `0.1.
 
 For a release, modify and commit `VERSION` first, then create a matching `vX.Y.Z` tag. CI uses `-DOTG_RELEASE_TAG=vX.Y.Z` to verify that the tag matches the version file and that tracked files are clean; release builds use the plain `X.Y.Z` version. Local release builds must pass the same option, while development builds leave it empty. `share/deskflow-bridge/BUILD_VERSION.txt` in the install directory records the actual build version. DEB and Windows packaging scripts read it by default, and `--version` is used only for consistency checks (manual specification is allowed when an old install has no such file). This prevents a new package version from being applied to an old binary.
 
-After pushing a version tag beginning with `v`, GitHub Actions builds, tests, and packages all four platforms. When everything succeeds, it automatically creates the corresponding [Release](https://github.com/gh6497/deskflow-bridge/releases) and places Linux x86_64, macOS arm64 / x86_64, and Windows x86_64 packages in **Assets**. For example:
+After pushing a version tag beginning with `v`, GitHub Actions builds, tests, and packages all four platforms. When everything succeeds, it automatically creates the corresponding [Release](https://github.com/gh6497/deskflow-bridge/releases) and places Linux x86_64, macOS arm64 / x86_64, and Windows x86_64 packages in **Assets**. Every release asset includes the plain `X.Y.Z` version, for example `deskflow-bridge-gui-0.1.9-linux-x86_64.AppImage` and `deskflow-bridge-0.1.9-windows-x86_64.zip`.
 
 ```bash
 git tag v0.1.0
@@ -309,17 +309,18 @@ git push origin v0.1.0
 
 Commits on ordinary branches and pull requests build the CLI, GUI, and tests and check desktop-package deployment, but do not create a Release. A tag release provides both `deskflow-bridge-*` command-line packages and `deskflow-bridge-gui-*` desktop packages. Linux CLI packages require the libusb-1.0 runtime; macOS CLI archives require `brew install libusb` first. Windows packages use statically linked libusb.
 
-Windows GUI releases also provide `deskflow-bridge-gui-windows-x86_64-setup.exe`. It installs per-user under `%LOCALAPPDATA%\Programs\Deskflow Bridge`, can be started from the Start menu or removed from "Installed apps", and does not require administrator privileges; the portable ZIP remains available. The installation includes the bridge, Qt, ADB, and dependency licenses, but not Deskflow. Configure the Windows USB driver yourself as described below. The installer is not signed, so Windows may show an unknown-publisher warning; verify the download source. During upgrades, the installer uninstalls the old version first. Exit the GUI before installing or uninstalling. To create an installer locally, build the GUI, run `cmake --install`, collect licenses on Windows, and install NSIS (`makensis` must be in `PATH`):
+Windows GUI releases also provide `deskflow-bridge-gui-<version>-windows-x86_64-setup.exe`. It installs per-user under `%LOCALAPPDATA%\Programs\Deskflow Bridge`, can be started from the Start menu or removed from "Installed apps", and does not require administrator privileges; the portable ZIP remains available. The installation includes the bridge, Qt, ADB, and dependency licenses, but not Deskflow. Configure the Windows USB driver yourself as described below. The installer is not signed, so Windows may show an unknown-publisher warning; verify the download source. During upgrades, the installer uninstalls the old version first. Exit the GUI before installing or uninstalling. To create an installer locally, build the GUI, run `cmake --install`, collect licenses on Windows, and install NSIS (`makensis` must be in `PATH`):
 
 ```powershell
-python scripts/package_windows.py --stage stage --output dist/deskflow-bridge-gui-windows-x86_64-setup.exe
+$version = (Get-Content VERSION -Raw).Trim()
+python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-$version-windows-x86_64-setup.exe"
 ```
 
-macOS GUI releases also provide `deskflow-bridge-gui-macos-arm64.dmg` and `deskflow-bridge-gui-macos-x86_64.dmg`. Choose the image matching the Mac architecture, open it, and drag `deskflow-bridge-gui.app` to `Applications`. The app contains the bridge, Qt, libusb, ADB, and dependency licenses, but not Deskflow. Homebrew libusb is not needed for the GUI (the standalone CLI archive still needs it). The image is currently unsigned and not notarized; macOS Gatekeeper may block it on first launch. After verifying the source, choose "Open Anyway" under "System Settings → Privacy & Security". Create an image locally with:
+macOS GUI releases also provide `deskflow-bridge-gui-<version>-macos-arm64.dmg` and `deskflow-bridge-gui-<version>-macos-x86_64.dmg`. Choose the image matching the Mac architecture, open it, and drag `deskflow-bridge-gui.app` to `Applications`. The app contains the bridge, Qt, libusb, ADB, and dependency licenses, but not Deskflow. Homebrew libusb is not needed for the GUI (the standalone CLI archive still needs it). The image is currently unsigned and not notarized; macOS Gatekeeper may block it on first launch. After verifying the source, choose "Open Anyway" under "System Settings → Privacy & Security". Create an image locally with:
 
 ```bash
 python3 scripts/package_dmg.py --stage stage \
-    --output dist/deskflow-bridge-gui-macos-arm64.dmg
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-macos-arm64.dmg"
 ```
 
 Build with `BUILD_GUI=ON`, install to `stage`, download ADB, and collect licenses as described above. The filename architecture must match the build machine. The image provides drag-and-drop installation only; it does not modify system settings or install Deskflow automatically.
@@ -335,16 +336,16 @@ You can also create a DEB from a local GUI install directory. First download ADB
 ```bash
 cmake --install build --prefix "$PWD/stage"
 python3 scripts/package_deb.py --stage stage \
-    --output dist/deskflow-bridge-gui-0.1.0-$(dpkg --print-architecture).deb
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-linux-$(dpkg --print-architecture).deb"
 ```
 
 The DEB installs to `/opt/deskflow-bridge` and provides a GUI entry point in `/usr/bin`; do not mix it with a version manually installed at the same path. GUI packaging requires desktop runtime libraries; Deskflow is not included.
 
-Linux GUI releases also provide the installation-free `deskflow-bridge-gui-linux-x86_64.AppImage`, containing the bridge, Qt, libusb, and ADB (but not Deskflow). Run it with:
+Linux GUI releases also provide the installation-free `deskflow-bridge-gui-<version>-linux-x86_64.AppImage`, containing the bridge, Qt, libusb, and ADB (but not Deskflow). Run it with:
 
 ```bash
-chmod +x deskflow-bridge-gui-linux-x86_64.AppImage
-./deskflow-bridge-gui-linux-x86_64.AppImage
+chmod +x deskflow-bridge-gui-<version>-linux-x86_64.AppImage
+./deskflow-bridge-gui-<version>-linux-x86_64.AppImage
 ```
 
 The system needs a graphical desktop and FUSE; when FUSE is unavailable, add `--appimage-extract-and-run`. USB permission rules are the same as for the DEB. To create an AppImage from a local GUI install directory, first download and verify `appimagetool-x86_64.AppImage` and `runtime-x86_64` (CI pins their SHA-256 hashes), then run:
@@ -353,7 +354,7 @@ The system needs a graphical desktop and FUSE; when FUSE is unavailable, add `--
 python3 scripts/package_appimage.py --stage stage \
     --appimagetool appimagetool-x86_64.AppImage \
     --runtime runtime-x86_64 \
-    --output dist/deskflow-bridge-gui-linux-x86_64.AppImage
+    --output "dist/deskflow-bridge-gui-$(tr -d '\r\n' < VERSION)-linux-x86_64.AppImage"
 ```
 
 Windows (PowerShell, using the Visual Studio x64 toolchain; `VCPKG_ROOT` points to the vcpkg directory):
