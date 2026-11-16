@@ -1,0 +1,30 @@
+# User guide screenshots / 用户指南截图
+
+These PNGs show the project's real Qt widgets, not design mockups.
+They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_GUIDE.zh-CN.md).
+
+- Captured on 2026-11-17 from source commit `363541b` (base version `0.1.9`).
+- Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
+- Main window: 1100 × 880; file window: 760 × 460.
+- `-en` / `-zh-CN` suffixes select the interface language.
+- `device`: UHID setup; `input`: scrolled dimensions and button settings;
+  `layout`: one phone; `server`: shared Deskflow setup; `aoa`: USB without ADB;
+  `multiple-devices`: two-device layout; `files`: pending phone shares.
+
+Capture used an isolated temporary `QSettings` profile and the production
+`MainWindow` / `TransferDialog` widgets. Device discovery and file lists came
+from the existing `test_peer` / `test_transfer_peer` fixtures. No real ADB,
+Deskflow server, USB device or Bluetooth adapter was used. Paths in the server
+page are illustrative. File lists contain demo metadata only; no transfer was
+performed. These images do not demonstrate real-device compatibility.
+
+For updates, build the GUI from the matching source, use a separate demo profile
+and capture both languages with the same settings. Preserve real widget labels
+and states rather than editing text into images. The screenshot hooks in
+`tests/test_window.cpp` and `tests/test_companion_transfer.cpp` can provide
+hardware-free starting points; their default regression values differ from the
+guide's examples. Review the PNGs for clipping and personal information, and
+update both guides when controls move or change.
+
+截图使用真实界面、隔离的临时设置及模拟设备/文件，不是界面设计稿或真机验收记录。
+更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。
