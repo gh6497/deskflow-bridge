@@ -51,6 +51,17 @@
   <message id="otg.ble.stopped"><source>Idle Bluetooth service stop acknowledged.</source><translation>空闲蓝牙服务已确认停止请求。</translation></message>
   <message id="otg.ble.stop_failed"><source>Bluetooth service could not be stopped: </source><translation>无法停止蓝牙服务：</translation></message>
   <message id="otg.transport.usb"><source>USB (AOA HID)</source><translation>USB（AOA HID）</translation></message>
+  <message id="otg.transport.uhid"><source>ADB + UHID (USB / wireless)</source><translation>ADB＋UHID（USB／无线）</translation></message>
+  <message id="otg.transport.uhid_windows"><source>ADB + UHID (recommended on Windows)</source><translation>ADB＋UHID（Windows 推荐）</translation></message>
+  <message id="otg.uhid.adb_required"><source>ADB enabled (required for UHID)</source><translation>已启用 ADB（UHID 必需）</translation></message>
+  <message id="otg.uhid.target_label"><source>ADB target (required)</source><translation>ADB 目标（必填）</translation></message>
+  <message id="otg.uhid.target_hint"><source>Authorized USB ADB serial or wireless host:port; no USB serial fallback</source><translation>已授权的 USB ADB 序列号或无线 host:port；不回退使用 USB 序列号</translation></message>
+  <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>手动填写 ADB 目标</translation></message>
+  <message id="otg.uhid.device_ready"><source>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>已识别 ADB 设备及当前方向的屏幕尺寸，可调整尺寸或连接。</translation></message>
+  <message id="otg.uhid.setup_hint"><source>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</source><translation>开启 USB 调试并授权本电脑，刷新选择手机或填写 ADB 目标。UHID 保留绝对坐标指针，使用正常 ADB 驱动；手机系统须支持 /dev/uhid。无需投屏或伴侣应用。</translation></message>
+  <message id="otg.uhid.initializing"><source>Starting ADB/scrcpy and creating UHID keyboard and pointer…</source><translation>正在启动 ADB／scrcpy 并创建 UHID 键盘与指针…</translation></message>
+  <message id="otg.uhid.ready"><source>UHID descriptors sent; waiting for Deskflow handshake.</source><translation>UHID 描述符已发送，等待 Deskflow 握手。</translation></message>
+  <message id="otg.uhid.unsupported"><source>UHID is unavailable in this build. Enable BUILD_UHID.</source><translation>当前构建未提供 UHID，请启用 BUILD_UHID。</translation></message>
   <message id="otg.transport.ble"><source>Bluetooth LE (Linux)</source><translation>低功耗蓝牙（Linux）</translation></message>
   <message id="otg.label.transport"><source>Connection type</source><translation>连接方式</translation></message>
   <message id="otg.ble.adapter"><source>Bluetooth adapter</source><translation>蓝牙适配器</translation></message>

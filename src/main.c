@@ -25,6 +25,9 @@
 #include "deskflow_client.h"
 #include "usb_scan.h"
 #include "scrcpy_session.h"
+#ifdef OTG_HAVE_UHID
+#include "uhid.h"
+#endif
 #ifdef OTG_HAVE_AUDIO
 #include "audio_player.h"
 #endif
@@ -69,9 +72,7 @@ struct app_options {
     int ble_session;
     int ble_status;
     int ble_stop_service;
-#ifdef OTG_HAVE_BLE_WIN
     bool adapter_explicit;
-#endif
 #ifdef _WIN32
     int background;
     int background_child;
@@ -149,6 +150,11 @@ static void gui_event(const char *event)
         printf("{\"event\":\"%s\"}\n", event);
         fflush(stdout);
     }
+}
+
+static int app_stop_requested(void)
+{
+    return g_stop || (g_gui && gui_stop_check());
 }
 
 typedef struct app_state app_state;
@@ -267,14 +273,14 @@ static void usage(const char *prog)
     fprintf(stderr,
             "Usage: %s [options]\n"
             "\n"
-            "Bridge between a Deskflow server and an Android phone (USB AOA / optional BLE HID).\n"
+            "Bridge between a Deskflow server and an Android phone (USB AOA / ADB UHID / BLE HID).\n"
             "\n"
             "Options:\n"
             "  -H, --host HOST       Deskflow server address (default %s)\n"
             "  -p, --port PORT       Deskflow server port (default %u)\n"
             "  -n, --name NAME       Screen name reported to the server (default %s)\n"
              "  -s, --serial SERIAL   Android USB device serial (USB transport)\n"
-              "      --transport MODE usb (default) or ble (Linux/experimental Windows)\n"
+              "      --transport MODE usb (default), uhid (ADB), or ble\n"
              "      --adapter NAME    BlueZ adapter for BLE (default hci0)\n"
              "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
@@ -302,7 +308,7 @@ static void usage(const char *prog)
               "      --tls-fingerprint HEX  Trusted server SHA-256 fingerprint\n"
               "      --tls-fingerprint-file FILE  Deskflow trusted fingerprint database\n"
               "      --auto-rotate       Follow Android rotation and update screen size (requires ADB feature)\n"
-              "      --adb PATH          ADB executable for audio/clipboard (default adb)\n"
+              "      --adb PATH          ADB executable for UHID/audio/clipboard (default adb)\n"
               "      --adb-serial SERIAL ADB transport (default USB serial; may be host:port)\n"
               "      --scrcpy-server PATH  Matching scrcpy-server jar/apk for ADB features\n"
              "      --scrcpy-version VER  Matching scrcpy server version\n"
@@ -354,6 +360,10 @@ static unsigned sensitivity_centi(double value)
 struct app_state {
     struct otg_bridge bridge;
     struct scrcpy_session scrcpy;
+    bool uhid;
+#ifdef OTG_HAVE_UHID
+    struct otg_uhid uhid_transport;
+#endif
     struct otg_display_monitor *display;
     struct otg_display_size display_size;
     bool display_pending;
@@ -367,6 +377,7 @@ struct app_state {
     bool audio_ready_reported;
     df_client *client;
     bool clipboard_error;
+    bool control_polling;
     unsigned held_key_count;
     struct { uint32_t id; bool down; } held_keys[64];
 };
@@ -377,7 +388,8 @@ static void clipboard_failed(app_state *s)
     fprintf(stderr, "WARN: clipboard unavailable; keyboard/mouse connection retained (reconnect to retry)\n");
     gui_event("clipboard-unavailable");
     s->clipboard_error = true;
-    otg_clipboard_channel_close(&s->scrcpy.clipboard);
+    if (s->uhid) otg_clipboard_channel_disable(&s->scrcpy.clipboard);
+    else otg_clipboard_channel_close(&s->scrcpy.clipboard);
     otg_bridge_release_keyboard(&s->bridge);
     s->held_key_count = 0;
     if (s->client) df_client_enable_clipboard(s->client, false);
@@ -409,16 +421,26 @@ static void cb_phone_clipboard(void *ud, const char *text, size_t size)
 
 static void clipboard_poll(app_state *s)
 {
-    if (!s->scrcpy.clipboard.ready || s->clipboard_error) return;
-    if (otg_clipboard_channel_poll(&s->scrcpy.clipboard, cb_phone_clipboard, s)) {
+    if (!s->scrcpy.clipboard.ready || (s->clipboard_error && !s->uhid) || s->control_polling) return;
+    /* Forwarding phone clipboard text may write to Deskflow, whose socket
+     * stop check pumps UHID too. Never re-enter this reader/callback stack. */
+    s->control_polling = true;
+    const int result = otg_clipboard_channel_poll(&s->scrcpy.clipboard, cb_phone_clipboard, s);
+    if (result < 0 && s->uhid) {
+        fprintf(stderr, "ERROR: UHID control channel disconnected or failed; ending input session\n");
+        goto done;
+    }
+    if (result) {
         clipboard_failed(s);
-        return;
+        goto done;
     }
     if (!otg_clipboard_channel_busy(&s->scrcpy.clipboard)) {
         for (unsigned i = 0; i < s->held_key_count; ++i)
             otg_bridge_key(&s->bridge, s->held_keys[i].id, s->held_keys[i].down);
         s->held_key_count = 0;
     }
+done:
+    s->control_polling = false;
 }
 
 static void clipboard_key(app_state *s, uint32_t keyid, bool down)
@@ -535,7 +557,7 @@ static int cb_idle(void *ud)
     /* A side swipe temporarily needs a 1 ms tick. On USB callers, do not
      * also enumerate the device list at every one of those timeouts: that
      * check is much more expensive on Windows than the gesture interval. */
-    if (!s->transport_owner && s->bridge.side_swipe_pending) return 0;
+    if (!s->transport_owner && !s->uhid && s->bridge.side_swipe_pending) return 0;
     clipboard_poll(s);
     if (!otg_bridge_check(&s->bridge)) {
         return 1;
@@ -560,8 +582,19 @@ static int cb_clipboard_tick(void *ud)
 {
     app_state *s = ud;
     clipboard_poll(s);
-    return 0;
+    return s->uhid && !otg_bridge_check(&s->bridge);
 }
+
+#ifdef OTG_HAVE_UHID
+static app_state *uhid_app;
+static int uhid_stop_check(void)
+{
+    if (g_stop || (g_gui && gui_stop_check())) return 1;
+    /* Also service the control channel during partial Deskflow handshakes. */
+    clipboard_poll(uhid_app);
+    return !otg_bridge_check(&uhid_app->bridge);
+}
+#endif
 
 static int display_poll(app_state *s)
 {
@@ -767,9 +800,7 @@ int main(int argc, char **argv)
             opts.transport = argv[++i];
         } else if (strcmp(a, "--adapter") == 0 && i + 1 < argc) {
             opts.adapter = argv[++i];
-#ifdef OTG_HAVE_BLE_WIN
             opts.adapter_explicit = true;
-#endif
         } else if (strcmp(a, "--ble-isolate") == 0) {
             opts.ble_isolate = 1;
         } else if (strcmp(a, "--ble-restore") == 0) {
@@ -927,10 +958,23 @@ int main(int argc, char **argv)
         opts.unlock_pin = unlock_pin_file_data;
         opts.unlock_adb_gate = 1;
     }
-    /* ADB is an auxiliary dependency, not part of the HID transport.  Keep
-     * this single predicate in sync with the options that actually invoke
-     * ADB, so feature-only sessions get the same validation and lifecycle. */
-    const int adb_features = opts.audio || opts.clipboard || opts.unlock_adb_gate;
+    const bool uhid = strcmp(opts.transport, "uhid") == 0;
+    const int adb_features = uhid || opts.audio || opts.clipboard || opts.unlock_adb_gate;
+#ifndef OTG_HAVE_UHID
+    if (uhid) {
+        fprintf(stderr, "ERROR: UHID support was not built; configure with -DBUILD_UHID=ON\n");
+        return 2;
+    }
+#endif
+    if (uhid && (!opts.adb_serial || !*opts.adb_serial)) {
+        fprintf(stderr, "ERROR: UHID requires an explicit --adb-serial target\n");
+        return 2;
+    }
+    if (uhid && (opts.serial || opts.adapter_explicit || opts.ble_peer || opts.ble_service || opts.ble_session ||
+                 opts.ble_isolate || opts.ble_restore || opts.ble_status || opts.ble_stop_service)) {
+        fprintf(stderr, "ERROR: UHID requires --adb-serial; USB/BLE options cannot be combined with it\n");
+        return 2;
+    }
     if (opts.unlock_pin && *opts.unlock_pin &&
         (strlen(opts.unlock_pin) < 4 || strlen(opts.unlock_pin) > 32)) {
         fprintf(stderr, "ERROR: OTG_UNLOCK_PIN must contain 4..32 digits\n");
@@ -952,8 +996,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR: ADB features require --adb-serial or --serial\n");
         return 2;
     }
-    if (opts.auto_rotate && !(opts.audio || opts.clipboard)) {
-        fprintf(stderr, "ERROR: --auto-rotate requires --audio or --clipboard\n");
+    if (opts.auto_rotate && !(uhid || opts.audio || opts.clipboard)) {
+        fprintf(stderr, "ERROR: --auto-rotate requires UHID, --audio or --clipboard\n");
         return 2;
     }
     if (!opts.tls.enabled && (opts.tls.certificate || opts.tls.fingerprint || opts.tls.fingerprint_file)) {
@@ -973,7 +1017,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR: TLS is only available for a Deskflow bridge connection\n");
         return 2;
     }
-    if ((opts.audio || opts.clipboard) && (!opts.scrcpy_server || !*opts.scrcpy_server ||
+    if ((uhid || opts.audio || opts.clipboard) && (!opts.scrcpy_server || !*opts.scrcpy_server ||
                                          !opts.scrcpy_version || !*opts.scrcpy_version)) {
         fprintf(stderr, "ERROR: ADB features require --scrcpy-server and --scrcpy-version\n");
         return 2;
@@ -1017,8 +1061,8 @@ int main(int argc, char **argv)
      * pipes must not kill the root process before it restores adapter modes. */
     if(g_gui)signal(SIGPIPE,SIG_IGN);
 #endif
-    if(strcmp(opts.transport,"usb") && strcmp(opts.transport,"ble")) {
-        fprintf(stderr,"ERROR: invalid transport (use usb or ble)\n");return 2;
+    if(strcmp(opts.transport,"usb") && strcmp(opts.transport,"ble") && !uhid) {
+        fprintf(stderr,"ERROR: invalid transport (use usb, uhid or ble)\n");return 2;
     }
     if(!strcmp(opts.transport,"ble") || opts.ble_service || opts.ble_session || opts.ble_status || opts.ble_stop_service || opts.ble_restore) {
         char *end=NULL;
@@ -1121,6 +1165,7 @@ int main(int argc, char **argv)
     app_state state;
     memset(&state, 0, sizeof(state));
     state.serial = opts.serial;
+    state.uhid = uhid;
 
     /* 1. Open the selected HID transport and register keyboard + pointer. */
     if (strcmp(opts.transport, "usb") == 0) {
@@ -1134,7 +1179,32 @@ int main(int argc, char **argv)
         otg_bridge_set_side_swipe_distance(&state.bridge, (uint8_t)opts.side_swipe_distance_percent);
         fprintf(stderr, "INFO:  AOA HID keyboard + %s pointer ready (screen %dx%d)\n",
                 opts.mouse_mode == OTG_MOUSE_ABSOLUTE ? "absolute" : "relative", opts.width, opts.height);
-    } else if (strcmp(opts.transport, "ble") == 0) {
+    }
+#ifdef OTG_HAVE_UHID
+    else if (uhid) {
+        if (scrcpy_session_start(&state.scrcpy, opts.adb_path, opts.adb_serial,
+                opts.scrcpy_server, opts.scrcpy_version, opts.audio != 0, opts.clipboard != 0,
+                true, app_stop_requested))
+            return g_stop ? 0 : 1;
+        otg_uhid_init(&state.uhid_transport, &state.scrcpy.clipboard);
+        if (otg_bridge_open_transport(&state.bridge, otg_uhid_ops(), &state.uhid_transport,
+                                     opts.width, opts.height, opts.mouse_mode)) {
+            scrcpy_session_stop(&state.scrcpy);
+            return 1;
+        }
+        otg_bridge_set_middle_button_action(&state.bridge, opts.middle_button_action);
+        otg_bridge_set_right_button_action(&state.bridge, opts.right_button_action);
+        otg_bridge_set_side_button_action(&state.bridge, 4, opts.side_button_1_action);
+        otg_bridge_set_side_button_action(&state.bridge, 5, opts.side_button_2_action);
+        otg_bridge_set_side_swipe_distance(&state.bridge, (uint8_t)opts.side_swipe_distance_percent);
+        fprintf(stderr, "INFO: UHID keyboard + %s pointer descriptors sent through ADB (screen %dx%d)\n",
+                opts.mouse_mode == OTG_MOUSE_ABSOLUTE ? "absolute" : "relative", opts.width, opts.height);
+        gui_event("uhid-ready");
+        uhid_app = &state;
+        df_client_set_stop_check(uhid_stop_check);
+    }
+#endif
+    else if (strcmp(opts.transport, "ble") == 0) {
 #ifdef OTG_HAVE_BLE
         state.resident_session=opts.ble_session;
         state.transport_owner=opts.ble_session ? (void *)otg_ble_session_open(opts.adapter) :
@@ -1181,12 +1251,14 @@ int main(int argc, char **argv)
     if (!otg_bridge_set_sensitivity(&state.bridge, opts.sensitivity_multiplier)) {
         fprintf(stderr, "ERROR: invalid mouse sensitivity\n");
         otg_bridge_close(&state.bridge);
+        scrcpy_session_stop(&state.scrcpy);
         destroy_transport_owner(&state);
         return 2;
     }
     if (!otg_bridge_set_unlock_pin(&state.bridge, opts.unlock_pin)) {
         fprintf(stderr, "ERROR: invalid OTG_UNLOCK_PIN\n");
         otg_bridge_close(&state.bridge);
+        scrcpy_session_stop(&state.scrcpy);
         destroy_transport_owner(&state);
         return 2;
     }
@@ -1199,8 +1271,8 @@ int main(int argc, char **argv)
         fflush(stdout);
     }
     if (g_gui && gui_stop_check() && g_stop) {
-          scrcpy_session_stop(&state.scrcpy);
-         otg_bridge_close(&state.bridge);
+        otg_bridge_close(&state.bridge);
+        scrcpy_session_stop(&state.scrcpy);
         destroy_transport_owner(&state);
         return 0;
     }
@@ -1209,7 +1281,7 @@ int main(int argc, char **argv)
     const bool side_button_actions =
         opts.side_button_1_action != OTG_SIDE_BUTTON_NORMAL ||
         opts.side_button_2_action != OTG_SIDE_BUTTON_NORMAL;
-    const int base_tick_interval = state.transport_owner ? 1 :
+    const int base_tick_interval = state.transport_owner || uhid ? 1 :
                                    opts.clipboard ? 5 : opts.audio ? 50 :
                                    opts.unlock_adb_gate ? 5 : 0;
     df_client_callbacks cbs = {
@@ -1269,9 +1341,9 @@ int main(int argc, char **argv)
 #endif
         state.clipboard_error = false;
         state.audio_ready_reported = false;
-        if ((opts.audio || opts.clipboard) && scrcpy_session_start(&state.scrcpy, opts.adb_path,
+        if (!uhid && (opts.audio || opts.clipboard) && scrcpy_session_start(&state.scrcpy, opts.adb_path,
                 opts.adb_serial ? opts.adb_serial : opts.serial, opts.scrcpy_server, opts.scrcpy_version,
-                opts.audio != 0, opts.clipboard != 0)) {
+                opts.audio != 0, opts.clipboard != 0, false, app_stop_requested)) {
             if (!opts.clipboard) { ret = 1; break; } /* Preserve audio-only startup semantics. */
             clipboard_failed(&state);
         }
@@ -1305,6 +1377,7 @@ int main(int argc, char **argv)
         } else ret=1;
         otg_display_monitor_destroy(state.display); state.display = NULL;
         state.display_pending = false;
+        if (uhid) otg_bridge_close(&state.bridge);
         scrcpy_session_stop(&state.scrcpy);
         if(!state.transport_owner || g_stop) break;
 #ifdef OTG_HAVE_BLE_WIN
@@ -1330,8 +1403,8 @@ int main(int argc, char **argv)
         }
 #endif
     } while(!g_stop);
-    scrcpy_session_stop(&state.scrcpy);
     otg_bridge_close(&state.bridge);
+    scrcpy_session_stop(&state.scrcpy);
     destroy_transport_owner(&state);
     gui_event("disconnected");
     (void)g_stop;

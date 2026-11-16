@@ -18,7 +18,9 @@ void otg_clipboard_put32(uint8_t *p, uint32_t value);
 int otg_clipboard_decode(const uint8_t *data, size_t size, const char **text, size_t *length);
 uint8_t *otg_clipboard_encode(const char *text, size_t size, size_t *length);
 
-/* Main-thread-only, nonblocking scrcpy control channel. Does not own fd. */
+struct otg_control_packet;
+/* Main-thread-only, nonblocking shared scrcpy control channel. Does not own fd.
+ * Clipboard and UHID use a single writer; partial messages never interleave. */
 struct otg_clipboard_channel {
     intptr_t fd;
     bool ready;
@@ -26,12 +28,24 @@ struct otg_clipboard_channel {
     size_t rx_size, tx_size, tx_pos, queued_size;
     size_t last_set_size;
     uint64_t sequence, pending, deadline_ms;
+    struct otg_control_packet *control_head, *control_tail;
+    unsigned control_count;
+    bool tx_control, clipboard_disabled, shared_uhid;
+    uint64_t tx_deadline_ms;
+    uint64_t write_order, queued_order;
 };
 int otg_clipboard_channel_open(struct otg_clipboard_channel *c, intptr_t fd);
 void otg_clipboard_channel_close(struct otg_clipboard_channel *c);
 int otg_clipboard_channel_set(struct otg_clipboard_channel *c, const char *text, size_t size);
 bool otg_clipboard_channel_busy(const struct otg_clipboard_channel *c);
-/* Returns -1 on EOF/protocol error/ACK timeout. Never waits for socket input. */
+/* Disable only clipboard policy, keeping a shared UHID stream framed/alive. */
+void otg_clipboard_channel_disable(struct otg_clipboard_channel *c);
+/* Copies one complete control message into a bounded FIFO. No socket reads. */
+int otg_control_channel_send(struct otg_clipboard_channel *c, const uint8_t *data, size_t size);
+int otg_control_channel_flush(struct otg_clipboard_channel *c);
+bool otg_control_channel_pending(const struct otg_clipboard_channel *c);
+/* Returns -1 on EOF/protocol/write error, +1 on a shared clipboard ACK timeout.
+ * Never waits for socket input. UHID output reports are framed and drained. */
 int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
     void (*on_text)(void *, const char *, size_t), void *ud);
 #endif

@@ -9,9 +9,14 @@ USB HID 数据通道**不需要 adb、不需要开启 USB 调试**（和 `scrcpy
 但 Windows 仍需将手机 USB 接口绑定到 libusb 可用的驱动。Windows 的识别限制和排查
 步骤见 [Windows USB OTG 设备识别](docs/WINDOWS_USB.md)。
 
+也可以选择 **ADB＋UHID**：通过已授权的 USB 或无线调试连接，Windows 使用正常 ADB 驱动。
+它保留相同的绝对坐标指针和 HID 键盘，与可选音频、剪贴板共用一个 scrcpy 会话。
+详见 [ADB＋UHID](docs/UHID.md)。
+
 提供命令行和可选的 **Qt 桌面 GUI**。GUI 可按设备选择是否启用 ADB 增强功能，用于自动识别
-屏幕宽高和方向，配置并启动已安装的 Deskflow，再一键连接手机。只有启用的 ADB 增强功能
-需要 USB 调试；手动填写设备信息、已记住手机的 USB 自动连接均不需要。详见[桌面 GUI](#桌面-gui)。
+屏幕宽高和方向，配置并启动已安装的 Deskflow，再一键连接手机。UHID 必须使用 ADB；
+AOA/BLE 仅在启用增强功能时需要 ADB。手动填写 AOA 设备信息、已记住 AOA 手机的 USB 自动连接
+均不需要 USB 调试。详见[桌面 GUI](#桌面-gui)。
 
 ```
 ┌─────────────────────────────── 主机电脑 ───────────────────────────────┐
@@ -58,7 +63,7 @@ Windows GUI 的「无线 ADB 配置助手」可以发现 mDNS 配对/连接服�
 
 Linux 另提供 **Bluetooth LE HID** 传输，可不接 USB 控制手机。CLI 与 GUI 使用同一
 `deskflow-otg` 程序，常驻 GATT 服务和桥接会话是不同进程，不是额外的可执行程序。
-USB 仍为默认方式；macOS 暂不提供蓝牙后端。Windows 提供需显式编译开启的
+CLI 默认仍为 USB；Windows GUI 新配置优先使用 ADB＋UHID。macOS 暂不提供蓝牙后端。Windows 提供需显式编译开启的
 [实验性 BLE 后端](docs/WINDOWS_BLE.md)，可由 CLI 或 GUI 使用。
 
 Windows 原生 BLE HID 的独立[最小测试原型](experiments/windows-ble-hid/README.md)
@@ -79,7 +84,7 @@ sudo apt install libusb-1.0-0-dev libssl-dev libglib2.0-dev bluez
 ```
 
 Linux 默认编译 BLE 后端。仅需原有 USB CLI 时可用
-`cmake -S . -B build -DBUILD_BLE=OFF`，不要求 GLib/GIO 或 pkg-config；非 Linux 默认不编译 BLE。
+`cmake -S . -B build -DBUILD_BLE=OFF -DBUILD_UHID=OFF`，不要求 GLib/GIO 或 pkg-config；非 Linux 默认不编译 BLE。
 
 ```bash
 # Debian / Ubuntu
@@ -129,6 +134,9 @@ Linux 安装包会纳入构建所用 Qt 自带的 GTK 与桌面门户主题插�
 双语覆盖、代码引用、占位符和编译后实际查找结果。
 
 ### 使用流程
+
+以下流程描述 **USB（AOA HID）**。Windows 推荐方式见
+[ADB＋UHID 连接](#adbuhid-连接)，其设备发现在各平台均通过 ADB。
 
 1. 启动 `bin/deskflow-otg-gui`（Windows 为 `.exe`）；macOS 打开 `deskflow-otg-gui.app`。
 2. 在设备页按设备选择是否「启用 ADB 增强功能」。没有 USB 调试的手机保持关闭；此时设备发现
@@ -225,10 +233,27 @@ GUI 左侧管理设备列表，右侧分为「设备配置」「屏幕布局」�
 6. 日志可按设备或共享服务筛选。关闭窗口保留全部连接；托盘「全部断开」结束所有会话；
    退出先逐台释放输入，再停止自建 Deskflow。某个桥接失败不会停止其他设备。
 
-目前支持多台 USB，或 USB 与**一台 BLE 手机**混合使用；不支持同一适配器多 BLE 手机并发，
+目前支持多台 AOA/UHID 手机，可与**一台 BLE 手机**混合使用；不支持同一适配器多 BLE 手机并发，
 Windows 空闲 BLE provider 也保留其目标占用。Linux 常驻服务仍遵守原有固定身份和生命周期约束。
 多设备是多台同时保持连接、通过 Deskflow 切屏控制，**不是向多台广播相同键鼠操作**。
 多进程、布局和窗口回归使用模拟设备验证，不等于多台手机真机验收。
+
+### ADB＋UHID 连接
+
+支持 Linux、Windows、macOS，默认编译（`BUILD_UHID=ON`）。Windows GUI 新配置优先使用此方式，
+已保存的 AOA/BLE 配置继续使用原连接方式。
+
+1. 选择 **ADB＋UHID**，在手机开启 USB 调试并授权本电脑。
+2. 点击「刷新设备」选择在线 ADB 设备，或显式填写 USB ADB 序列号、无线 `host:port`。
+   Windows 此时使用 ADB 发现设备，不调用 `usb-scan`，无需替换为供 AOA 使用的 WinUSB 驱动。
+3. 读取或手动填写尺寸，配置 Deskflow 后点击「连接」。此模式必须启用 ADB；音频、文本剪贴板、
+   跟随旋转和伴侣操作使用同一选定目标，音频/剪贴板与输入共用 server/隧道。
+4. 断开或退出会释放输入并销毁本会话的 UHID 设备。ADB 断线后手动重新连接；
+   libusb 插入自动连接属于 AOA 模式，在此隐藏。
+
+绝对坐标指针描述符保持一致，不是 scrcpy 自带的相对 `--mouse=uhid` 模式。
+手机系统须允许 shell 打开 `/dev/uhid`；无需 root、投屏或安装伴侣应用。
+要求、CLI 用法、生命周期和验证范围见 [UHID 说明](docs/UHID.md)。
 
 ### Windows 蓝牙连接（实验性）
 
@@ -338,8 +363,8 @@ Linux 还需系统 libusb、桌面图形库，Wayland 桌面可通过 XWayland �
 
 ### 可复现的功能配置
 
-默认配置是手动/精简 CLI 配置：`BUILD_GUI`、`BUILD_AUDIO` 和
-`BUILD_CLIPBOARD` 默认关闭，Linux 的 BLE 则沿用 `BUILD_BLE` 的平台默认值。
+默认配置是手动 CLI 配置：`BUILD_GUI`、`BUILD_AUDIO` 和
+`BUILD_CLIPBOARD` 默认关闭，`BUILD_UHID` 默认开启，Linux 的 BLE 则沿用 `BUILD_BLE` 的平台默认值。
 这些功能都是编译期功能，已经生成的可执行文件不能再补功能。每种配置必须使用
 本地开发统一使用根目录 `build/`，不要不断创建 `build-*` 变体；CI 或并行的跨平台构建
 可以使用独立目录。
@@ -347,17 +372,17 @@ Linux 还需系统 libusb、桌面图形库，Wayland 桌面可通过 XWayland �
 要构建当前平台支持的全部功能，使用 `OTG_PROFILE=full`：
 
 ```bash
-# Linux：GUI + 音频 + 剪贴板 + Linux BLE
+# Linux：GUI + UHID + 音频 + 剪贴板 + Linux BLE
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# macOS：GUI + 剪贴板（不支持音频和 Linux BLE）
+# macOS：GUI + UHID + 剪贴板（不支持音频和 Linux BLE）
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# Windows：GUI + 音频 + 剪贴板 + 实验性 Windows BLE
+# Windows：GUI + UHID + 音频 + 剪贴板 + 实验性 Windows BLE
 cmake -S . -B build -DOTG_PROFILE=full
 cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
@@ -365,13 +390,13 @@ ctest --test-dir build -C Release --output-on-failure
 
 `build/BUILD_FEATURES.json` 以及安装目录中的副本会记录最终功能集合。
 如果确实只需要精简的 USB CLI，也在同一个 `build/` 目录重新配置并显式关闭可选功能，例如
-`-DBUILD_BLE=OFF -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF -DBUILD_CLIPBOARD=OFF`。
+`-DOTG_PROFILE=manual -DBUILD_BLE=OFF -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF`。
 
 ```bash
 git clone https://your-host/deskflow-otg.git
 cd deskflow-otg
-cmake -S . -B build -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF \
-    -DBUILD_CLIPBOARD=OFF -DBUILD_BLE=OFF -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DOTG_PROFILE=manual -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF \
+    -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF -DBUILD_BLE=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 # 产物: build/deskflow-otg
@@ -721,7 +746,10 @@ GUI 的服务器地址、端口与实际 Deskflow 监听一致。
   -p, --port PORT       Deskflow server 端口 (默认 24800)
   -n, --name NAME       上报给 server 的屏幕名 (默认 android)
   -s, --serial SERIAL   安卓设备的 USB 序列号 (不指定则自动检测)
-      --transport MODE usb（默认）或 ble（Linux）
+      --transport MODE usb（默认）、uhid（ADB）或 ble
+      --adb-serial ID   显式 ADB 目标（UHID 必填）
+      --scrcpy-server PATH  UHID/音频/剪贴板使用的匹配 server
+      --scrcpy-version VER  匹配的 scrcpy server 版本
       --adapter NAME   蓝牙适配器（默认 hci0）
       --ble-isolate    sudo 原生仅 BLE 启动，退出恢复，无需 Python
       --ble-restore    根据原生快照恢复适配器，不启动桥接

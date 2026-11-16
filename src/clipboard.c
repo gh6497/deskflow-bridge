@@ -14,9 +14,19 @@
 #include <windows.h>
 #else
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <time.h>
 #endif
+
+struct otg_control_packet {
+    struct otg_control_packet *next;
+    uint8_t *data;
+    size_t size;
+    uint64_t deadline_ms;
+    uint64_t order;
+};
 
 uint32_t otg_clipboard_be32(const uint8_t *p)
 {
@@ -106,21 +116,45 @@ int otg_clipboard_channel_open(struct otg_clipboard_channel *c, intptr_t fd)
 #endif
 #endif
     c->rx = malloc((1U << 18) + 5U);
+    /* Small HID reports must not wait for TCP delayed ACK/Nagle batching. */
+    int nodelay = 1;
+#ifdef _WIN32
+    (void)setsockopt((SOCKET)fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&nodelay, sizeof(nodelay));
+#else
+    (void)setsockopt((int)fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+#endif
     c->ready = c->rx != NULL;
     return c->ready ? 0 : -1;
 }
 void otg_clipboard_channel_close(struct otg_clipboard_channel *c)
 {
+    while (c->control_head) {
+        struct otg_control_packet *packet = c->control_head;
+        c->control_head = packet->next;
+        free(packet->data);
+        free(packet);
+    }
     free(c->rx); free(c->tx); free(c->queued); free(c->last_set);
     memset(c, 0, sizeof(*c)); c->fd = -1;
 }
 bool otg_clipboard_channel_busy(const struct otg_clipboard_channel *c)
 {
-    return c->ready && (c->pending || c->queued || c->tx);
+    return c->ready && !c->clipboard_disabled &&
+           (c->pending || c->queued || (c->tx && !c->tx_control));
+}
+void otg_clipboard_channel_disable(struct otg_clipboard_channel *c)
+{
+    c->clipboard_disabled = true;
+    free(c->queued); c->queued = NULL; c->queued_size = 0;
+    c->pending = 0;
+    /* Finish an already partially written message before any HID report. */
+    if (c->tx && !c->tx_control && !c->tx_pos) {
+        free(c->tx); c->tx = NULL;
+    }
 }
 int otg_clipboard_channel_set(struct otg_clipboard_channel *c, const char *text, size_t size)
 {
-    if (!c->ready || !otg_clipboard_valid_text(text, size)) return -1;
+    if (!c->ready || c->clipboard_disabled || !otg_clipboard_valid_text(text, size)) return -1;
     uint8_t *out = malloc(size + 14);
     if (!out) return -1;
     out[0] = 9; /* SET_CLIPBOARD, sequence filled when made in-flight */
@@ -128,6 +162,7 @@ int otg_clipboard_channel_set(struct otg_clipboard_channel *c, const char *text,
     otg_clipboard_put32(out + 10, (uint32_t)size);
     if (size) memcpy(out + 14, text, size);
     free(c->queued); c->queued = out; c->queued_size = size + 14;
+    c->queued_order = ++c->write_order;
     return 0;
 }
 static bool would_block(void)
@@ -138,25 +173,64 @@ static bool would_block(void)
     return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
 #endif
 }
-int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
-    void (*on_text)(void *, const char *, size_t), void *ud)
+bool otg_control_channel_pending(const struct otg_clipboard_channel *c)
+{
+    return c->ready && (c->tx || c->control_head);
+}
+
+int otg_control_channel_send(struct otg_clipboard_channel *c, const uint8_t *data, size_t size)
 {
     if (!c->ready) return -1;
-    if (c->pending && now_ms() >= c->deadline_ms) goto fail;
-    if (!c->pending && c->queued) {
-        c->tx = c->queued; c->tx_size = c->queued_size; c->tx_pos = 0;
-        c->queued = NULL; c->queued_size = 0;
-        free(c->last_set);
-        c->last_set_size = c->tx_size - 14;
-        c->last_set = malloc(c->last_set_size ? c->last_set_size : 1);
-        if (!c->last_set) goto fail;
-        if (c->last_set_size) memcpy(c->last_set, c->tx + 14, c->last_set_size);
-        c->pending = ++c->sequence;
-        otg_clipboard_put32(c->tx + 1, (uint32_t)(c->pending >> 32));
-        otg_clipboard_put32(c->tx + 5, (uint32_t)c->pending);
-        c->deadline_ms = now_ms() + 2000;
-    }
-    if (c->tx) {
+    if (!data || !size || size > 8192 || c->control_count >= 64) goto fail;
+    struct otg_control_packet *packet = calloc(1, sizeof(*packet));
+    if (!packet) goto fail;
+    packet->data = malloc(size);
+    if (!packet->data) { free(packet); goto fail; }
+    memcpy(packet->data, data, size);
+    packet->size = size;
+    packet->deadline_ms = now_ms() + 2000;
+    packet->order = ++c->write_order;
+    if (c->control_tail) c->control_tail->next = packet;
+    else c->control_head = packet;
+    c->control_tail = packet;
+    ++c->control_count;
+    return otg_control_channel_flush(c);
+fail:
+    otg_clipboard_channel_close(c);
+    return -1;
+}
+
+int otg_control_channel_flush(struct otg_clipboard_channel *c)
+{
+    if (!c->ready) return -1;
+    for (unsigned attempt = 0; attempt < 16; ++attempt) {
+        if (!c->tx && !c->pending && c->queued &&
+            (!c->control_head || c->queued_order < c->control_head->order)) {
+            c->tx = c->queued; c->tx_size = c->queued_size; c->tx_pos = 0;
+            c->tx_control = false;
+            c->tx_deadline_ms = now_ms() + 2000;
+            c->queued = NULL; c->queued_size = 0;
+            free(c->last_set);
+            c->last_set_size = c->tx_size - 14;
+            c->last_set = malloc(c->last_set_size ? c->last_set_size : 1);
+            if (!c->last_set) goto fail;
+            if (c->last_set_size) memcpy(c->last_set, c->tx + 14, c->last_set_size);
+            c->pending = ++c->sequence;
+            otg_clipboard_put32(c->tx + 1, (uint32_t)(c->pending >> 32));
+            otg_clipboard_put32(c->tx + 5, (uint32_t)c->pending);
+            c->deadline_ms = now_ms() + 2000;
+        }
+        if (!c->tx && c->control_head) {
+            struct otg_control_packet *packet = c->control_head;
+            c->control_head = packet->next;
+            if (!c->control_head) c->control_tail = NULL;
+            c->tx = packet->data; c->tx_size = packet->size; c->tx_pos = 0;
+            c->tx_control = true;
+            c->tx_deadline_ms = packet->deadline_ms;
+            free(packet);
+        }
+        if (!c->tx) break;
+        if (now_ms() >= c->tx_deadline_ms) goto fail;
         size_t remaining = c->tx_size - c->tx_pos;
         int flags = 0;
 #ifdef MSG_NOSIGNAL
@@ -167,13 +241,33 @@ int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
 #else
         int n = (int)send((int)c->fd, c->tx + c->tx_pos, remaining, flags);
 #endif
-        if (n < 0 && !would_block()) goto fail;
+        if (n < 0) { if (would_block()) break; goto fail; }
         if (n == 0) goto fail;
         if (n > 0) {
             c->tx_pos += (size_t)n;
-            if (c->tx_pos == c->tx_size) { free(c->tx); c->tx = NULL; }
+            if (c->tx_pos == c->tx_size) {
+                if (c->tx_control) --c->control_count;
+                free(c->tx); c->tx = NULL;
+            }
         }
     }
+    return 0;
+fail:
+    otg_clipboard_channel_close(c);
+    return -1;
+}
+
+int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
+    void (*on_text)(void *, const char *, size_t), void *ud)
+{
+    if (!c->ready) return -1;
+    int result = 0;
+    if (c->pending && now_ms() >= c->deadline_ms) {
+        if (!c->shared_uhid) goto fail;
+        otg_clipboard_channel_disable(c);
+        result = 1;
+    }
+    if (otg_control_channel_flush(c)) return -1;
     /* Bound work per tick so a noisy device cannot starve HID/Deskflow. */
     for (unsigned attempt = 0; attempt < 16; ++attempt) {
         size_t capacity = (1U << 18) + 5U - c->rx_size;
@@ -202,7 +296,7 @@ int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
                                 (!size || !memcmp(c->last_set, c->rx + 5, size));
                     if (!echo) {
                         free(c->last_set); c->last_set = NULL;
-                        if (on_text) on_text(ud, (const char *)c->rx + 5, size);
+                        if (on_text && !c->clipboard_disabled) on_text(ud, (const char *)c->rx + 5, size);
                         /* A failed Deskflow send may disable/close this channel
                          * from the callback; do not touch its freed rx buffer. */
                         if (!c->ready) return -1;
@@ -213,13 +307,21 @@ int otg_clipboard_channel_poll(struct otg_clipboard_channel *c,
                 if (c->rx_size < length) break;
                 uint64_t seq = (uint64_t)otg_clipboard_be32(c->rx + 1) << 32 |
                                otg_clipboard_be32(c->rx + 5);
-                if (seq == c->pending && !c->tx) c->pending = 0;
-            } else goto fail; /* No UHID devices are created by this client. */
+                if (seq == c->pending && (!c->tx || c->tx_control)) c->pending = 0;
+            } else if (c->rx[0] == 2 && c->shared_uhid) {
+                /* UHID_OUTPUT: type, id BE16, size BE16, report. Keyboard LED
+                 * output does not alter Deskflow's authoritative key state. */
+                if (c->rx_size < 5) break;
+                size_t size = (size_t)c->rx[3] << 8 | c->rx[4];
+                if (size > 4096) goto fail;
+                length = 5 + size;
+                if (c->rx_size < length) break;
+            } else goto fail;
             c->rx_size -= length;
             memmove(c->rx, c->rx + length, c->rx_size);
         }
     }
-    return 0;
+    return result;
 fail:
     otg_clipboard_channel_close(c);
     return -1;

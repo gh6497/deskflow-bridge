@@ -7,7 +7,11 @@ A bridge connecting [Deskflow](https://github.com/deskflow/deskflow) (keyboard a
 Run a Deskflow **server** on the host computer and then run this program. With the phone connected to the host by USB, moving the mouse onto the "phone" screen lets you control the Android phone directly with the host keyboard and mouse.
 The USB HID data path **does not require adb or USB debugging** (similar to `scrcpy --otg`). On Windows, however, the phone's USB interface must still be bound to a driver usable by libusb. See [Windows USB OTG device recognition](docs/WINDOWS_USB.md) for Windows limitations and troubleshooting.
 
-Both a command-line interface and an optional **Qt desktop GUI** are provided. The GUI can optionally use per-device ADB enhancements to detect dimensions and orientation, configure and start an installed Deskflow server, and connect to the phone with one click. USB debugging is only needed for the selected ADB enhancements; manually entered device information and automatic USB connection for remembered phones do not require it. See [Desktop GUI](#desktop-gui) for details.
+Alternatively, **ADB + UHID** uses authorized USB or wireless debugging with normal ADB drivers,
+including on Windows. It preserves the same absolute pointer and HID keyboard and shares one
+scrcpy session with optional audio/clipboard. See [ADB + UHID](docs/UHID.md).
+
+Both a command-line interface and an optional **Qt desktop GUI** are provided. The GUI can use per-device ADB features to detect dimensions and orientation, configure and start an installed Deskflow server, and connect to the phone with one click. ADB is required for UHID; with AOA/BLE it is only needed for selected enhancements. Manually entered AOA device information and automatic USB connection for remembered AOA phones do not require debugging. See [Desktop GUI](#desktop-gui) for details.
 
 ```
 ┌─────────────────────────────── Host computer ───────────────────────────┐
@@ -36,7 +40,7 @@ Optional [text clipboard sharing](docs/CLIPBOARD.md) follows Deskflow's ownershi
 The audio ADB transport can be selected independently with `--adb-serial`, for example `192.168.1.20:5555`, while `--serial` continues to identify only the USB AOA HID device. This is useful on Windows when the ADB USB driver and WinUSB cannot be used at the same time. BLE connections require an explicit wireless ADB target for the same phone.
 On Windows, the GUI's **Wireless ADB setup** wizard discovers mDNS pairing/connection services, runs `adb pair` and `adb connect`, and saves the selected `host:port` target. Pairing still requires the one-time code shown by Android; the companion app cannot read or bypass that code.
 
-Linux also provides a **Bluetooth LE HID** transport, allowing the phone to be controlled without USB. The CLI and GUI use the same `deskflow-otg` executable; the persistent GATT service and bridge session are separate processes, not additional executables. USB remains the default transport. macOS currently has no Bluetooth backend. Windows provides an [experimental BLE backend](docs/WINDOWS_BLE.md) that must be explicitly enabled at build time and can be used from either the CLI or GUI.
+Linux also provides a **Bluetooth LE HID** transport, allowing the phone to be controlled without USB. The CLI and GUI use the same `deskflow-otg` executable; the persistent GATT service and bridge session are separate processes, not additional executables. USB remains the default CLI transport; fresh Windows GUI configurations prefer ADB + UHID. macOS currently has no Bluetooth backend. Windows provides an [experimental BLE backend](docs/WINDOWS_BLE.md) that must be explicitly enabled at build time and can be used from either the CLI or GUI.
 
 The standalone [minimal test prototype](experiments/windows-ble-hid/README.md) for native Windows BLE HID is retained for step-by-step real-device validation. Manual keyboard, hover, click, drag, and wheel tests have passed on a Nova 9, but this does not constitute acceptance of continuous Deskflow input, reconnection, or compatibility with all phones.
 
@@ -53,7 +57,7 @@ The Linux BLE HID backend additionally requires BlueZ and GLib/GIO development f
 sudo apt install libusb-1.0-0-dev libssl-dev libglib2.0-dev bluez
 ```
 
-The BLE backend is enabled by default on Linux. To build only the original USB CLI, use `cmake -S . -B build -DBUILD_BLE=OFF`; GLib/GIO and pkg-config are then not required. BLE is disabled by default on non-Linux systems.
+The BLE backend is enabled by default on Linux. To build only the original USB CLI, use `cmake -S . -B build -DBUILD_BLE=OFF -DBUILD_UHID=OFF`; GLib/GIO and pkg-config are then not required. BLE is disabled by default on non-Linux systems.
 
 ```bash
 # Debian / Ubuntu
@@ -88,6 +92,9 @@ Chinese and English are maintained in `gui/translations/deskflow_otg_zh_CN.xml` 
 The files still use the Qt TS XML format, but have an `.xml` suffix so that IDEs do not mistake them for TypeScript. When adding a string, add the same `<message id="otg.…">` to both XML files, use the same English text in `<source>`, and fill in the Chinese and English `<translation>` elements respectively. Changing wording does not require changing the ID. Maintain the catalogs directly or with Qt Linguist; do not regenerate them from the code with `lupdate` (the code contains no source strings). The `gui_logic` tests check ID uniqueness, bilingual coverage, code references, placeholders, and the actual lookup results after compilation.
 
 ### Usage flow
+
+The steps below describe **USB (AOA HID)**. For the recommended Windows path, see
+[ADB + UHID connection](#adb--uhid-connection); its device discovery uses ADB on every platform.
 
 1. Start `bin/deskflow-otg-gui` (`.exe` on Windows); on macOS, open `deskflow-otg-gui.app`.
 2. The device page has a per-device **ADB enhancements** switch. Leave it off for phones without USB debugging; USB discovery uses `usb-scan`, dimensions are entered manually, and HID remains fully available. When it is on, Linux/macOS may use USB ADB discovery and the device's ADB target for screen information and optional features. The ADB executable path remains global.
@@ -141,7 +148,25 @@ The GUI manages the device list on the left and provides three tabs on the right
 5. Disconnect all devices and wait for cleanup before adding or removing a device or changing a screen name, layout, or shared service. Before removing a device referenced by another screen, update those neighboring-screen settings first.
 6. Logs can be filtered by device or shared service. Closing the window keeps all connections; "Disconnect all" in the tray ends every session. On exit, input is released from each device before the self-started Deskflow server is stopped. A failed bridge does not stop other devices.
 
-Multiple USB phones, or USB plus **one BLE phone**, are supported. Multiple concurrent BLE phones on one adapter are not supported, and an idle Windows BLE provider continues to reserve its target. The Linux persistent service still follows the existing fixed-identity and lifecycle rules. Multiple devices means multiple simultaneous connections controlled by Deskflow screen switching; it is **not broadcasting the same keyboard and mouse operations to several phones**. Multi-process, layout, and window regression tests use simulated devices and do not constitute real-device acceptance with multiple phones.
+Multiple AOA/UHID phones, optionally plus **one BLE phone**, are supported. Multiple concurrent BLE phones on one adapter are not supported, and an idle Windows BLE provider continues to reserve its target. The Linux persistent service still follows the existing fixed-identity and lifecycle rules. Multiple devices means multiple simultaneous connections controlled by Deskflow screen switching; it is **not broadcasting the same keyboard and mouse operations to several phones**. Multi-process, layout, and window regression tests use simulated devices and do not constitute real-device acceptance with multiple phones.
+
+### ADB + UHID connection
+
+Supported on Linux, Windows and macOS, built by default (`BUILD_UHID=ON`). On a fresh Windows GUI
+profile this is the preferred connection type; saved AOA/BLE profiles retain their selection.
+
+1. Select **ADB + UHID**, enable USB debugging on the phone and authorize the computer.
+2. Click **Refresh devices** and select an online ADB device, or enter an explicit USB ADB serial
+   or wireless `host:port`. Windows uses ADB discovery here, not `usb-scan` or a WinUSB replacement.
+3. Read the dimensions or enter them manually, configure Deskflow and click **Connect**.
+   ADB is required in this mode. Audio, text clipboard, rotation tracking and companion actions
+   use the same selected ADB target; audio/clipboard share the input server/tunnel.
+4. Disconnect/exit releases input and destroys the session's UHID devices. After an ADB failure,
+   reconnect manually. The libusb insertion auto-connect option belongs to AOA and is hidden here.
+
+The absolute pointer descriptor is unchanged: this is not scrcpy's relative `--mouse=uhid` mode.
+Android must allow the shell to open `/dev/uhid`; no root, video or installed companion is required.
+See [UHID requirements, CLI and lifecycle](docs/UHID.md) for details and validation limits.
 
 ### Windows Bluetooth connection (experimental)
 
@@ -212,8 +237,8 @@ Tests cover device-output parsing, resolution overrides and orientation, layout 
 
 ### Reproducible feature profiles
 
-The default configuration is intentionally a manual/minimal CLI configuration:
-`BUILD_GUI`, `BUILD_AUDIO`, and `BUILD_CLIPBOARD` are off, while Linux BLE
+The default configuration is a manual CLI configuration:
+`BUILD_GUI`, `BUILD_AUDIO`, and `BUILD_CLIPBOARD` are off, `BUILD_UHID` is on, while Linux BLE
 follows `BUILD_BLE`'s platform default. These options are compile-time features;
 they cannot be added to an already-built executable. Use the fixed local
 `build/` directory for normal development. CI or
@@ -224,17 +249,17 @@ For a full build containing every feature supported by the current platform,
 use `OTG_PROFILE=full`:
 
 ```bash
-# Linux: GUI + audio + clipboard + Linux BLE
+# Linux: GUI + UHID + audio + clipboard + Linux BLE
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# macOS: GUI + clipboard (audio and Linux BLE are not supported)
+# macOS: GUI + UHID + clipboard (audio and Linux BLE are not supported)
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# Windows: GUI + audio + clipboard + experimental Windows BLE
+# Windows: GUI + UHID + audio + clipboard + experimental Windows BLE
 cmake -S . -B build -DOTG_PROFILE=full
 cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
@@ -243,13 +268,13 @@ ctest --test-dir build -C Release --output-on-failure
 `build/BUILD_FEATURES.json` and the installed copy record the exact feature set.
 For a deliberately small USB-only build, reconfigure the same `build/` directory
 and explicitly disable optional features, for example
-`-DBUILD_BLE=OFF -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF -DBUILD_CLIPBOARD=OFF`.
+`-DOTG_PROFILE=manual -DBUILD_BLE=OFF -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF`.
 
 ```bash
 git clone https://your-host/deskflow-otg.git
 cd deskflow-otg
-cmake -S . -B build -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF \
-    -DBUILD_CLIPBOARD=OFF -DBUILD_BLE=OFF -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DOTG_PROFILE=manual -DBUILD_GUI=OFF -DBUILD_AUDIO=OFF \
+    -DBUILD_CLIPBOARD=OFF -DBUILD_UHID=OFF -DBUILD_BLE=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 # Output: build/deskflow-otg
@@ -486,7 +511,10 @@ The default is `--mouse-mode absolute`: movement hovers, holding the left button
   -p, --port PORT       Deskflow server port (default: 24800)
   -n, --name NAME       Screen name reported to the server (default: android)
   -s, --serial SERIAL   Android device USB serial (auto-detect if omitted)
-      --transport MODE usb (default) or ble (Linux)
+      --transport MODE usb (default), uhid (ADB), or ble
+      --adb-serial ID   Explicit ADB target (required for UHID)
+      --scrcpy-server PATH  Matching server for UHID/audio/clipboard
+      --scrcpy-version VER  Matching scrcpy server version
       --adapter NAME    Bluetooth adapter (default: hci0)
       --ble-isolate     Native sudo BLE-only launch; restore on exit, no Python
       --ble-restore     Restore the adapter from a native snapshot; do not bridge

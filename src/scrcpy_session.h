@@ -1,5 +1,5 @@
 /*
- * scrcpy_session.h - shared scrcpy ADB session (audio and optional clipboard).
+ * scrcpy_session.h - shared scrcpy ADB session (audio, clipboard and UHID).
  *
  * The Android side is the official scrcpy server.  This module only owns the
  * ADB tunnel and independent audio/control sockets. Audio playback is delegated
@@ -46,7 +46,8 @@ struct scrcpy_session {
 int scrcpy_session_start(struct scrcpy_session *session,
                         const char *adb_path, const char *adb_serial,
                         const char *server_path, const char *server_version,
-                        bool audio, bool clipboard);
+                        bool audio, bool clipboard, bool uhid,
+                        int (*stop_requested)(void));
 
 void scrcpy_session_stop(struct scrcpy_session *session);
 

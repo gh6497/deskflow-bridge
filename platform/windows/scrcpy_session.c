@@ -5,7 +5,7 @@
 #include "scrcpy_session.h"
 #include "adb_target.h"
 
-#if defined(OTG_HAVE_AUDIO) || defined(OTG_HAVE_CLIPBOARD)
+#if defined(OTG_HAVE_AUDIO) || defined(OTG_HAVE_CLIPBOARD) || defined(OTG_HAVE_UHID)
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -27,6 +27,21 @@
 #define LOG_WARN(...) fprintf(stderr, "WARN:  " __VA_ARGS__)
 #define LOG_INFO(...) fprintf(stderr, "INFO:  " __VA_ARGS__)
 
+static int (*startup_stop_requested)(void);
+static bool startup_cancelled(void)
+{
+    return startup_stop_requested && startup_stop_requested();
+}
+static DWORD wait_startup(HANDLE process, DWORD timeout_ms)
+{
+    ULONGLONG deadline = GetTickCount64() + timeout_ms;
+    while (!startup_cancelled() && GetTickCount64() < deadline) {
+        DWORD result = WaitForSingleObject(process, 20);
+        if (result != WAIT_TIMEOUT) return result;
+    }
+    return WAIT_TIMEOUT;
+}
+
 static int read_full(SOCKET s, void *out, size_t n) {
     unsigned char *p = out;
     while (n) {
@@ -47,7 +62,7 @@ static int run_adb_timeout(const char *adb, const char *serial, const char *comm
     memset(&pi, 0, sizeof(pi));
     if (!CreateProcessA(NULL, command, NULL, NULL, FALSE, CREATE_NO_WINDOW,
                         NULL, NULL, &si, &pi)) return -1;
-    if (WaitForSingleObject(pi.hProcess, timeout_ms) != WAIT_OBJECT_0) {
+    if (wait_startup(pi.hProcess, timeout_ms) != WAIT_OBJECT_0) {
         TerminateProcess(pi.hProcess, 1);
         WaitForSingleObject(pi.hProcess, INFINITE);
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
@@ -74,7 +89,7 @@ static int run_adb_push_retry(const char *adb, const char *serial, const char *s
     ULONGLONG deadline = GetTickCount64() + ADB_PUSH_TIMEOUT_MS;
     for (attempt = 0; attempt < ADB_PUSH_RETRIES; ++attempt) {
         ULONGLONG now = GetTickCount64();
-        if (now >= deadline) break;
+        if (startup_cancelled() || now >= deadline) break;
         if (run_adb_timeout(adb, serial, command, (DWORD)(deadline - now)) == 0) return 0;
         now = GetTickCount64();
         if (attempt + 1 == ADB_PUSH_RETRIES || now >= deadline) break;
@@ -154,7 +169,7 @@ static int adb_target_command(void *ud, const char *target, bool connect) {
     if (!CreateProcessA(NULL, command, NULL, NULL, TRUE, CREATE_NO_WINDOW,
                         NULL, NULL, &si, &pi)) goto done;
     CloseHandle(writer); writer = NULL;
-    if (WaitForSingleObject(pi.hProcess, 5000) == WAIT_OBJECT_0) {
+    if (wait_startup(pi.hProcess, 5000) == WAIT_OBJECT_0) {
         GetExitCodeProcess(pi.hProcess, &code);
         result = code == 0 ? 0 : -1;
     } else {
@@ -198,11 +213,39 @@ static char *copy_text(const char *value) {
     return copy;
 }
 
+static int start_server(struct scrcpy_session *s, char *command)
+{
+    SECURITY_ATTRIBUTES security = { sizeof(security), NULL, TRUE };
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {0};
+    HANDLE log = NULL;
+    HANDLE null_io = CreateFileA("NUL", GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING, 0, NULL);
+    if (null_io == INVALID_HANDLE_VALUE) return -1;
+    HANDLE error = GetStdHandle(STD_ERROR_HANDLE);
+    if (error && error != INVALID_HANDLE_VALUE &&
+        !DuplicateHandle(GetCurrentProcess(), error, GetCurrentProcess(), &log,
+                         0, TRUE, DUPLICATE_SAME_ACCESS)) log = NULL;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = null_io;
+    si.hStdOutput = si.hStdError = log ? log : null_io;
+    /* Do not consume GUI stdin or put scrcpy diagnostics into JSON stdout. */
+    BOOL ok = CreateProcessA(NULL, command, NULL, NULL, TRUE, CREATE_NO_WINDOW,
+                            NULL, NULL, &si, &pi);
+    if (log) CloseHandle(log);
+    CloseHandle(null_io);
+    if (!ok) return -1;
+    s->server_pid = (intptr_t)pi.hProcess;
+    CloseHandle(pi.hThread);
+    return 0;
+}
+
 int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *adb_serial,
-                        const char *server, const char *version, bool audio, bool clipboard) {
+                        const char *server, const char *version, bool audio, bool clipboard, bool uhid,
+                        int (*stop_requested)(void)) {
     WSADATA wsa; char forward[128], remote[128];
-    STARTUPINFOA si = { sizeof(si) }; PROCESS_INFORMATION pi = {0};
     SOCKET sock; unsigned port = 27183U + (GetCurrentProcessId() % 10000U);
+    unsigned scid = (unsigned)GetCurrentProcessId() & 0x7fffffffU;
 #ifndef OTG_HAVE_AUDIO
     if (audio) return -1;
 #endif
@@ -210,29 +253,34 @@ int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *
     memset(s, 0, sizeof(*s)); s->audio_fd = s->control_fd = (intptr_t)INVALID_SOCKET;
     s->initialized = true;
     if (!adb || !adb_serial || !server || !version || !*adb_serial ||
-        !*server || !*version || (!audio && !clipboard)) return -1;
+        !*server || !*version || (!audio && !clipboard && !uhid)) return -1;
     s->adb_path = copy_text(adb); s->adb_serial = copy_text(adb_serial);
+    startup_stop_requested = stop_requested;
     s->server_path = copy_text(server);
     if (!s->adb_path || !s->adb_serial || !s->server_path) goto fail;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) goto fail;
     s->winsock_ready = true;
     if (otg_adb_target_prepare(adb_serial, adb_target_command, s->adb_path)) goto fail;
+    if (uhid && run_adb(adb, adb_serial, "shell \"test -c /dev/uhid && : <> /dev/uhid\"")) {
+        LOG_ERR("UHID unavailable: Android shell cannot open /dev/uhid; check device/ROM support\n");
+        goto fail;
+    }
     if (run_adb_push_retry(adb, adb_serial, server) != 0) {
         LOG_ERR("adb push of scrcpy-server failed\n");
         goto fail;
     }
-    snprintf(remote, sizeof(remote), "localabstract:scrcpy_%08x", GetCurrentProcessId() & 0x7fffffffU);
+    snprintf(remote, sizeof(remote), "localabstract:scrcpy_%08x", scid);
     snprintf(forward, sizeof(forward), "tcp:%u %s", port, remote);
     { char forward_cmd[160]; snprintf(forward_cmd, sizeof(forward_cmd), "forward %s", forward);
       if (run_adb(adb, adb_serial, forward_cmd) != 0) goto fail; }
     s->forward_port = (intptr_t)port;
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "\"%s\" -s \"%s\" shell CLASSPATH=%s app_process / com.genymobile.scrcpy.Server %s audio=%s video=false control=%s clipboard_autosync=true power_on=false cleanup=true tunnel_forward=true send_device_meta=false send_dummy_byte=true send_stream_meta=true send_frame_meta=true audio_codec=raw audio_source=output scid=%08x", adb, adb_serial, REMOTE_PATH, version, audio ? "true" : "false", clipboard ? "true" : "false", GetCurrentProcessId() & 0x7fffffffU);
-    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) goto fail;
-    s->server_pid = (intptr_t)pi.hProcess; CloseHandle(pi.hThread);
+    int cmd_size = snprintf(cmd, sizeof(cmd), "\"%s\" -s \"%s\" shell CLASSPATH=%s app_process / com.genymobile.scrcpy.Server %s audio=%s video=false control=%s clipboard_autosync=%s power_on=false cleanup=true tunnel_forward=true send_device_meta=false send_dummy_byte=true send_stream_meta=true send_frame_meta=true audio_codec=raw audio_source=output scid=%08x", adb, adb_serial, REMOTE_PATH, version, audio ? "true" : "false", (clipboard || uhid) ? "true" : "false", clipboard ? "true" : "false", scid);
+    if (cmd_size < 0 || (size_t)cmd_size >= sizeof(cmd)) goto fail;
+    if (start_server(s, cmd)) goto fail;
     sock = INVALID_SOCKET;
     ULONGLONG deadline = GetTickCount64() + 10000;
-    while (GetTickCount64() < deadline) {
+    while (!startup_cancelled() && GetTickCount64() < deadline) {
         sock = connect_local(port);
         if (sock != INVALID_SOCKET) {
             DWORD timeout = 1000;
@@ -249,11 +297,13 @@ int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *
     }
     if (sock == INVALID_SOCKET) goto fail;
     s->audio_fd = (intptr_t)sock;
-    if (clipboard) {
+    if (clipboard || uhid) {
         if (audio) s->control_fd = (intptr_t)connect_local(port);
         else { s->control_fd = s->audio_fd; s->audio_fd = (intptr_t)INVALID_SOCKET; }
         if (s->control_fd == (intptr_t)INVALID_SOCKET) goto fail;
-        if (clipboard && otg_clipboard_channel_open(&s->clipboard, s->control_fd)) goto fail;
+        if (otg_clipboard_channel_open(&s->clipboard, s->control_fd)) goto fail;
+        s->clipboard.shared_uhid = uhid;
+        if (!clipboard) otg_clipboard_channel_disable(&s->clipboard);
     }
 #ifdef OTG_HAVE_AUDIO
     if (audio) {
@@ -262,14 +312,20 @@ int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *
     }
 #endif
     s->started = true;
-    LOG_INFO("scrcpy auxiliary session started (audio=%s, clipboard=%s)\n",
-             audio ? "on" : "off", clipboard ? "on" : "off");
+    startup_stop_requested = NULL;
+    LOG_INFO("scrcpy session started (audio=%s, clipboard=%s, uhid=%s)\n",
+             audio ? "on" : "off", clipboard ? "on" : "off", uhid ? "on" : "off");
     return 0;
-fail: scrcpy_session_stop(s); return -1;
+fail: startup_stop_requested = NULL; scrcpy_session_stop(s); return -1;
 }
 
 void scrcpy_session_stop(struct scrcpy_session *s) {
     if (!s || !s->initialized) return;
+    ULONGLONG deadline = GetTickCount64() + 500;
+    while (otg_control_channel_pending(&s->clipboard) && GetTickCount64() < deadline) {
+        if (otg_control_channel_flush(&s->clipboard)) break;
+        if (otg_control_channel_pending(&s->clipboard)) Sleep(5);
+    }
 #ifdef OTG_HAVE_AUDIO
     /* Dispatch media pause before restoring speaker routing. */
     if (s->started && s->player) {

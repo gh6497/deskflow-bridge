@@ -51,6 +51,17 @@
   <message id="otg.ble.stopped"><source>Idle Bluetooth service stop acknowledged.</source><translation>Idle Bluetooth service stop acknowledged.</translation></message>
   <message id="otg.ble.stop_failed"><source>Bluetooth service could not be stopped: </source><translation>Bluetooth service could not be stopped: </translation></message>
   <message id="otg.transport.usb"><source>USB (AOA HID)</source><translation>USB (AOA HID)</translation></message>
+  <message id="otg.transport.uhid"><source>ADB + UHID (USB / wireless)</source><translation>ADB + UHID (USB / wireless)</translation></message>
+  <message id="otg.transport.uhid_windows"><source>ADB + UHID (recommended on Windows)</source><translation>ADB + UHID (recommended on Windows)</translation></message>
+  <message id="otg.uhid.adb_required"><source>ADB enabled (required for UHID)</source><translation>ADB enabled (required for UHID)</translation></message>
+  <message id="otg.uhid.target_label"><source>ADB target (required)</source><translation>ADB target (required)</translation></message>
+  <message id="otg.uhid.target_hint"><source>Authorized USB ADB serial or wireless host:port; no USB serial fallback</source><translation>Authorized USB ADB serial or wireless host:port; no USB serial fallback</translation></message>
+  <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>Enter ADB target manually</translation></message>
+  <message id="otg.uhid.device_ready"><source>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</translation></message>
+  <message id="otg.uhid.setup_hint"><source>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</source><translation>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</translation></message>
+  <message id="otg.uhid.initializing"><source>Starting ADB/scrcpy and creating UHID keyboard and pointer…</source><translation>Starting ADB/scrcpy and creating UHID keyboard and pointer…</translation></message>
+  <message id="otg.uhid.ready"><source>UHID descriptors sent; waiting for Deskflow handshake.</source><translation>UHID descriptors sent; waiting for Deskflow handshake.</translation></message>
+  <message id="otg.uhid.unsupported"><source>UHID is unavailable in this build. Enable BUILD_UHID.</source><translation>UHID is unavailable in this build. Enable BUILD_UHID.</translation></message>
   <message id="otg.transport.ble"><source>Bluetooth LE (Linux)</source><translation>Bluetooth LE (Linux)</translation></message>
   <message id="otg.label.transport"><source>Connection type</source><translation>Connection type</translation></message>
   <message id="otg.ble.adapter"><source>Bluetooth adapter</source><translation>Bluetooth adapter</translation></message>
