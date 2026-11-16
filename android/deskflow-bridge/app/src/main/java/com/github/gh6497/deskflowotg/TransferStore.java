@@ -117,7 +117,7 @@ public final class TransferStore {
             p.setProperty("sha256", TransferWire.hex(hash));
             p.setProperty("publicState", "private");
             try (FileOutputStream out = new FileOutputStream(new File(temp, "metadata"))) {
-                p.store(out, "deskflow-otg transfer v1"); out.getFD().sync();
+                p.store(out, "deskflow-bridge transfer v1"); out.getFD().sync();
             }
             synchronized (this) {
                 if (new File(root, id).exists() || !temp.renameTo(new File(root, id)))
@@ -142,7 +142,7 @@ public final class TransferStore {
         try (InputStream in = new FileInputStream(metadata)) { p.load(in); }
         p.setProperty("publicState", state);
         try (FileOutputStream out = new FileOutputStream(metadata)) {
-            p.store(out, "deskflow-otg transfer v1"); out.getFD().sync();
+            p.store(out, "deskflow-bridge transfer v1"); out.getFD().sync();
         }
     }
 
@@ -157,7 +157,7 @@ public final class TransferStore {
         p.setProperty("sha256", entry.sha256);
         p.setProperty("publicState", "published");
         try (FileOutputStream out = new FileOutputStream(new File(receipts, entry.id))) {
-            p.store(out, "deskflow-otg transfer receipt v1"); out.getFD().sync();
+            p.store(out, "deskflow-bridge transfer receipt v1"); out.getFD().sync();
         }
     }
 

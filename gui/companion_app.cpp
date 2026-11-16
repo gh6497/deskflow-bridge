@@ -13,7 +13,7 @@ const QString listener = package + "/" + package + ".DeskflowNotificationListene
 
 QString CompanionApp::bundledApk()
 {
-    const auto path = QCoreApplication::applicationDirPath() + "/deskflow-otg-companion.apk";
+    const auto path = QCoreApplication::applicationDirPath() + "/deskflow-bridge-companion.apk";
     return QFileInfo(path).isFile() && QFileInfo(path).isReadable() ? path : QString();
 }
 

@@ -4,7 +4,7 @@
 “按 Ctrl+V 才读取本机剪贴板”的规则。scrcpy 5.0.1 Android Server 只负责手机端读写：
 
 ```text
-Deskflow 主端 ⇄ Deskflow 协议 ⇄ deskflow-otg ⇄ ADB / scrcpy 控制通道 ⇄ Android 剪贴板
+Deskflow 主端 ⇄ Deskflow 协议 ⇄ deskflow-bridge ⇄ ADB / scrcpy 控制通道 ⇄ Android 剪贴板
 ```
 
 因此 Deskflow server 可以在另一台电脑上，CLI 也不依赖 Qt、桌面剪贴板 API、SDL 或 FFmpeg。
@@ -61,7 +61,7 @@ Windows GUI 的保留 BLE provider 固定附加功能参数。修改剪贴板开
 ## CLI
 
 ```bash
-./build-clipboard/deskflow-otg \
+./build-clipboard/deskflow-bridge \
   --host 127.0.0.1 --port 24800 --name android \
   --serial PHONE_USB_SERIAL --width 1080 --height 1920 \
   --clipboard --adb /usr/bin/adb \

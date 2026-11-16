@@ -4,7 +4,7 @@ string(STRIP "${OTG_BASE_VERSION}" OTG_BASE_VERSION)
 if(NOT OTG_BASE_VERSION MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$")
   message(FATAL_ERROR "VERSION must contain a major.minor.patch version")
 endif()
-project(deskflow-otg VERSION ${OTG_BASE_VERSION} LANGUAGES C)
+project(deskflow-bridge VERSION ${OTG_BASE_VERSION} LANGUAGES C)
 include(cmake/Version.cmake)
 
 set(CMAKE_C_STANDARD 11)
@@ -147,7 +147,7 @@ if(NOT LIBUSB_INCLUDE_DIR OR NOT LIBUSB_LIBRARY)
     "For a custom prefix, set -DCMAKE_PREFIX_PATH=<libusb-prefix>.")
 endif()
 
-add_executable(deskflow-otg
+add_executable(deskflow-bridge
   src/main.c
   src/aoa_hid.c
   src/usb_scan.c
@@ -159,15 +159,15 @@ add_executable(deskflow-otg
   src/adb_display.c
 )
 if(BUILD_UHID)
-  target_sources(deskflow-otg PRIVATE src/uhid.c)
-  target_compile_definitions(deskflow-otg PRIVATE OTG_HAVE_UHID=1)
+  target_sources(deskflow-bridge PRIVATE src/uhid.c)
+  target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_UHID=1)
 endif()
 if((LINUX OR APPLE) AND (BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID))
-  target_sources(deskflow-otg PRIVATE platform/posix/scrcpy_session.c)
+  target_sources(deskflow-bridge PRIVATE platform/posix/scrcpy_session.c)
 elseif(WIN32 AND (BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID))
-  target_sources(deskflow-otg PRIVATE platform/windows/scrcpy_session.c)
+  target_sources(deskflow-bridge PRIVATE platform/windows/scrcpy_session.c)
 else()
-  target_sources(deskflow-otg PRIVATE src/scrcpy_session_stub.c)
+  target_sources(deskflow-bridge PRIVATE src/scrcpy_session_stub.c)
 endif()
 
 if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
@@ -181,18 +181,18 @@ if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
       "ADB features require SCRCPY_VERSION for the bundled scrcpy-server")
   endif()
   if(BUILD_CLIPBOARD)
-    target_compile_definitions(deskflow-otg PRIVATE OTG_HAVE_CLIPBOARD=1)
+    target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_CLIPBOARD=1)
   endif()
   if(BUILD_AUDIO)
-    target_compile_definitions(deskflow-otg PRIVATE OTG_HAVE_AUDIO=1)
+    target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_AUDIO=1)
     if(LINUX)
-      target_sources(deskflow-otg PRIVATE platform/linux/audio_player.c)
+      target_sources(deskflow-bridge PRIVATE platform/linux/audio_player.c)
       find_package(ALSA REQUIRED)
       find_package(Threads REQUIRED)
-      target_link_libraries(deskflow-otg PRIVATE ALSA::ALSA Threads::Threads)
+      target_link_libraries(deskflow-bridge PRIVATE ALSA::ALSA Threads::Threads)
     elseif(WIN32)
-      target_sources(deskflow-otg PRIVATE platform/windows/audio_player.c)
-      target_link_libraries(deskflow-otg PRIVATE ole32 uuid)
+      target_sources(deskflow-bridge PRIVATE platform/windows/audio_player.c)
+      target_link_libraries(deskflow-bridge PRIVATE ole32 uuid)
     else()
       message(FATAL_ERROR "BUILD_AUDIO currently supports Linux and Windows")
     endif()
@@ -200,11 +200,11 @@ if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
   if(NOT EXISTS "${SCRCPY_SERVER}")
     message(FATAL_ERROR "SCRCPY_SERVER does not exist: ${SCRCPY_SERVER}")
   endif()
-  install(FILES "${SCRCPY_SERVER}" DESTINATION share/deskflow-otg
+  install(FILES "${SCRCPY_SERVER}" DESTINATION share/deskflow-bridge
           RENAME scrcpy-server)
   file(WRITE "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt" "${SCRCPY_VERSION}\n")
   install(FILES "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt"
-          DESTINATION share/deskflow-otg)
+          DESTINATION share/deskflow-bridge)
 endif()
 
 if(BUILD_BLE_WIN)
@@ -212,14 +212,14 @@ if(BUILD_BLE_WIN)
     message(FATAL_ERROR "BUILD_BLE_WIN requires Windows, MSVC and a Windows SDK with C++/WinRT")
   endif()
   enable_language(CXX)
-  target_sources(deskflow-otg PRIVATE platform/windows/ble_win.cpp platform/windows/ble_win_control.c)
-  target_include_directories(deskflow-otg PRIVATE platform/windows)
+  target_sources(deskflow-bridge PRIVATE platform/windows/ble_win.cpp platform/windows/ble_win_control.c)
+  target_include_directories(deskflow-bridge PRIVATE platform/windows)
   # Coroutine support is confined to this adapter; core C and GUI stay C11/C++17.
-  target_compile_features(deskflow-otg PRIVATE cxx_std_20)
-  target_compile_definitions(deskflow-otg PRIVATE OTG_HAVE_BLE_WIN=1 NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_compile_features(deskflow-bridge PRIVATE cxx_std_20)
+  target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_BLE_WIN=1 NOMINMAX WIN32_LEAN_AND_MEAN)
   # VS generators cannot separate target-wide C/C++ warning options reliably.
   set_source_files_properties(platform/windows/ble_win.cpp PROPERTIES COMPILE_OPTIONS "/W4;/WX;/EHsc;/utf-8")
-  target_link_libraries(deskflow-otg PRIVATE windowsapp)
+  target_link_libraries(deskflow-bridge PRIVATE windowsapp)
 endif()
 if(BUILD_BLE)
   if(NOT LINUX)
@@ -227,35 +227,35 @@ if(BUILD_BLE)
   endif()
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET gio-2.0)
-  target_sources(deskflow-otg PRIVATE
+  target_sources(deskflow-bridge PRIVATE
     platform/linux/ble_hid.c
     platform/linux/ble_supervisor.c
     platform/linux/ble_link.c
     platform/linux/ble_session.c
   )
-  target_include_directories(deskflow-otg PRIVATE platform/linux)
-  target_link_libraries(deskflow-otg PRIVATE PkgConfig::GLIB)
-  target_compile_definitions(deskflow-otg PRIVATE OTG_HAVE_BLE=1)
+  target_include_directories(deskflow-bridge PRIVATE platform/linux)
+  target_link_libraries(deskflow-bridge PRIVATE PkgConfig::GLIB)
+  target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_BLE=1)
 endif()
 
-target_include_directories(deskflow-otg PRIVATE
+target_include_directories(deskflow-bridge PRIVATE
   "${PROJECT_BINARY_DIR}/generated"
   src
   ${LIBUSB_INCLUDE_DIR}
 )
 
 if(LIBUSB_RELEASE_LIBRARY AND LIBUSB_DEBUG_LIBRARY)
-  target_link_libraries(deskflow-otg PRIVATE
+  target_link_libraries(deskflow-bridge PRIVATE
     optimized "${LIBUSB_RELEASE_LIBRARY}" debug "${LIBUSB_DEBUG_LIBRARY}")
 else()
-  target_link_libraries(deskflow-otg PRIVATE ${LIBUSB_LIBRARY})
+  target_link_libraries(deskflow-bridge PRIVATE ${LIBUSB_LIBRARY})
 endif()
-target_link_libraries(deskflow-otg PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(deskflow-bridge PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 if(WIN32)
   # The vcpkg static libusb package does not supply transitive link metadata.
-  target_link_libraries(deskflow-otg PRIVATE ws2_32 setupapi cfgmgr32 advapi32 ole32)
+  target_link_libraries(deskflow-bridge PRIVATE ws2_32 setupapi cfgmgr32 advapi32 ole32)
   if(VCPKG_TARGET_TRIPLET MATCHES "-static$")
-    set_property(TARGET deskflow-otg PROPERTY MSVC_RUNTIME_LIBRARY
+    set_property(TARGET deskflow-bridge PROPERTY MSVC_RUNTIME_LIBRARY
       "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   endif()
 endif()
@@ -271,9 +271,9 @@ if(BUILD_TESTING)
     target_compile_definitions(test_ble_win_control_peer PRIVATE OTG_HAVE_BLE_WIN=1)
     target_include_directories(test_ble_win_control_peer PRIVATE src platform/windows
       "${PROJECT_BINARY_DIR}/generated" ${LIBUSB_INCLUDE_DIR})
-    get_target_property(OTG_NATIVE_LINK_LIBS deskflow-otg LINK_LIBRARIES)
+    get_target_property(OTG_NATIVE_LINK_LIBS deskflow-bridge LINK_LIBRARIES)
     target_link_libraries(test_ble_win_control_peer PRIVATE ${OTG_NATIVE_LINK_LIBS})
-    get_target_property(OTG_NATIVE_RUNTIME deskflow-otg MSVC_RUNTIME_LIBRARY)
+    get_target_property(OTG_NATIVE_RUNTIME deskflow-bridge MSVC_RUNTIME_LIBRARY)
     if(OTG_NATIVE_RUNTIME)
       set_property(TARGET test_ble_win_control_peer PROPERTY MSVC_RUNTIME_LIBRARY "${OTG_NATIVE_RUNTIME}")
     endif()
@@ -383,9 +383,9 @@ if(BUILD_TESTING)
       set_tests_properties(clipboard_auxiliary PROPERTIES TIMEOUT 60)
     endif()
   endif()
-  add_test(NAME cli_version COMMAND deskflow-otg --version)
+  add_test(NAME cli_version COMMAND deskflow-bridge --version)
   add_test(NAME cli_uhid_validation COMMAND "${CMAKE_COMMAND}"
-    "-DCLI=$<TARGET_FILE:deskflow-otg>" "-DUHID=${BUILD_UHID}"
+    "-DCLI=$<TARGET_FILE:deskflow-bridge>" "-DUHID=${BUILD_UHID}"
     -P "${PROJECT_SOURCE_DIR}/tests/test_cli_uhid.cmake")
   if(BUILD_AUDIO AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(test_audio_ready tests/test_audio_ready.c platform/linux/audio_player.c)
@@ -403,7 +403,7 @@ if(BUILD_TESTING)
   if(Python3_Interpreter_FOUND)
     if(BUILD_UHID AND UNIX)
       add_test(NAME uhid_cli COMMAND "${Python3_EXECUTABLE}"
-        "${PROJECT_SOURCE_DIR}/tests/test_uhid_cli.py" "$<TARGET_FILE:deskflow-otg>"
+        "${PROJECT_SOURCE_DIR}/tests/test_uhid_cli.py" "$<TARGET_FILE:deskflow-bridge>"
         "${BUILD_AUDIO}" "${BUILD_CLIPBOARD}")
       set_tests_properties(uhid_cli PROPERTIES TIMEOUT 60)
     endif()
@@ -423,14 +423,14 @@ if(BUILD_TESTING)
     set_tests_properties(android_transfer PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 45)
   endif()
   set_tests_properties(cli_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "deskflow-otg ${PROJECT_VERSION}")
+    PASS_REGULAR_EXPRESSION "deskflow-bridge ${PROJECT_VERSION}")
   add_test(NAME cli_ble_validation COMMAND "${CMAKE_COMMAND}"
-    "-DCLI=$<TARGET_FILE:deskflow-otg>" "-DWINDOWS_BLE=${BUILD_BLE_WIN}" "-DCLIPBOARD=${BUILD_CLIPBOARD}"
+    "-DCLI=$<TARGET_FILE:deskflow-bridge>" "-DWINDOWS_BLE=${BUILD_BLE_WIN}" "-DCLIPBOARD=${BUILD_CLIPBOARD}"
     -P "${PROJECT_SOURCE_DIR}/tests/test_cli_ble.cmake")
 endif()
 
-install(TARGETS deskflow-otg RUNTIME DESTINATION bin)
-install(FILES "${PROJECT_BINARY_DIR}/BUILD_VERSION.txt" DESTINATION share/deskflow-otg)
+install(TARGETS deskflow-bridge RUNTIME DESTINATION bin)
+install(FILES "${PROJECT_BINARY_DIR}/BUILD_VERSION.txt" DESTINATION share/deskflow-bridge)
 if(BUILD_BLE)
   set(OTG_BLE_FEATURE true)
 else()
@@ -465,18 +465,18 @@ else()
 endif()
 file(WRITE "${PROJECT_BINARY_DIR}/BUILD_FEATURES.json"
   "{\"profile\":\"${OTG_PROFILE}\",\"gui\":${OTG_GUI_FEATURE},\"audio\":${OTG_AUDIO_FEATURE},\"clipboard\":${OTG_CLIPBOARD_FEATURE},\"uhid\":${OTG_UHID_FEATURE},\"ble\":${OTG_BLE_FEATURE},\"windowsBleCli\":${OTG_BLE_WIN_FEATURE}}\n")
-message(STATUS "Deskflow OTG feature profile: ${OTG_PROFILE}")
+message(STATUS "Deskflow Bridge feature profile: ${OTG_PROFILE}")
 message(STATUS "  GUI: ${BUILD_GUI}")
 message(STATUS "  Audio: ${BUILD_AUDIO}")
 message(STATUS "  Clipboard: ${BUILD_CLIPBOARD}")
 message(STATUS "  ADB UHID: ${BUILD_UHID}")
 message(STATUS "  Linux BLE: ${BUILD_BLE}")
 message(STATUS "  Windows BLE: ${BUILD_BLE_WIN}")
-install(FILES "${PROJECT_BINARY_DIR}/BUILD_FEATURES.json" DESTINATION share/deskflow-otg)
+install(FILES "${PROJECT_BINARY_DIR}/BUILD_FEATURES.json" DESTINATION share/deskflow-bridge)
 if(LINUX)
   # pkexec strips LD_LIBRARY_PATH. Both native CLI and elevated supervisor must
   # resolve the staged runtime without relying on the AppRun environment.
-  set_target_properties(deskflow-otg PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  set_target_properties(deskflow-bridge PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
 endif()
 
 if(BUILD_GUI)

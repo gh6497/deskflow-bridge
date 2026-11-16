@@ -7,7 +7,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "android/deskflow-otg/app/src"
+APP = ROOT / "android/deskflow-bridge/app/src"
 PACKAGE = Path("com/github/gh6497/deskflowotg")
 
 

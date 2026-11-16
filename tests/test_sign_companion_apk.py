@@ -21,7 +21,7 @@ class CompanionSigningTest(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         self.source = self.root / "app-release-unsigned.apk"
         self.source.write_bytes(b"unsigned release")
-        self.output = self.root / "bundle/deskflow-otg-companion.apk"
+        self.output = self.root / "bundle/deskflow-bridge-companion.apk"
         self.tools = self.root / "build-tools"
         self.tools.mkdir()
         for name in ("aapt", "zipalign", "apksigner"):

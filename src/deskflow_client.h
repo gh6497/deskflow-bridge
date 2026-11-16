@@ -9,8 +9,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef DESKFLOW_OTG_DESKFLOW_CLIENT_H
-#define DESKFLOW_OTG_DESKFLOW_CLIENT_H
+#ifndef DESKFLOW_BRIDGE_DESKFLOW_CLIENT_H
+#define DESKFLOW_BRIDGE_DESKFLOW_CLIENT_H
 
 #include <signal.h>
 #include <stdint.h>
@@ -112,4 +112,4 @@ bool df_client_clipboard_enabled(const df_client *c);
  * immediately, matching the Deskflow secondary-client lifecycle. */
 int df_client_set_clipboard(df_client *c, const char *text, size_t size);
 
-#endif /* DESKFLOW_OTG_DESKFLOW_CLIENT_H */
+#endif /* DESKFLOW_BRIDGE_DESKFLOW_CLIENT_H */

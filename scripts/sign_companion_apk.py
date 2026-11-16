@@ -44,7 +44,7 @@ def sign_apk(source, output, tools):
 
     badging = run(tools / "aapt", "dump", "badging", source)
     if not re.search(r"^package: name='com\.github\.gh6497\.deskflowotg' ", badging, re.MULTILINE):
-        raise ValueError("Input is not the deskflow-otg companion APK")
+        raise ValueError("Input is not the deskflow-bridge companion APK")
     if re.search(r"^application-debuggable(?:\s|$)", badging, re.MULTILINE):
         raise ValueError("Refusing to bundle a debuggable APK")
 

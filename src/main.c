@@ -1,5 +1,5 @@
 /*
- * main.c - entry point for the deskflow-otg bridge.
+ * main.c - entry point for the deskflow-bridge bridge.
  *
  * Connects to a Deskflow server as a secondary "screen" and forwards the
  * incoming keyboard/mouse events to an Android device over USB using the AOA
@@ -191,7 +191,7 @@ static BOOL WINAPI on_console_ctrl(DWORD type)
 #ifdef _WIN32
 static int windows_ble_stop_background(void)
 {
-    HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\DeskflowOtgBleStop");
+    HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\DeskflowBridgeBleStop");
     if (!event) {
         fprintf(stderr, "INFO: no Windows BLE background process is running\n");
         return 1;
@@ -238,7 +238,7 @@ static int windows_ble_start_background_child(void)
 
 static int windows_ble_background_init(void)
 {
-    g_ble_instance_mutex = CreateMutexW(NULL, TRUE, L"Local\\DeskflowOtgBleInstance");
+    g_ble_instance_mutex = CreateMutexW(NULL, TRUE, L"Local\\DeskflowBridgeBleInstance");
     if (!g_ble_instance_mutex) {
         fprintf(stderr, "ERROR: could not create Windows BLE instance mutex\n");
         return 0;
@@ -249,7 +249,7 @@ static int windows_ble_background_init(void)
         g_ble_instance_mutex = NULL;
         return 0;
     }
-    g_ble_stop_event = CreateEventW(NULL, TRUE, FALSE, L"Local\\DeskflowOtgBleStop");
+    g_ble_stop_event = CreateEventW(NULL, TRUE, FALSE, L"Local\\DeskflowBridgeBleStop");
     if (!g_ble_stop_event) {
         fprintf(stderr, "ERROR: could not create Windows BLE stop event\n");
         CloseHandle(g_ble_instance_mutex);
@@ -789,7 +789,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
         if (strcmp(a, "-v") == 0 || strcmp(a, "--version") == 0) {
-            printf("deskflow-otg %s (commit %s)\n", OTG_VERSION, OTG_COMMIT);
+            printf("deskflow-bridge %s (commit %s)\n", OTG_VERSION, OTG_COMMIT);
             return 0;
         } else if ((strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0)) {
             usage(argv[0]);

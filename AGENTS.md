@@ -11,13 +11,13 @@
 
 ## 项目是什么
 
-`deskflow-otg` 是一个把 **Deskflow**（键盘鼠标共享）和 **scrcpy 的 OTG 模式**（USB AOA HID）
+`deskflow-bridge` 是一个把 **Deskflow**（键盘鼠标共享）和 **scrcpy 的 OTG 模式**（USB AOA HID）
 桥接起来的独立 C 程序。
 
 数据流：
 
 ```
-主机键盘鼠标 → deskflow server → (TCP, Deskflow 协议) → deskflow-otg → (USB AOA HID) → 安卓手机
+主机键盘鼠标 → deskflow server → (TCP, Deskflow 协议) → deskflow-bridge → (USB AOA HID) → 安卓手机
 ```
 
 手机在 Deskflow 里表现为一块普通的 secondary screen，鼠标滑进去即可用主机键鼠操控手机，
@@ -39,10 +39,10 @@ sudo apt install build-essential cmake libusb-1.0-0-dev
 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-# 产物 build/deskflow-otg
+# 产物 build/deskflow-bridge
 
 # 运行（USB 需 root 或 udev 规则）
-sudo ./build/deskflow-otg --host 127.0.0.1 --port 24800 --name android \
+sudo ./build/deskflow-bridge --host 127.0.0.1 --port 24800 --name android \
     --width 1080 --height 1920 -s <手机序列号>
 ```
 
@@ -209,14 +209,14 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   重连/休眠/进程重启已验收。Redmi Android14 ROM 的 LHDC 白名单超91字节导致
   配对时蓝牙崩溃，未修改手机配置。用法与限制见 `docs/WINDOWS_BLE.md`。
 
-- Linux BLE 实验后端通过 `sudo deskflow-otg --transport ble --ble-isolate` 原生启动，
+- Linux BLE 实验后端通过 `sudo deskflow-bridge --transport ble --ble-isolate` 原生启动，
   不依赖 Python。`platform/linux/ble_supervisor.c` 使用 Linux MGMT API 快照/隔离/核对恢复，
   通过 `/usr/sbin/runuser` 降权运行自己的桥接子进程；父进程用 `platform/linux/ble_link.c` 监控 HCI。
   桥接通过继承的 Unix datagram FD（`OTG_BLE_LATENCY_FD`）传递订阅就绪
   与实测连接间隔。只对唯一、已加密、本机为 peripheral 的已观测 LE 连接请求 7.5～15ms；
   HCI Command Status 成功不等于参数已更新，必须等待 LE Connection Update Complete。
   失败/超时保留连接；重连后重新判断，不接受子进程指定 HCI 命令或句柄。
-  `/run/deskflow-otg-ble-hciN.state` 保存 root 专用、绑定适配器地址的原始快照；失败不覆盖，
+  `/run/deskflow-bridge-ble-hciN.state` 保存 root 专用、绑定适配器地址的原始快照；失败不覆盖，
   `--ble-restore --adapter hciN` 恢复，只有核对成功才删除；不要与历史 Python 隔离脚本并行。
   普通 `--transport ble` 不切换模式。手机掉线不注销 GATT：BlueZ 5.72 对 bonded peer 可能
   保留 CCC 而不调用 StopNotify，因此就绪还须 Device1 Connected/Paired。断线断开 Deskflow
@@ -381,7 +381,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   `clipboard_protocol/clipboard_bridge/clipboard_auxiliary` 与 Qt 用 fake socket/ADB/AOA 验证，
   不访问硬件，不代表 Android ROM、Windows/macOS 真机兼容性已验收。详见 `docs/CLIPBOARD.md`。
 
-- Linux BLE 正式接入在同一 `deskflow-otg` 中分为 `--ble-service` 常驻进程与
+- Linux BLE 正式接入在同一 `deskflow-bridge` 中分为 `--ble-service` 常驻进程与
   `--transport ble --ble-session --ble-peer MAC` 桥接会话；BLE 桥接必须指定 BlueZ 身份地址。
   本地 IPC 协议现为 v2，服务生命周期内固定目标，不兼容旧实验常驻进程；迁移必须显式停止
   旧服务，不得擅自杀掉正在使用的连接。`--ble-status` 只读，`--ble-stop-service` 仅同 UID
@@ -413,7 +413,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   退出沿用 Session 异步停止流程，Idle 后发出 `MainWindow::exitReady`，由入口退出应用；
   `quitOnLastWindowClosed` 关闭以支持后台运行。托盘菜单与状态提示支持实时语言切换。
   `test_window.cpp` 模拟托盘可用/不可用，覆盖隐藏、恢复、断开及连接中优雅退出。
-  托盘与窗口统一使用嵌入 Qt 资源的 `packaging/deskflow-otg.svg`，DEB 与 AppImage 桌面入口也使用此图。
+  托盘与窗口统一使用嵌入 Qt 资源的 `packaging/deskflow-bridge.svg`，DEB 与 AppImage 桌面入口也使用此图。
 - 多设备 GUI：`gui/connection_manager.cpp` 管理按稳定 ID 保存的独立 `Session`，由
   `gui/deskflow_server.cpp` 管理唯一共享 Deskflow；子会话以 external-server 模式启动桥接，
   单设备断开/失败不得停止其他桥接。最后一个会话完成释放后停止自建服务；退出等待全部会话

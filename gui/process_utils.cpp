@@ -83,7 +83,7 @@ static QString executable(const QString &path)
 
 QString bridgePath()
 {
-    return executable(QCoreApplication::applicationDirPath() + "/deskflow-otg");
+    return executable(QCoreApplication::applicationDirPath() + "/deskflow-bridge");
 }
 
 QString findAdb()
@@ -96,10 +96,10 @@ QString findScrcpyServer()
 {
     QStringList paths{
         QCoreApplication::applicationDirPath() + "/scrcpy-server",
-        QCoreApplication::applicationDirPath() + "/../share/deskflow-otg/scrcpy-server",
-        QCoreApplication::applicationDirPath() + "/share/deskflow-otg/scrcpy-server",
+        QCoreApplication::applicationDirPath() + "/../share/deskflow-bridge/scrcpy-server",
+        QCoreApplication::applicationDirPath() + "/share/deskflow-bridge/scrcpy-server",
         QCoreApplication::applicationDirPath() + "/../Resources/scrcpy-server",
-        QCoreApplication::applicationDirPath() + "/../Resources/deskflow-otg/scrcpy-server",
+        QCoreApplication::applicationDirPath() + "/../Resources/deskflow-bridge/scrcpy-server",
     };
     for (const auto &path : paths) {
         if (QFileInfo(path).isFile() && QFileInfo(path).isReadable())
@@ -111,10 +111,10 @@ QString findScrcpyServer()
 QString findScrcpyVersion()
 {
     const QStringList versionFiles{
-        QCoreApplication::applicationDirPath() + "/../share/deskflow-otg/SCRCPY_VERSION.txt",
-        QCoreApplication::applicationDirPath() + "/share/deskflow-otg/SCRCPY_VERSION.txt",
+        QCoreApplication::applicationDirPath() + "/../share/deskflow-bridge/SCRCPY_VERSION.txt",
+        QCoreApplication::applicationDirPath() + "/share/deskflow-bridge/SCRCPY_VERSION.txt",
         QCoreApplication::applicationDirPath() + "/../Resources/SCRCPY_VERSION.txt",
-        QCoreApplication::applicationDirPath() + "/../Resources/deskflow-otg/SCRCPY_VERSION.txt",
+        QCoreApplication::applicationDirPath() + "/../Resources/deskflow-bridge/SCRCPY_VERSION.txt",
     };
     for (const auto &path : versionFiles) {
         QFile file(path);

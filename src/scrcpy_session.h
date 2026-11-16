@@ -11,8 +11,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef DESKFLOW_OTG_SCRCPY_SESSION_H
-#define DESKFLOW_OTG_SCRCPY_SESSION_H
+#ifndef DESKFLOW_BRIDGE_SCRCPY_SESSION_H
+#define DESKFLOW_BRIDGE_SCRCPY_SESSION_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -53,4 +53,4 @@ void scrcpy_session_stop(struct scrcpy_session *session);
 
 bool scrcpy_session_started(const struct scrcpy_session *session);
 
-#endif /* DESKFLOW_OTG_SCRCPY_SESSION_H */
+#endif /* DESKFLOW_BRIDGE_SCRCPY_SESSION_H */

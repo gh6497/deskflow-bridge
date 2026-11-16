@@ -9,7 +9,7 @@ class PackageVersionTest(unittest.TestCase):
     def test_uses_staged_build(self):
         with tempfile.TemporaryDirectory() as directory:
             stage = pathlib.Path(directory)
-            path = stage / "share/deskflow-otg/BUILD_VERSION.txt"
+            path = stage / "share/deskflow-bridge/BUILD_VERSION.txt"
             path.parent.mkdir(parents=True)
             path.write_text("0.1.2+git.123abc.dirty\n")
             self.assertEqual(package_version(stage), "0.1.2+git.123abc.dirty")

@@ -48,7 +48,7 @@ endif()
 # Keep all display text in the two catalogs; code references stable IDs only.
 # Catalogs are maintained explicitly, not regenerated from source literals.
 qt_add_lrelease(otg_gui_support
-  TS_FILES translations/deskflow_otg_en.xml translations/deskflow_otg_zh_CN.xml
+  TS_FILES translations/deskflow_bridge_en.xml translations/deskflow_bridge_zh_CN.xml
   OPTIONS -idbased -nounfinished
   QM_FILES_OUTPUT_VARIABLE otg_qm_files
 )
@@ -58,56 +58,56 @@ qt_add_resources(otg_gui_support otg_translations
   FILES ${otg_qm_files}
 )
 
-qt_add_executable(deskflow-otg-gui WIN32 MACOSX_BUNDLE
+qt_add_executable(deskflow-bridge-gui WIN32 MACOSX_BUNDLE
   main.cpp main_window.cpp main_window.h
 )
-target_link_libraries(deskflow-otg-gui PRIVATE otg_gui_support Qt6::Widgets)
+target_link_libraries(deskflow-bridge-gui PRIVATE otg_gui_support Qt6::Widgets)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Platform themes are not imported by default. Deploy plugins from this Qt
   # installation (never from an unrelated system Qt), but let Qt/the desktop
   # select the theme at runtime. Missing optional plugins retain Qt's fallback.
   foreach(theme_plugin QGtk3ThemePlugin QXdgDesktopPortalThemePlugin)
     if(TARGET Qt6::${theme_plugin})
-      qt_import_plugins(deskflow-otg-gui INCLUDE Qt6::${theme_plugin})
+      qt_import_plugins(deskflow-bridge-gui INCLUDE Qt6::${theme_plugin})
     endif()
   endforeach()
 endif()
-set_target_properties(deskflow-otg-gui PROPERTIES
+set_target_properties(deskflow-bridge-gui PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-  MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.gh6497.deskflow-otg"
-  MACOSX_BUNDLE_BUNDLE_NAME "Deskflow OTG"
+  MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.gh6497.deskflow-bridge"
+  MACOSX_BUNDLE_BUNDLE_NAME "Deskflow Bridge"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
   MACOSX_BUNDLE_BUNDLE_VERSION "${OTG_BUILD_VERSION}"
 )
-add_dependencies(deskflow-otg-gui deskflow-otg)
-qt_add_resources(deskflow-otg-gui otg_app_icon
+add_dependencies(deskflow-bridge-gui deskflow-bridge)
+qt_add_resources(deskflow-bridge-gui otg_app_icon
   PREFIX /icons
   BASE "${PROJECT_SOURCE_DIR}/packaging"
-  FILES "${PROJECT_SOURCE_DIR}/packaging/deskflow-otg.svg"
+  FILES "${PROJECT_SOURCE_DIR}/packaging/deskflow-bridge.svg"
 )
 if(MSVC)
   target_compile_options(otg_gui_support PRIVATE /utf-8)
-  target_compile_options(deskflow-otg-gui PRIVATE /utf-8)
-  set_property(TARGET otg_gui_support deskflow-otg-gui PROPERTY
+  target_compile_options(deskflow-bridge-gui PRIVATE /utf-8)
+  set_property(TARGET otg_gui_support deskflow-bridge-gui PROPERTY
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 if(APPLE)
-  add_custom_command(TARGET deskflow-otg-gui POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:deskflow-otg>"
-      "$<TARGET_FILE_DIR:deskflow-otg-gui>/deskflow-otg")
-  set(OTG_GUI_RUNTIME_DIR "deskflow-otg-gui.app/Contents/MacOS")
-  install(PROGRAMS "$<TARGET_FILE:deskflow-otg>" DESTINATION "${OTG_GUI_RUNTIME_DIR}")
+  add_custom_command(TARGET deskflow-bridge-gui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:deskflow-bridge>"
+      "$<TARGET_FILE_DIR:deskflow-bridge-gui>/deskflow-bridge")
+  set(OTG_GUI_RUNTIME_DIR "deskflow-bridge-gui.app/Contents/MacOS")
+  install(PROGRAMS "$<TARGET_FILE:deskflow-bridge>" DESTINATION "${OTG_GUI_RUNTIME_DIR}")
 else()
   set(OTG_GUI_RUNTIME_DIR bin)
 endif()
 
-install(TARGETS deskflow-otg-gui BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+install(TARGETS deskflow-bridge-gui BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 # A build-tree GUI must find the same matching runtime pair as an installed
 # GUI. Keep the copy target incremental-build safe when only the server changes.
 if(APPLE)
-  set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-otg-gui>/../Resources/deskflow-otg")
+  set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-bridge-gui>/../Resources/deskflow-bridge")
 else()
-  set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-otg-gui>/share/deskflow-otg")
+  set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-bridge-gui>/share/deskflow-bridge")
 endif()
 if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
   add_custom_target(otg_gui_scrcpy_runtime ALL
@@ -116,7 +116,7 @@ if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
       "${OTG_GUI_BUILD_DATA_DIR}/scrcpy-server"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt"
       "${OTG_GUI_BUILD_DATA_DIR}/SCRCPY_VERSION.txt"
-    DEPENDS deskflow-otg-gui "${SCRCPY_SERVER}" "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt"
+    DEPENDS deskflow-bridge-gui "${SCRCPY_SERVER}" "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt"
     VERBATIM)
 endif()
 # Supply an explicitly signed APK; desktop builds never require an Android SDK
@@ -129,24 +129,24 @@ if(COMPANION_APK)
   endif()
   add_custom_target(otg_companion_apk ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${companion_apk}"
-      "$<TARGET_FILE_DIR:deskflow-otg-gui>/deskflow-otg-companion.apk"
-    DEPENDS deskflow-otg-gui "${companion_apk}"
+      "$<TARGET_FILE_DIR:deskflow-bridge-gui>/deskflow-bridge-companion.apk"
+    DEPENDS deskflow-bridge-gui "${companion_apk}"
     VERBATIM)
-  install(FILES "${companion_apk}" DESTINATION "${OTG_GUI_RUNTIME_DIR}" RENAME deskflow-otg-companion.apk)
+  install(FILES "${companion_apk}" DESTINATION "${OTG_GUI_RUNTIME_DIR}" RENAME deskflow-bridge-companion.apk)
 endif()
 if(APPLE)
-  set(gui_deploy_path "$<TARGET_FILE_NAME:deskflow-otg-gui>.app")
-  set(bridge_deploy_path "${OTG_GUI_RUNTIME_DIR}/$<TARGET_FILE_NAME:deskflow-otg>")
+  set(gui_deploy_path "$<TARGET_FILE_NAME:deskflow-bridge-gui>.app")
+  set(bridge_deploy_path "${OTG_GUI_RUNTIME_DIR}/$<TARGET_FILE_NAME:deskflow-bridge>")
 elseif(UNIX)
   # Inspect the build binary with its Qt RPATH. An installed binary can resolve
   # a different system Qt before the bundled libraries have been copied.
-  set(gui_deploy_path "$<TARGET_FILE:deskflow-otg-gui>")
-  set(bridge_deploy_path "$<TARGET_FILE:deskflow-otg>")
+  set(gui_deploy_path "$<TARGET_FILE:deskflow-bridge-gui>")
+  set(bridge_deploy_path "$<TARGET_FILE:deskflow-bridge>")
 else()
-  set(gui_deploy_path "bin/$<TARGET_FILE_NAME:deskflow-otg-gui>")
-  set(bridge_deploy_path "bin/$<TARGET_FILE_NAME:deskflow-otg>")
+  set(gui_deploy_path "bin/$<TARGET_FILE_NAME:deskflow-bridge-gui>")
+  set(bridge_deploy_path "bin/$<TARGET_FILE_NAME:deskflow-bridge>")
 endif()
-qt_generate_deploy_script(TARGET deskflow-otg-gui OUTPUT_SCRIPT deploy_script
+qt_generate_deploy_script(TARGET deskflow-bridge-gui OUTPUT_SCRIPT deploy_script
   CONTENT "
 qt_deploy_runtime_dependencies(
   EXECUTABLE \"${gui_deploy_path}\"
@@ -163,15 +163,15 @@ if(ADB_BUNDLE_DIR)
   endif()
   add_custom_target(otg_gui_adb_runtime ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${ADB_BUNDLE_DIR}"
-      "$<TARGET_FILE_DIR:deskflow-otg-gui>/platform-tools"
-    DEPENDS deskflow-otg-gui
+      "$<TARGET_FILE_DIR:deskflow-bridge-gui>/platform-tools"
+    DEPENDS deskflow-bridge-gui
     VERBATIM)
   install(DIRECTORY "${ADB_BUNDLE_DIR}/" DESTINATION "${OTG_GUI_RUNTIME_DIR}/platform-tools"
     USE_SOURCE_PERMISSIONS)
 endif()
 install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/README.md"
   "${PROJECT_SOURCE_DIR}/THIRD_PARTY.md"
-  DESTINATION share/deskflow-otg)
+  DESTINATION share/deskflow-bridge)
 
 if(BUILD_TESTING)
   find_package(Qt6 REQUIRED COMPONENTS Test)
@@ -194,7 +194,7 @@ if(BUILD_TESTING)
   qt_add_resources(test_gui i18n_test_inputs
     PREFIX /i18n-test
     BASE "${PROJECT_SOURCE_DIR}"
-    FILES translations/deskflow_otg_en.xml translations/deskflow_otg_zh_CN.xml
+    FILES translations/deskflow_bridge_en.xml translations/deskflow_bridge_zh_CN.xml
   )
   # Copy reference inputs as text: adding .cpp directly to a resource would mark
   # those shared sources HEADER_FILE_ONLY and remove them from other targets.
@@ -213,7 +213,7 @@ if(BUILD_TESTING)
   qt_add_resources(test_window otg_app_icon
     PREFIX /icons
     BASE "${PROJECT_SOURCE_DIR}/packaging"
-    FILES "${PROJECT_SOURCE_DIR}/packaging/deskflow-otg.svg"
+    FILES "${PROJECT_SOURCE_DIR}/packaging/deskflow-bridge.svg"
   )
   target_link_libraries(test_window PRIVATE otg_gui_support Qt6::Widgets Qt6::Test)
   add_dependencies(test_gui test_peer)
@@ -237,17 +237,17 @@ if(BUILD_TESTING)
   set_tests_properties(companion_transfer PROPERTIES TIMEOUT 60)
   add_test(NAME usb_auto_connect COMMAND test_usb_auto_connect)
   add_test(NAME gui_window COMMAND test_window)
-  add_test(NAME gui_version COMMAND deskflow-otg-gui --version)
+  add_test(NAME gui_version COMMAND deskflow-bridge-gui --version)
   add_test(NAME gui_runtime_files COMMAND "${CMAKE_COMMAND}"
     "-DDATA_DIR=${OTG_GUI_BUILD_DATA_DIR}"
-    "-DGUI_DIR=$<TARGET_FILE_DIR:deskflow-otg-gui>"
+    "-DGUI_DIR=$<TARGET_FILE_DIR:deskflow-bridge-gui>"
     "-DHAVE_SCRCPY=$<OR:$<BOOL:${BUILD_AUDIO}>,$<BOOL:${BUILD_CLIPBOARD}>,$<BOOL:${BUILD_UHID}>>"
     "-DSERVER=${SCRCPY_SERVER}" "-DVERSION=${SCRCPY_VERSION}"
     "-DADB_DIR=${ADB_BUNDLE_DIR}" "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
     "-DCOMPANION_APK=${companion_apk}"
     -P "${PROJECT_SOURCE_DIR}/tests/test_gui_runtime.cmake")
   set_tests_properties(gui_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "deskflow-otg-gui ${PROJECT_VERSION}")
+    PASS_REGULAR_EXPRESSION "deskflow-bridge-gui ${PROJECT_VERSION}")
   # QtTest otherwise sends plain-text diagnostics to the Windows debugger when
   # there is no console, leaving CTest/CI with an empty failure report.
   set_tests_properties(gui_logic companion_status companion_transfer usb_auto_connect gui_window PROPERTIES

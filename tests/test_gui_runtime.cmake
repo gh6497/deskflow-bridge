@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Inspect build artifacts only; never launch ADB or access a device.
 if(COMPANION_APK)
-  set(apk "${GUI_DIR}/deskflow-otg-companion.apk")
+  set(apk "${GUI_DIR}/deskflow-bridge-companion.apk")
   if(NOT EXISTS "${apk}")
     message(FATAL_ERROR "GUI bundled companion APK missing: ${apk}")
   endif()

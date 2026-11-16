@@ -80,7 +80,7 @@ bool generate(const QString &path, int bits, QString *error)
 
     auto *name = X509_get_subject_name(certificate.get());
     if (!name || X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-                                            reinterpret_cast<const unsigned char *>("Deskflow OTG Client"), -1, -1, 0) != 1 ||
+                                            reinterpret_cast<const unsigned char *>("Deskflow Bridge Client"), -1, -1, 0) != 1 ||
         X509_set_issuer_name(certificate.get(), name) != 1 ||
         X509_sign(certificate.get(), key.get(), EVP_sha256()) <= 0)
         return fail(error, QStringLiteral("could not sign the certificate"));

@@ -71,7 +71,7 @@ static bool socket_path(uid_t uid,const char *adapter,char *dir,size_t dir_size,
                           struct sockaddr_un *address)
 {
     if(!valid_adapter(adapter))return false;
-    snprintf(dir,dir_size,"%s/%lu/deskflow-otg",runtime_base,(unsigned long)uid);
+    snprintf(dir,dir_size,"%s/%lu/deskflow-bridge",runtime_base,(unsigned long)uid);
     memset(address,0,sizeof(*address));address->sun_family=AF_UNIX;
     int n=snprintf(address->sun_path,sizeof(address->sun_path),"%s/ble-%s.sock",dir,adapter);
     return n>0 && (size_t)n<sizeof(address->sun_path);
@@ -235,7 +235,7 @@ int otg_ble_service_run(const char *adapter,volatile sig_atomic_t *stop)
     char dir[128],lock_name[160];struct sockaddr_un address;
     if(!socket_path(getuid(),adapter,dir,sizeof(dir),&address) ||
        !private_directory(dir,getuid(),true)) {
-        fprintf(stderr,"ERROR: resident BLE requires a private /run/user/UID/deskflow-otg directory\n");return 1;
+        fprintf(stderr,"ERROR: resident BLE requires a private /run/user/UID/deskflow-bridge directory\n");return 1;
     }
     snprintf(lock_name,sizeof(lock_name),"%s/ble-%s.lock",dir,adapter);
     int lock=open(lock_name,O_CREAT|O_RDWR|O_CLOEXEC|O_NOFOLLOW,0600);
@@ -359,7 +359,7 @@ struct otg_ble_session *otg_ble_session_open(const char *adapter)
 {
     if(!valid_adapter(adapter))return NULL;
     int fd=connect_service(getuid(),adapter);
-    if(fd<0){fprintf(stderr,"ERROR: start deskflow-otg --ble-service --adapter %s as this ordinary user first\n",adapter);return NULL;}
+    if(fd<0){fprintf(stderr,"ERROR: start deskflow-bridge --ble-service --adapter %s as this ordinary user first\n",adapter);return NULL;}
     struct message reply;
     if(!request(fd,ATTACH,0,NULL,0,&reply)) {
         fprintf(stderr,"ERROR: resident BLE service busy, incompatible, or unavailable\n");close(fd);return NULL;

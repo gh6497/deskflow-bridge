@@ -34,7 +34,7 @@
   <message id="otg.companion.install_failed"><source>APK installation failed. Check the log for signing, version, platform compatibility, or phone confirmation errors. The existing app was not uninstalled.</source><translation>APK installation failed. Check the log for signing, version, platform compatibility, or phone confirmation errors. The existing app was not uninstalled.</translation></message>
   <message id="otg.companion.command_failed"><source>Could not query or open the companion app. See the log.</source><translation>Could not query or open the companion app. See the log.</translation></message>
   <message id="otg.companion.not_installed"><source>The companion app is not installed for the current user. Install the APK first.</source><translation>The companion app is not installed for the current user. Install the APK first.</translation></message>
-  <message id="otg.companion.opened"><source>Phone setup opened. Tap its notification-access button and enable deskflow-otg manually.</source><translation>Phone setup opened. Tap its notification-access button and enable deskflow-otg manually.</translation></message>
+  <message id="otg.companion.opened"><source>Phone setup opened. Tap its notification-access button and enable deskflow-bridge manually.</source><translation>Phone setup opened. Tap its notification-access button and enable deskflow-bridge manually.</translation></message>
   <message id="otg.companion.access_enabled"><source>Notification access is enabled. This does not verify that the service is running or that unplug-to-pause works; test on the phone.</source><translation>Notification access is enabled. This does not verify that the service is running or that unplug-to-pause works; test on the phone.</translation></message>
   <message id="otg.companion.access_required"><source>Installed, but notification access is not enabled. Open phone setup to grant it manually.</source><translation>Installed, but notification access is not enabled. Open phone setup to grant it manually.</translation></message>
   <message id="otg.ble.pause_failed"><source>BLE session release timed out; the GUI-owned provider was stopped. GATT continuity was lost.</source><translation>BLE session release timed out; the GUI-owned provider was stopped. GATT continuity was lost.</translation></message>
@@ -85,8 +85,8 @@
   <message id="otg.auto_connect.scan_failed"><source>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</source><translation>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</translation></message>
   <message id="otg.auto_connect.restored"><source>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</source><translation>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</translation></message>
   <message id="otg.action.about"><source>About</source><translation>About</translation></message>
-  <message id="otg.about.title"><source>About Deskflow OTG</source><translation>About Deskflow OTG</translation></message>
-  <message id="otg.about.text"><source>Deskflow OTG&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow OTG&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</translation></message>
+  <message id="otg.about.title"><source>About Deskflow Bridge</source><translation>About Deskflow Bridge</translation></message>
+  <message id="otg.about.text"><source>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</translation></message>
   <message id="otg.about.github"><source>Open GitHub</source><translation>Open GitHub</translation></message>
   <message id="otg.tray.show"><source>Show window</source><translation>Show window</translation></message>
   <message id="otg.tray.quit"><source>Quit</source><translation>Quit</translation></message>
@@ -95,7 +95,7 @@
   <message id="otg.language.english"><source>English</source><translation>English</translation></message>
   <message id="otg.action.browse"><source>Browse…</source><translation>Browse…</translation></message>
   <message id="otg.dialog.select_executable"><source>Select executable</source><translation>Select executable</translation></message>
-  <message id="otg.window.title"><source>Deskflow OTG · keyboard and mouse bridge</source><translation>Deskflow OTG · keyboard and mouse bridge</translation></message>
+  <message id="otg.window.title"><source>Deskflow Bridge · keyboard and mouse bridge</source><translation>Deskflow Bridge · keyboard and mouse bridge</translation></message>
   <message id="otg.window.intro"><source>Share your computer's keyboard and mouse</source><translation>Share your computer's keyboard and mouse</translation></message>
   <message id="otg.section.device"><source>Connection</source><translation>Connection</translation></message>
   <message id="otg.section.display"><source>Screen and display</source><translation>Screen and display</translation></message>
@@ -239,7 +239,7 @@
   <message id="otg.device.size_failed"><source>Could not read screen size. Enter width and height manually.</source><translation>Could not read screen size. Enter width and height manually.</translation></message>
   <message id="otg.device.orientation_unknown"><source>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</source><translation>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</translation></message>
   <message id="otg.device.ready"><source>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</translation></message>
-  <message id="otg.error.bridge_not_found"><source>The deskflow-otg bridge executable was not found beside the GUI. Check your installation.</source><translation>The deskflow-otg bridge executable was not found beside the GUI. Check your installation.</translation></message>
+  <message id="otg.error.bridge_not_found"><source>The deskflow-bridge bridge executable was not found beside the GUI. Check your installation.</source><translation>The deskflow-bridge bridge executable was not found beside the GUI. Check your installation.</translation></message>
   <message id="otg.device.online"><source>Online</source><translation>Online</translation></message>
   <message id="otg.device.unauthorized"><source>Unauthorized</source><translation>Unauthorized</translation></message>
   <message id="otg.device.offline"><source>Offline</source><translation>Offline</translation></message>

@@ -2,7 +2,7 @@
  * keymap.h - mapping between the Deskflow wire protocol key identifiers and
  *            USB HID keyboard usages.
  *
- * This file is part of deskflow-otg, a Deskflow <-> scrcpy-OTG bridge.
+ * This file is part of deskflow-bridge, a Deskflow <-> scrcpy-OTG bridge.
  *
  * The mapping semantics below are a faithful re-implementation of the logic in
  * scrcpy's `app/src/hid/hid_keyboard.c` (the "AOAv2 HID keyboard" layer) and
@@ -22,8 +22,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef DESKFLOW_OTG_KEYMAP_H
-#define DESKFLOW_OTG_KEYMAP_H
+#ifndef DESKFLOW_BRIDGE_KEYMAP_H
+#define DESKFLOW_BRIDGE_KEYMAP_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -123,4 +123,4 @@ uint8_t modmask_to_hid(uint16_t mask);
  */
 bool hid_usage_is_modifier(uint8_t usage, uint8_t *mod_bit_out);
 
-#endif /* DESKFLOW_OTG_KEYMAP_H */
+#endif /* DESKFLOW_BRIDGE_KEYMAP_H */

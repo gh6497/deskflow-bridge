@@ -232,7 +232,8 @@ static bool restore_alias(GDBusConnection *bus,const char *path,const char *alia
     GVariant *props=adapter_properties(bus,path,"org.bluez.Adapter1");
     if (!props) return false;
     const char *current=NULL;g_variant_lookup(props,"Alias","&s",&current);
-    bool change=current && !strcmp(current,"Deskflow OTG") && strcmp(current,alias);
+    bool change=current && (!strcmp(current,"Deskflow Bridge") || !strcmp(current,"Deskflow OTG")) &&
+                 strcmp(current,alias);
     g_variant_unref(props);
     if (!change) return true; /* Do not overwrite another application's edit. */
     GError *error=NULL;
@@ -272,8 +273,8 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     struct passwd *user=uid_string && end && !*end && uid>0 && uid<=UINT32_MAX ? getpwuid((uid_t)uid) : NULL;
     if (!restore_only && !user) {fprintf(stderr,"ERROR: run via sudo or pkexec from an ordinary user account\n");return 2;}
     char *username=user ? g_strdup(user->pw_name) : NULL;
-    char *state=g_strdup_printf("/run/deskflow-otg-ble-%s.state",adapter);
-    char *lock_path=g_strdup_printf("/run/deskflow-otg-ble-%s.lock",adapter);
+    char *state=g_strdup_printf("/run/deskflow-bridge-ble-%s.state",adapter);
+    char *lock_path=g_strdup_printf("/run/deskflow-bridge-ble-%s.lock",adapter);
     char *object_path=g_strdup_printf("/org/bluez/%s",adapter);
     int lock=open(lock_path,O_RDWR|O_CREAT|O_CLOEXEC|O_NOFOLLOW,0600);
     GDBusConnection *bus=NULL;GSubprocess *child=NULL;int result=1;

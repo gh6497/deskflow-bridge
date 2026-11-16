@@ -6,7 +6,7 @@
 该路径使用正常 ADB 驱动，保留绝对坐标指针，不需要下面的 AOA/libusb 驱动替换。
 用法和手机要求见 [ADB＋UHID](UHID.md)。以下内容针对 **USB（AOA HID）** 模式。
 
-Windows 并不是不支持 USB OTG。`deskflow-otg` 的 USB 模式和
+Windows 并不是不支持 USB OTG。`deskflow-bridge` 的 USB 模式和
 `scrcpy --otg` 一样，直接通过 libusb 向 Android 设备发送 AOA HID 控制请求，
 不使用 ADB 传输键鼠事件，也不需要 ADB daemon 或 RSA 授权。
 
@@ -35,7 +35,7 @@ libusb 可用的驱动）**。很多手机在关闭 USB 调试时会以 MTP/WPD 
 2. 在 PowerShell 中先运行：
 
    ```powershell
-   .\build\Release\deskflow-otg.exe --usb-scan
+   .\build\Release\deskflow-bridge.exe --usb-scan
    ```
 
    输出中必须出现手机的 `serial`。序列号为空或手机完全不出现时，继续处理
@@ -50,7 +50,7 @@ libusb 可用的驱动）**。很多手机在关闭 USB 调试时会以 MTP/WPD 
    设备时使用扫描结果中的序列号：
 
    ```powershell
-   .\build\Release\deskflow-otg.exe `
+   .\build\Release\deskflow-bridge.exe `
      --host 127.0.0.1 --port 24800 --name android `
      --width 1080 --height 1920 -s <usb-scan 输出的 serial>
    ```
@@ -60,7 +60,7 @@ libusb 可用的驱动）**。很多手机在关闭 USB 调试时会以 MTP/WPD 
 
 ## USB 调试与 ADB 的边界
 
-- `deskflow-otg` 的 HID 注入不依赖 ADB；Windows 驱动问题不能通过启动或重启
+- `deskflow-bridge` 的 HID 注入不依赖 ADB；Windows 驱动问题不能通过启动或重启
   ADB daemon 修复。
 - GUI 的 USB 设备刷新和自动连接使用 `usb-scan`，不要求 ADB。启用设备页的
   “ADB 增强功能”后，可以预先填写无线 ADB `host:port`，在手机插入 USB 之前读取

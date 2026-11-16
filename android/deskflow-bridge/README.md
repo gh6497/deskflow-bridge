@@ -1,6 +1,9 @@
-# deskflow-otg
+# deskflow-bridge
 
-`deskflow-otg` 是 deskflow-otg 的 Android companion app，提供：
+`deskflow-bridge` 是 deskflow-bridge 的 Android companion app，提供：
+
+Android 包名仍保持为 `com.github.gh6497.deskflowotg`，用于兼容已安装的旧版伴侣应用、通知广播和
+文件 Provider；这不会影响应用名称和桌面端项目名称改为 `deskflow-bridge`。
 
 - 手机收到 USB 数据连接断开事件后，立即请求暂停所有正在播放或缓冲的媒体会话。
 - 0.1.4 起，在应用首页显示由桌面 GUI 通过 ADB 同步的实际 Deskflow 会话状态。
@@ -18,7 +21,7 @@
 普通 APK 不能直接执行 `adb shell cmd media_session dispatch pause`，也不能可靠地向其他
 应用注入媒体按键。因此应用实现了 `NotificationListenerService`：
 
-1. 用户首次安装后，在系统设置中启用 deskflow-otg 的「通知使用权」；
+1. 用户首次安装后，在系统设置中启用 deskflow-bridge 的「通知使用权」；
 2. Android 绑定 `DeskflowNotificationListenerService`；通知监听服务由系统管理，不需要额外的前台服务权限；
 3. 清单中的 `UsbDisconnectReceiver` 监听系统 `android.hardware.usb.action.USB_STATE` 的
    `connected` 状态，并保留 `UsbManager.ACTION_USB_ACCESSORY_DETACHED` 作为兼容路径；
@@ -40,7 +43,7 @@
 - `app/src/main/res/values-zh-rCN/strings.xml`：简体中文翻译。
 
 新增界面文本时使用 `R.string` / `@string` 引用，并同步补齐两种语言。
-应用名称 `deskflow-otg` 标记为不可翻译，所有语言共用。
+应用名称 `deskflow-bridge` 标记为不可翻译，所有语言共用。
 
 ## 界面布局
 
@@ -131,7 +134,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 ```
 
-在通知使用权设置中启用 deskflow-otg 后，由 Android 尝试绑定服务；ROM 的自启动或省电限制
+在通知使用权设置中启用 deskflow-bridge 后，由 Android 尝试绑定服务；ROM 的自启动或省电限制
 可能阻止绑定，不能仅凭「已授权」判断生效。桌面 GUI 的 USB 设备页现提供
 「安装 / 更新 APK」「打开手机端设置」「检查授权状态」，使用当前设备的已有 ADB 连接，
 由用户点击触发，不会静默安装或授予通知使用权。USB 拔出后的暂停动作在手机本地执行，
@@ -146,8 +149,8 @@ adb shell am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 
 拔线暂停要求 **通知使用权已开启，且应用未被 ROM 强制停止或拦截后台广播**。请在手机上完成：
 
-1. 手动开启 deskflow-otg 的「通知使用权」，不是普通的「允许发送通知」。
-2. 如果系统提供「自启动 / 后台自启动」选项，允许 deskflow-otg 自启动及后台启动。
+1. 手动开启 deskflow-bridge 的「通知使用权」，不是普通的「允许发送通知」。
+2. 如果系统提供「自启动 / 后台自启动」选项，允许 deskflow-bridge 自启动及后台启动。
 3. 将应用电池 / 省电策略设为「无限制」「不限制」或同等选项，允许后台活动。
    小米 / Redmi 等 ROM 尤其需要检查；具体菜单名称因系统而异。
 4. 安装或更新 APK 后打开应用一次，确认通知使用权仍然开启；若权限失效，关闭再开启本应用的

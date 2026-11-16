@@ -12,13 +12,13 @@ class WindowsPackageTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.stage = pathlib.Path(self.temp.name) / 'stage'
-        for name in ('bin/deskflow-otg-gui.exe', 'bin/deskflow-otg.exe',
-                     'bin/deskflow-otg-companion.apk',
+        for name in ('bin/deskflow-bridge-gui.exe', 'bin/deskflow-bridge.exe',
+                     'bin/deskflow-bridge-companion.apk',
                      'bin/platform-tools/adb.exe', 'bin/platform-tools/AdbWinApi.dll',
                      'bin/plugins/platforms/qwindows.dll',
-                     'share/deskflow-otg/LICENSE', 'share/deskflow-otg/README.md',
-                     'share/deskflow-otg/THIRD_PARTY.md',
-                     'share/deskflow-otg/licenses/libusb-LGPL-2.1.txt'):
+                     'share/deskflow-bridge/LICENSE', 'share/deskflow-bridge/README.md',
+                     'share/deskflow-bridge/THIRD_PARTY.md',
+                     'share/deskflow-bridge/licenses/libusb-LGPL-2.1.txt'):
             path = self.stage / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'test')
@@ -34,7 +34,7 @@ class WindowsPackageTests(unittest.TestCase):
         self.assertIn('IfFileExists "$INSTDIR\\Uninstall.exe" 0 +4', script)
         self.assertIn('ExecWait', script)
         self.assertIn('Page instfiles', script)
-        self.assertIn('deskflow-otg-gui.exe', script)
+        self.assertIn('deskflow-bridge-gui.exe', script)
         self.assertNotIn('RMDir /r', script)
 
     def test_rejects_missing_bundle(self):

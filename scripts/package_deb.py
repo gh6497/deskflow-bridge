@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
 
     stage = args.stage.resolve()
-    features_path = stage / "share/deskflow-otg/BUILD_FEATURES.json"
+    features_path = stage / "share/deskflow-bridge/BUILD_FEATURES.json"
     ble = False
     audio = False
     if features_path.exists():
@@ -40,42 +40,42 @@ def main():
         version = package_version(stage, args.version)
     except ValueError as exc:
         parser.error(str(exc))
-    if not (stage / "bin/deskflow-otg-gui").is_file() or not (stage / "bin/deskflow-otg").is_file():
-        parser.error("--stage must contain bin/deskflow-otg-gui and bin/deskflow-otg "
+    if not (stage / "bin/deskflow-bridge-gui").is_file() or not (stage / "bin/deskflow-bridge").is_file():
+        parser.error("--stage must contain bin/deskflow-bridge-gui and bin/deskflow-bridge "
                      "(build with BUILD_GUI=ON and run cmake --install first)")
     arch = subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip()
     bundled_adb = (stage / "bin/platform-tools/adb").is_file()
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="deskflow-otg-deb-") as temp:
+    with tempfile.TemporaryDirectory(prefix="deskflow-bridge-deb-") as temp:
         root = pathlib.Path(temp) / "root"
-        app = root / "opt/deskflow-otg"
+        app = root / "opt/deskflow-bridge"
         shutil.copytree(stage, app, symlinks=True)
-        docs = root / "usr/share/doc/deskflow-otg"
+        docs = root / "usr/share/doc/deskflow-bridge"
         docs.mkdir(parents=True)
         shutil.copyfile(pathlib.Path(__file__).resolve().parent.parent / "LICENSE",
                         docs / "copyright")
         bindir = root / "usr/bin"
         bindir.mkdir(parents=True)
-        (bindir / "deskflow-otg-gui").symlink_to("/opt/deskflow-otg/bin/deskflow-otg-gui")
-        (bindir / "deskflow-otg").symlink_to("/opt/deskflow-otg/bin/deskflow-otg")
+        (bindir / "deskflow-bridge-gui").symlink_to("/opt/deskflow-bridge/bin/deskflow-bridge-gui")
+        (bindir / "deskflow-bridge").symlink_to("/opt/deskflow-bridge/bin/deskflow-bridge")
         if ble:
             units = root / "usr/lib/systemd/user"
             units.mkdir(parents=True)
             shutil.copyfile(pathlib.Path(__file__).resolve().parent.parent /
-                            "packaging/deskflow-otg-ble@.service", units / "deskflow-otg-ble@.service")
+                            "packaging/deskflow-bridge-ble@.service", units / "deskflow-bridge-ble@.service")
         applications = root / "usr/share/applications"
         applications.mkdir(parents=True)
         icons = root / "usr/share/icons/hicolor/scalable/apps"
         icons.mkdir(parents=True)
-        shutil.copyfile(pathlib.Path(__file__).resolve().parent.parent / "packaging/deskflow-otg.svg",
-                        icons / "deskflow-otg.svg")
-        (applications / "deskflow-otg.desktop").write_text(
-            "[Desktop Entry]\nType=Application\nName=Deskflow OTG\n"
+        shutil.copyfile(pathlib.Path(__file__).resolve().parent.parent / "packaging/deskflow-bridge.svg",
+                        icons / "deskflow-bridge.svg")
+        (applications / "deskflow-bridge.desktop").write_text(
+            "[Desktop Entry]\nType=Application\nName=Deskflow Bridge\n"
             "Comment=Control an Android device with Deskflow via USB or Bluetooth LE\n"
-            "Exec=/opt/deskflow-otg/bin/deskflow-otg-gui\n"
-            "Icon=deskflow-otg\n"
+            "Exec=/opt/deskflow-bridge/bin/deskflow-bridge-gui\n"
+            "Icon=deskflow-bridge\n"
             "Terminal=false\nCategories=Utility;\n", encoding="utf-8")
 
         control = root / "DEBIAN"
@@ -96,12 +96,12 @@ def main():
         if (stage / "plugins/platformthemes/libqgtk3.so").is_file():
             recommendations = "Recommends: libgtk-3-0t64 | libgtk-3-0\n"
         (control / "control").write_text(
-            f"Package: deskflow-otg-gui\nVersion: {version}\nArchitecture: {arch}\n"
-            "Maintainer: deskflow-otg contributors <noreply@github.com>\n"
+            f"Package: deskflow-bridge-gui\nVersion: {version}\nArchitecture: {arch}\n"
+            "Maintainer: deskflow-bridge contributors <noreply@github.com>\n"
             f"Depends: {dependencies}\n"
             f"{recommendations}"
             "Section: utils\nPriority: optional\n"
-            "Homepage: https://github.com/gh6497/deskflow-otg\n"
+            "Homepage: https://github.com/gh6497/deskflow-bridge\n"
             "Description: Deskflow to Android HID bridge\n"
             " Control an Android device via USB AOA HID or Linux Bluetooth LE.\n",
             encoding="utf-8")

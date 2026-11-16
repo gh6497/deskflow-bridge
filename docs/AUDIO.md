@@ -67,7 +67,7 @@ USB serial；BLE 连接方式必须填写同一台手机的 ADB target。
 ## CLI
 
 ```bash
-./build-audio/deskflow-otg \
+./build-audio/deskflow-bridge \
   --audio \
   --adb /usr/bin/adb \
   --adb-serial 192.168.1.20:5555 \
@@ -81,7 +81,7 @@ USB serial；BLE 连接方式必须填写同一台手机的 ADB target。
 Windows CLI 示例：
 
 ```powershell
-.\build-audio\Release\deskflow-otg.exe --audio --adb .\platform-tools\adb.exe `
+.\build-audio\Release\deskflow-bridge.exe --audio --adb .\platform-tools\adb.exe `
   --adb-serial 192.168.1.20:5555 `
   --scrcpy-server .\scrcpy-server --scrcpy-version 5.0.1 `
   --serial <手机序列号> --host 127.0.0.1 --port 24800 --name android `

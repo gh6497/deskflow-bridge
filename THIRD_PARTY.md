@@ -1,6 +1,6 @@
 # Desktop distribution dependencies
 
-The desktop package includes the deskflow-otg bridge (Apache-2.0), dynamically
+The desktop package includes the deskflow-bridge bridge (Apache-2.0), dynamically
 linked Qt runtime libraries/plugins, and Android Debug Bridge. **Deskflow itself
 is not distributed**; the application runs the user's separately installed copy.
 
@@ -19,7 +19,7 @@ The application source and CMake build instructions are in this repository.
 - LGPLv3: <https://www.gnu.org/licenses/lgpl-3.0.html>
 - GPLv3 (incorporated by LGPLv3): <https://www.gnu.org/licenses/gpl-3.0.html>
 
-Release staging includes these license texts in `share/deskflow-otg/licenses`.
+Release staging includes these license texts in `share/deskflow-bridge/licenses`.
 
 ## Android Debug Bridge 36.0.2
 

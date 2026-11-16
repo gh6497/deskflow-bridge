@@ -380,15 +380,15 @@ static bool configure_adapter_alias(struct otg_ble_hid *b)
         fprintf(stderr, "ERROR: Bluetooth adapter returned no name\n");
         return false;
     }
-    if (strcmp(b->original_alias, "Deskflow OTG") == 0) {
+    if (strcmp(b->original_alias, "Deskflow Bridge") == 0) {
         return true;
     }
-    if (!set_adapter_alias(b, "Deskflow OTG")) {
+    if (!set_adapter_alias(b, "Deskflow Bridge")) {
         g_clear_pointer(&b->original_alias, g_free);
         return false;
     }
     b->alias_changed = true;
-    fprintf(stderr, "INFO: Bluetooth adapter name changed from \"%s\" to \"Deskflow OTG\"\n",
+    fprintf(stderr, "INFO: Bluetooth adapter name changed from \"%s\" to \"Deskflow Bridge\"\n",
             b->original_alias);
     return true;
 }
@@ -420,7 +420,7 @@ static GVariant *props(const struct ble_object *o, const char *interface)
         g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid"));
         g_variant_builder_add(&d,"{sv}","Flags",o->kind==BLE_LEDS ? strv((const char*[]){"read","encrypt-read","write","write-without-response","encrypt-write",NULL}) : strv((const char*[]){"write-without-response","encrypt-write",NULL}));
     }
-    else if (o->kind==BLE_ADV) { g_variant_builder_add(&d,"{sv}","Type",g_variant_new_string("peripheral")); g_variant_builder_add(&d,"{sv}","ServiceUUIDs",strv((const char*[]){HID_UUID,NULL})); g_variant_builder_add(&d,"{sv}","LocalName",g_variant_new_string("Deskflow OTG")); g_variant_builder_add(&d,"{sv}","Appearance",g_variant_new_uint16(0x03c0)); }
+    else if (o->kind==BLE_ADV) { g_variant_builder_add(&d,"{sv}","Type",g_variant_new_string("peripheral")); g_variant_builder_add(&d,"{sv}","ServiceUUIDs",strv((const char*[]){HID_UUID,NULL})); g_variant_builder_add(&d,"{sv}","LocalName",g_variant_new_string("Deskflow Bridge")); g_variant_builder_add(&d,"{sv}","Appearance",g_variant_new_uint16(0x03c0)); }
     if (object_handle(o)) g_variant_builder_add(&d,"{sv}","Handle",g_variant_new_uint16(object_handle(o)));
     (void)interface; return g_variant_builder_end(&d);
 }

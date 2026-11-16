@@ -34,7 +34,7 @@
   <message id="otg.companion.install_failed"><source>APK installation failed. Check the log for signing, version, platform compatibility, or phone confirmation errors. The existing app was not uninstalled.</source><translation>APK 安装失败。请查看日志中的签名、版本、系统兼容性或手机确认错误；未卸载原有应用。</translation></message>
   <message id="otg.companion.command_failed"><source>Could not query or open the companion app. See the log.</source><translation>无法查询或打开伴侣应用，详情见日志。</translation></message>
   <message id="otg.companion.not_installed"><source>The companion app is not installed for the current user. Install the APK first.</source><translation>当前用户尚未安装伴侣应用，请先安装 APK。</translation></message>
-  <message id="otg.companion.opened"><source>Phone setup opened. Tap its notification-access button and enable deskflow-otg manually.</source><translation>已打开手机端设置。请点击应用内的通知使用权按钮，手动启用 deskflow-otg。</translation></message>
+  <message id="otg.companion.opened"><source>Phone setup opened. Tap its notification-access button and enable deskflow-bridge manually.</source><translation>已打开手机端设置。请点击应用内的通知使用权按钮，手动启用 deskflow-bridge。</translation></message>
   <message id="otg.companion.access_enabled"><source>Notification access is enabled. This does not verify that the service is running or that unplug-to-pause works; test on the phone.</source><translation>通知使用权已开启。此结果不代表服务正在运行或拔出暂停已生效，仍需手机实测。</translation></message>
   <message id="otg.companion.access_required"><source>Installed, but notification access is not enabled. Open phone setup to grant it manually.</source><translation>已安装，但尚未开启通知使用权。请打开手机端设置手动授权。</translation></message>
   <message id="otg.ble.pause_failed"><source>BLE session release timed out; the GUI-owned provider was stopped. GATT continuity was lost.</source><translation>BLE 会话释放超时，已停止此 GUI 创建的服务，GATT 连续性已丢失。</translation></message>
@@ -85,8 +85,8 @@
   <message id="otg.auto_connect.scan_failed"><source>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</source><translation>USB 自动连接扫描失败，请检查桥接程序、USB 权限和驱动；程序将继续检测。</translation></message>
   <message id="otg.auto_connect.restored"><source>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</source><translation>已恢复手机配置，无需 ADB。若屏幕方向已改变，请手动调整宽高。</translation></message>
   <message id="otg.action.about"><source>About</source><translation>关于</translation></message>
-  <message id="otg.about.title"><source>About Deskflow OTG</source><translation>关于 Deskflow OTG</translation></message>
-  <message id="otg.about.text"><source>Deskflow OTG&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow OTG&#10;版本：%1&#10;Git 提交：%2&#10;&#10;通过 USB 共享键盘鼠标。&#10;命令行与 GUI 使用相同的软件版本。&#10;许可证：Apache-2.0</translation></message>
+  <message id="otg.about.title"><source>About Deskflow Bridge</source><translation>关于 Deskflow Bridge</translation></message>
+  <message id="otg.about.text"><source>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow Bridge&#10;版本：%1&#10;Git 提交：%2&#10;&#10;通过 USB 共享键盘鼠标。&#10;命令行与 GUI 使用相同的软件版本。&#10;许可证：Apache-2.0</translation></message>
   <message id="otg.about.github"><source>Open GitHub</source><translation>打开 GitHub</translation></message>
   <message id="otg.tray.show"><source>Show window</source><translation>显示窗口</translation></message>
   <message id="otg.tray.quit"><source>Quit</source><translation>退出</translation></message>
@@ -95,7 +95,7 @@
   <message id="otg.language.english"><source>English</source><translation>English</translation></message>
   <message id="otg.action.browse"><source>Browse…</source><translation>浏览…</translation></message>
   <message id="otg.dialog.select_executable"><source>Select executable</source><translation>选择可执行程序</translation></message>
-  <message id="otg.window.title"><source>Deskflow OTG · keyboard and mouse bridge</source><translation>Deskflow OTG · 键鼠桥接</translation></message>
+  <message id="otg.window.title"><source>Deskflow Bridge · keyboard and mouse bridge</source><translation>Deskflow Bridge · 键鼠桥接</translation></message>
   <message id="otg.window.intro"><source>Share your computer's keyboard and mouse</source><translation>共享电脑键盘和鼠标</translation></message>
   <message id="otg.section.device"><source>Connection</source><translation>连接设备</translation></message>
   <message id="otg.section.display"><source>Screen and display</source><translation>屏幕与显示</translation></message>
@@ -239,7 +239,7 @@
   <message id="otg.device.size_failed"><source>Could not read screen size. Enter width and height manually.</source><translation>无法读取尺寸，请手动填写宽高。</translation></message>
   <message id="otg.device.orientation_unknown"><source>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</source><translation>已识别尺寸；未识别屏幕方向，请按当前横竖屏交换宽高。</translation></message>
   <message id="otg.device.ready"><source>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>已识别 USB 设备与当前方向尺寸，可手动调整宽高或连接。</translation></message>
-  <message id="otg.error.bridge_not_found"><source>The deskflow-otg bridge executable was not found beside the GUI. Check your installation.</source><translation>未找到同目录的 deskflow-otg 桥接程序，请检查安装包。</translation></message>
+  <message id="otg.error.bridge_not_found"><source>The deskflow-bridge bridge executable was not found beside the GUI. Check your installation.</source><translation>未找到同目录的 deskflow-bridge 桥接程序，请检查安装包。</translation></message>
   <message id="otg.device.online"><source>Online</source><translation>在线</translation></message>
   <message id="otg.device.unauthorized"><source>Unauthorized</source><translation>未授权</translation></message>
   <message id="otg.device.offline"><source>Offline</source><translation>离线</translation></message>

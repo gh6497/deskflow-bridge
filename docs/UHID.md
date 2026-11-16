@@ -32,12 +32,12 @@ Windows 新配置默认选择 UHID，旧配置不会自动迁移到另一种传�
 CLI 默认仍为 `--transport usb`，使用 UHID 时明确选择：
 
 ```bash
-./build/deskflow-otg --transport uhid --adb-serial PHONE_ADB_SERIAL \
+./build/deskflow-bridge --transport uhid --adb-serial PHONE_ADB_SERIAL \
   --scrcpy-server ./third_party/scrcpy/scrcpy-server-v5.0.1 --scrcpy-version 5.0.1 \
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 1920
 ```
 
-Windows 使用 `deskflow-otg.exe` 和对应文件路径；GUI 自动定位包内 ADB/server。
+Windows 使用 `deskflow-bridge.exe` 和对应文件路径；GUI 自动定位包内 ADB/server。
 可追加 `--clipboard`、`--audio`（Linux/Windows）、`--auto-rotate`。
 无线目标 `host:port` / `[IPv6]:port` 沿用现有策略：检查在线状态，必要时仅对该目标执行一次
 `adb connect` 后重新校验；不自动配对、切换目标、断开其他 ADB 连接或重启 ADB server。
