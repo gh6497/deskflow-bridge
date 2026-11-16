@@ -118,6 +118,16 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Set package version (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: echo "PACKAGE_VERSION=$(tr -d '\r\n' < build/BUILD_VERSION.txt)" >> "$GITHUB_ENV"
+      - name: Set package version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content 'build/BUILD_VERSION.txt' -Raw).Trim()
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: USB-only Linux compatibility
         if: runner.os == 'Linux'
         run: |
@@ -175,15 +185,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-windows-x86_64-setup.exe"
+          python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "dist/deskflow-bridge-gui-windows-x86_64-setup.exe")) { throw 'Installer missing' }
+          if (-not (Test-Path "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe")) { throw 'Installer missing' }
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $installDir = Join-Path $env:LOCALAPPDATA 'Programs/Deskflow Bridge'
-          $installer = (Resolve-Path 'dist/deskflow-bridge-gui-windows-x86_64-setup.exe').Path
+          $installer = (Resolve-Path "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe").Path
           $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           foreach ($file in @('bin/deskflow-bridge-gui.exe', 'bin/deskflow-bridge.exe', 'bin/platform-tools/adb.exe', 'share/deskflow-bridge/licenses/libusb-LGPL-2.1.txt')) {
@@ -201,11 +211,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          python scripts/package_dmg.py --stage stage --output "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
-          hdiutil verify "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
+          python scripts/package_dmg.py --stage stage --output "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
+          hdiutil verify "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
           mount_dir="$(mktemp -d)"
           trap 'hdiutil detach "$mount_dir" || true; rmdir "$mount_dir"' EXIT
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "dist/deskflow-bridge-gui-${{ matrix.asset }}.dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
           test -L "$mount_dir/Applications"
           test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge"
           test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/platform-tools/adb"
@@ -217,10 +227,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Linux'
         shell: bash
         run: |
-          python scripts/package_deb.py --stage stage --version "${GITHUB_REF_NAME#v}" --output "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb"
-          dpkg-deb --field "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" Package Version Architecture Depends
-          dpkg-deb --contents "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | grep 'opt/deskflow-bridge/bin/deskflow-bridge-gui'
-          dpkg-deb --fsys-tarfile "dist/deskflow-bridge-gui-${GITHUB_REF_NAME#v}-linux-amd64.deb" | tar -xOf - ./opt/deskflow-bridge/bin/deskflow-bridge-companion.apk | cmp "$COMPANION_APK" -
+          python scripts/package_deb.py --stage stage --version "$PACKAGE_VERSION" --output "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-amd64.deb"
+          dpkg-deb --field "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-amd64.deb" Package Version Architecture Depends
+          dpkg-deb --contents "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-amd64.deb" | grep 'opt/deskflow-bridge/bin/deskflow-bridge-gui'
+          dpkg-deb --fsys-tarfile "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-amd64.deb" | tar -xOf - ./opt/deskflow-bridge/bin/deskflow-bridge-companion.apk | cmp "$COMPANION_APK" -
       - name: Download verified appimagetool (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -234,8 +244,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python scripts/package_appimage.py --stage stage --appimagetool appimagetool-x86_64.AppImage --runtime runtime-x86_64 --output "dist/deskflow-bridge-gui-linux-x86_64.AppImage"
-          ./dist/deskflow-bridge-gui-linux-x86_64.AppImage --appimage-extract >/dev/null
+          python scripts/package_appimage.py --stage stage --appimagetool appimagetool-x86_64.AppImage --runtime runtime-x86_64 --output "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-x86_64.AppImage"
+          ./dist/deskflow-bridge-gui-${PACKAGE_VERSION}-linux-x86_64.AppImage --appimage-extract >/dev/null
           test -x squashfs-root/AppRun
           test -f squashfs-root/usr/bin/deskflow-bridge-gui
           test -f squashfs-root/usr/lib/libusb-1.0.so.0
@@ -251,8 +261,8 @@ jobs:
           cp build/deskflow-bridge build/cli-package/deskflow-bridge
           cp third_party/scrcpy/scrcpy-server-v5.0.1 build/cli-package/scrcpy-server
           cp build/SCRCPY_VERSION.txt build/cli-package/SCRCPY_VERSION.txt
-          tar -czf "dist/deskflow-bridge-${{ matrix.asset }}.tar.gz" -C build/cli-package .
-          tar -czf "dist/deskflow-bridge-gui-${{ matrix.asset }}.tar.gz" -C stage .
+          tar -czf "dist/deskflow-bridge-${PACKAGE_VERSION}-${{ matrix.asset }}.tar.gz" -C build/cli-package .
+          tar -czf "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.tar.gz" -C stage .
       - name: Package (Windows)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         shell: pwsh
@@ -262,8 +272,8 @@ jobs:
           Copy-Item build/Release/deskflow-bridge.exe build/cli-package/
           Copy-Item third_party/scrcpy/scrcpy-server-v5.0.1 build/cli-package/scrcpy-server
           Copy-Item build/SCRCPY_VERSION.txt build/cli-package/
-          Compress-Archive -Path build/cli-package/* -DestinationPath "dist/deskflow-bridge-${{ matrix.asset }}.zip"
-          Compress-Archive -Path stage/* -DestinationPath "dist/deskflow-bridge-gui-${{ matrix.asset }}.zip"
+          Compress-Archive -Path build/cli-package/* -DestinationPath "dist/deskflow-bridge-${env:PACKAGE_VERSION}-${{ matrix.asset }}.zip"
+          Compress-Archive -Path stage/* -DestinationPath "dist/deskflow-bridge-gui-${env:PACKAGE_VERSION}-${{ matrix.asset }}.zip"
       - name: Save release package
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
