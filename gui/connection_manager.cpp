@@ -112,7 +112,9 @@ bool ConnectionManager::reject(const QString &id, const char *message)
 bool ConnectionManager::start(const QString &id, const ConnectionOptions &options, const QString &layout)
 {
     if (m_shutdown || !m_devices.contains(id) || state(id) != Session::State::Idle) return false;
-    if (!validScreenName(options.phone) || options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
+    if (!validScreenName(options.phone))
+        return reject(id, "otg.error.phone_screen_name");
+    if (options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
         return reject(id, "otg.error.screen_names");
     if (options.manageServer && layout.isEmpty()) return reject(id, "otg.multi.invalid_layout");
     for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {

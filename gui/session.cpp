@@ -13,6 +13,7 @@
 #include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QTcpServer>
+#include <cmath>
 
 Session::Session(QObject *parent) : QObject(parent)
 {
@@ -194,6 +195,68 @@ static QStringList auxiliarySignature(const ConnectionOptions &options)
             options.unlockPin};
 }
 
+// Keep the ID, not translated text, so a failed session follows language changes.
+// Never include option values here: in particular, the PIN must not reach logs.
+static const char *connectionOptionsError(const ConnectionOptions &options)
+{
+    const bool ble = options.transport == "ble";
+    const bool uhid = options.transport == "uhid";
+    if (options.transport != "usb" && !ble && !uhid)
+        return "otg.error.transport";
+    if (options.transport == "usb" && options.serial.isEmpty())
+        return "otg.error.usb_serial_required";
+    if (adbRequired(options) && options.adb.isEmpty())
+        return "otg.error.adb_program_required";
+    if ((uhid && options.adbSerial.trimmed().isEmpty()) ||
+        (adbRequired(options) && adbTarget(options).isEmpty()))
+        return "otg.error.adb_target_required";
+    static const QRegularExpression peerPattern("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$");
+    if (ble && !peerPattern.match(options.blePeer).hasMatch())
+        return "otg.error.ble_peer";
+    if (options.mouseMode != "absolute" && options.mouseMode != "relative")
+        return "otg.error.mouse_mode";
+    if (ble && options.mouseMode != "absolute")
+        return "otg.error.ble_mouse_mode";
+    if (options.middleButtonAction != "normal" && options.middleButtonAction != "home")
+        return "otg.error.middle_button_action";
+    if (options.rightButtonAction != "normal" && options.rightButtonAction != "back")
+        return "otg.error.right_button_action";
+    if (options.sideButton1Action != "normal" && options.sideButton1Action != "swipe-up" &&
+        options.sideButton1Action != "swipe-down")
+        return "otg.error.side_button1_action";
+    if (options.sideButton2Action != "normal" && options.sideButton2Action != "swipe-up" &&
+        options.sideButton2Action != "swipe-down")
+        return "otg.error.side_button2_action";
+    if (options.sideSwipeDistancePercent < 1 || options.sideSwipeDistancePercent > 100)
+        return "otg.error.swipe_distance";
+    if (!options.unlockPin.isEmpty() && (options.unlockPin.size() < 4 || options.unlockPin.size() > 32 ||
+        !options.unlockPin.contains(QRegularExpression("^[0-9]+$"))))
+        return "otg.error.unlock_pin";
+    if (options.tls && options.tlsFingerprint.isEmpty() && options.tlsFingerprintFile.isEmpty())
+        return "otg.error.tls_fingerprint_required";
+    if (options.tls && !options.tlsFingerprint.isEmpty() && !options.tlsFingerprintFile.isEmpty())
+        return "otg.error.tls_fingerprint_conflict";
+    if (!validScreenName(options.phone) || options.phone.toUtf8().size() > 255)
+        return "otg.error.phone_screen_name";
+    if (options.host.trimmed().isEmpty())
+        return "otg.error.host_required";
+    if (options.host.contains(QRegularExpression("[\\x00-\\x20\\x7f]")))
+        return "otg.error.host_characters";
+    if (options.host.toUtf8().size() > 1024)
+        return "otg.error.host_length";
+    if (options.port < 1 || options.port > 65535)
+        return "otg.error.port_range";
+    if (!std::isfinite(options.motionMultiplier) || options.motionMultiplier < 1.0 || options.motionMultiplier > 10.0)
+        return "otg.error.motion_multiplier";
+    if (options.mouseMode == "relative" && options.motionMultiplier != 1.0)
+        return "otg.error.relative_multiplier";
+    if (options.width < 1 || options.width > 32767)
+        return "otg.error.width_range";
+    if (options.height < 1 || options.height > 32767)
+        return "otg.error.height_range";
+    return nullptr;
+}
+
 void Session::start(const ConnectionOptions &options)
 {
     if (m_state != State::Idle)
@@ -224,31 +287,8 @@ void Session::start(const ConnectionOptions &options)
         fail("otg.error.scrcpy_runtime");
         return;
     }
-    static const QRegularExpression peerPattern("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$");
-    if ((options.transport == "usb" && options.serial.isEmpty()) ||
-        (adbRequired(options) && (options.adb.isEmpty() || adbTarget(options).isEmpty())) ||
-        (options.transport != "usb" && !ble && !uhid) ||
-        (uhid && options.adbSerial.trimmed().isEmpty()) ||
-        (ble && (!peerPattern.match(options.blePeer).hasMatch() || options.mouseMode != "absolute")) ||
-        (options.middleButtonAction != "normal" && options.middleButtonAction != "home") ||
-        (options.rightButtonAction != "normal" && options.rightButtonAction != "back") ||
-        (options.sideButton1Action != "normal" && options.sideButton1Action != "swipe-up" &&
-            options.sideButton1Action != "swipe-down") ||
-        (options.sideButton2Action != "normal" && options.sideButton2Action != "swipe-up" &&
-            options.sideButton2Action != "swipe-down") ||
-        options.sideSwipeDistancePercent < 1 || options.sideSwipeDistancePercent > 100 ||
-        (!options.unlockPin.isEmpty() && (options.unlockPin.size() < 4 || options.unlockPin.size() > 32 ||
-            !options.unlockPin.contains(QRegularExpression("^[0-9]+$")))) ||
-        (options.tls && options.tlsFingerprint.isEmpty() && options.tlsFingerprintFile.isEmpty()) ||
-        (options.tls && !options.tlsFingerprint.isEmpty() && !options.tlsFingerprintFile.isEmpty()) ||
-        !validScreenName(options.phone) ||
-        options.host.trimmed().isEmpty() || options.host.contains(QRegularExpression("[\\x00-\\x20\\x7f]")) ||
-        options.host.toUtf8().size() > 1024 || options.phone.toUtf8().size() > 255 ||
-        options.port < 1 || options.port > 65535 ||
-        options.motionMultiplier < 1.0 || options.motionMultiplier > 10.0 ||
-        (options.mouseMode == "relative" && options.motionMultiplier != 1.0) ||
-        options.width < 1 || options.width > 32767 || options.height < 1 || options.height > 32767) {
-        fail("otg.error.invalid_options");
+    if (const auto error = connectionOptionsError(options)) {
+        fail(error);
         return;
     }
     if (options.unlockAdb && options.transport == "ble" && options.bleIsolate) {
@@ -270,12 +310,16 @@ void Session::start(const ConnectionOptions &options)
     static const QRegularExpression adapterPattern("^hci[0-9]{1,5}$");
     if (ble && (!adapterPattern.match(options.adapter).hasMatch() ||
                 options.adapter.mid(3).toUInt() >= 65535)) {
-        fail("otg.error.invalid_options");
+        fail("otg.error.ble_adapter");
         return;
     }
 #elif defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
-    if (ble && (options.bleIsolate || !options.adapter.isEmpty())) {
-        fail("otg.error.invalid_options");
+    if (ble && options.bleIsolate) {
+        fail("otg.error.ble_isolate_windows");
+        return;
+    }
+    if (ble && !options.adapter.isEmpty()) {
+        fail("otg.error.ble_adapter_windows");
         return;
     }
 #else

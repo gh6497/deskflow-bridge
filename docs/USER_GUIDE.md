@@ -317,6 +317,7 @@ Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its pers
 
 | What you see | What to check first |
 | --- | --- |
+| Connection rejected with a configuration error | The status and runtime log identify the first invalid field and its requirement (for example, port 1–65535, width/height 1–32767, missing ADB target or conflicting TLS fingerprint settings). Correct that field and connect again; any remaining error is shown on the next attempt. PIN values are never included in these messages |
 | No phone after refreshing | Try a data-capable cable/USB port. UHID: debugging authorization and ADB driver. AOA: USB permissions and driver |
 | Unauthorized or Offline | Unlock and approve the computer, then refresh. For wireless, check the current IP, connection port and network |
 | Deskflow not found | Install Deskflow and select `deskflow-core` / `deskflow-server` under Shared server, rather than its GUI |
