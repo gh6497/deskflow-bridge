@@ -20,6 +20,10 @@
 #include <QtTest>
 #include <openssl/pem.h>
 #include <memory>
+#include <limits>
+
+Q_DECLARE_METATYPE(ConnectionOptions)
+Q_DECLARE_METATYPE(ServerOptions)
 
 static QString peerPath()
 {
@@ -97,6 +101,205 @@ static QStringList placeholders(const QString &text)
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void invalidConnectionOptions_data()
+    {
+        QTest::addColumn<ConnectionOptions>("options");
+        QTest::addColumn<QString>("errorId");
+        ConnectionOptions base;
+        base.serial = "TEST123";
+        base.bridge = peerPath();
+        base.manageServer = false;
+        base.scrcpyServer = "fake-server";
+        base.scrcpyVersion = "5.0.1";
+        const auto row = [base](const char *name, const char *id, auto change) {
+            auto options = base;
+            change(options);
+            QTest::newRow(name) << options << QString::fromLatin1(id);
+        };
+        row("transport", "otg.error.transport", [](auto &o) { o.transport = "invalid"; });
+        row("usb-serial", "otg.error.usb_serial_required", [](auto &o) { o.serial.clear(); });
+        row("adb-program", "otg.error.adb_program_required", [](auto &o) { o.audio = true; o.adb.clear(); });
+        row("adb-target", "otg.error.adb_target_required", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.clipboard = true; o.adb = peerPath();
+        });
+#ifdef OTG_GUI_HAVE_UHID
+        row("uhid-no-usb-fallback", "otg.error.adb_target_required", [](auto &o) { o.transport = "uhid"; o.adb = peerPath(); });
+        row("uhid-blank-target", "otg.error.adb_target_required", [](auto &o) {
+            o.transport = "uhid"; o.adbSerial = "  "; o.adb = peerPath();
+        });
+#endif
+        row("ble-peer-empty", "otg.error.ble_peer", [](auto &o) { o.transport = "ble"; });
+        row("ble-peer-format", "otg.error.ble_peer", [](auto &o) { o.transport = "ble"; o.blePeer = "bad-mac"; });
+        row("ble-relative", "otg.error.ble_mouse_mode", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.mouseMode = "relative";
+        });
+        row("mouse-mode", "otg.error.mouse_mode", [](auto &o) { o.mouseMode = "invalid"; });
+        row("middle-button", "otg.error.middle_button_action", [](auto &o) { o.middleButtonAction = "invalid"; });
+        row("right-button", "otg.error.right_button_action", [](auto &o) { o.rightButtonAction = "invalid"; });
+        row("side-button-1", "otg.error.side_button1_action", [](auto &o) { o.sideButton1Action = "invalid"; });
+        row("side-button-2", "otg.error.side_button2_action", [](auto &o) { o.sideButton2Action = "invalid"; });
+        row("swipe-low", "otg.error.swipe_distance", [](auto &o) { o.sideSwipeDistancePercent = 0; });
+        row("swipe-high", "otg.error.swipe_distance", [](auto &o) { o.sideSwipeDistancePercent = 101; });
+        row("pin-short", "otg.error.unlock_pin", [](auto &o) { o.unlockPin = "987"; });
+        row("pin-long", "otg.error.unlock_pin", [](auto &o) { o.unlockPin = QString(33, '8'); });
+        row("pin-nondigit", "otg.error.unlock_pin", [](auto &o) { o.unlockPin = "private-invalid-pin"; });
+        row("tls-missing", "otg.error.tls_fingerprint_required", [](auto &o) { o.tls = true; });
+        row("tls-conflict", "otg.error.tls_fingerprint_conflict", [](auto &o) {
+            o.tls = true; o.tlsFingerprint = QString(64, 'a'); o.tlsFingerprintFile = "fingerprints.txt";
+        });
+        row("phone-empty", "otg.error.phone_screen_name", [](auto &o) { o.phone.clear(); });
+        row("phone-characters", "otg.error.phone_screen_name", [](auto &o) { o.phone = "bad name"; });
+        row("phone-prefix", "otg.error.phone_screen_name", [](auto &o) { o.phone = ".phone"; });
+        row("phone-too-long", "otg.error.phone_screen_name", [](auto &o) { o.phone = QString(64, 'a'); });
+        row("host-empty", "otg.error.host_required", [](auto &o) { o.host.clear(); });
+        row("host-blank", "otg.error.host_required", [](auto &o) { o.host = "  "; });
+        row("host-space", "otg.error.host_characters", [](auto &o) { o.host = "bad host"; });
+        row("host-control", "otg.error.host_characters", [](auto &o) { o.host = "host\nname"; });
+        row("host-too-long", "otg.error.host_length", [](auto &o) { o.host = QString(1025, 'a'); });
+        row("port-low", "otg.error.port_range", [](auto &o) { o.port = 0; });
+        row("port-high", "otg.error.port_range", [](auto &o) { o.port = 65536; });
+        row("multiplier-low", "otg.error.motion_multiplier", [](auto &o) { o.motionMultiplier = 0.99; });
+        row("multiplier-high", "otg.error.motion_multiplier", [](auto &o) { o.motionMultiplier = 10.01; });
+        row("multiplier-nan", "otg.error.motion_multiplier", [](auto &o) { o.motionMultiplier = std::numeric_limits<double>::quiet_NaN(); });
+        row("multiplier-inf", "otg.error.motion_multiplier", [](auto &o) { o.motionMultiplier = std::numeric_limits<double>::infinity(); });
+        row("relative-multiplier", "otg.error.relative_multiplier", [](auto &o) {
+            o.mouseMode = "relative"; o.motionMultiplier = 2.0;
+        });
+        row("width-low", "otg.error.width_range", [](auto &o) { o.width = 0; });
+        row("width-high", "otg.error.width_range", [](auto &o) { o.width = 32768; });
+        row("height-low", "otg.error.height_range", [](auto &o) { o.height = 0; });
+        row("height-high", "otg.error.height_range", [](auto &o) { o.height = 32768; });
+        row("first-invalid-field", "otg.error.port_range", [](auto &o) { o.port = 0; o.width = 0; });
+#ifdef Q_OS_LINUX
+        row("adapter-format", "otg.error.ble_adapter", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.adapter = "invalid";
+        });
+        row("adapter-range", "otg.error.ble_adapter", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.adapter = "hci65535";
+        });
+#elif defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
+        row("windows-isolation", "otg.error.ble_isolate_windows", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.bleIsolate = true;
+        });
+        row("windows-adapter", "otg.error.ble_adapter_windows", [](auto &o) {
+            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.adapter = "hci0";
+        });
+#endif
+    }
+    void invalidConnectionOptions()
+    {
+        QFETCH(ConnectionOptions, options);
+        QFETCH(QString, errorId);
+        Session session;
+        QSignalSpy logs(&session, &Session::log);
+        session.start(options);
+        QCOMPARE(session.state(), Session::State::Idle);
+        QVERIFY(session.hasFailure());
+        QCOMPARE(logs.size(), 1);
+        QCOMPARE(logs.first().first().toString(), session.statusMessage());
+        auto &languages = LanguageManager::instance();
+        const auto restore = qScopeGuard([&languages] { languages.setLanguage("zh_CN"); });
+        QString english;
+        for (const auto &language : {"en", "zh_CN"}) {
+            QVERIFY(languages.setLanguage(language));
+            const auto message = session.statusMessage();
+            QCOMPARE(message, qtTrId(errorId.toLatin1().constData()));
+            QVERIFY(!message.contains("otg.")); // Missing translation must not leak an ID.
+            if (english.isEmpty()) english = message;
+            else QVERIFY(message != english);
+            if (!options.unlockPin.isEmpty()) QVERIFY(!message.contains(options.unlockPin));
+        }
+        if (!options.unlockPin.isEmpty()) QVERIFY(!logs.first().first().toString().contains(options.unlockPin));
+    }
+    void invalidServerOptions_data()
+    {
+        QTest::addColumn<ServerOptions>("options");
+        QTest::addColumn<QString>("errorId");
+        ServerOptions base;
+        base.program = peerPath();
+        base.configuration = serverConfiguration("computer", "android", "right");
+        const auto row = [base](const char *name, const char *id, auto change) {
+            auto options = base;
+            change(options);
+            QTest::newRow(name) << options << QString::fromLatin1(id);
+        };
+        row("computer-empty", "otg.error.computer_screen_name", [](auto &o) { o.computer.clear(); });
+        row("computer-invalid", "otg.error.computer_screen_name", [](auto &o) { o.computer = "bad name"; });
+        row("layout-empty", "otg.error.server_layout_required", [](auto &o) { o.configuration.clear(); });
+        row("port-low", "otg.error.port_range", [](auto &o) { o.port = 0; });
+        row("port-high", "otg.error.port_range", [](auto &o) { o.port = 65536; });
+        row("program-empty", "otg.error.deskflow_program_required", [](auto &o) { o.program.clear(); });
+    }
+    void invalidServerOptions()
+    {
+        QFETCH(ServerOptions, options);
+        QFETCH(QString, errorId);
+        DeskflowServer server;
+        QSignalSpy failed(&server, &DeskflowServer::failed);
+        QSignalSpy ready(&server, &DeskflowServer::ready);
+        server.start(options);
+        QCOMPARE(server.state(), DeskflowServer::State::Idle);
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().first().toString(), errorId);
+        QVERIFY(failed.first().at(1).toString().isEmpty());
+        QVERIFY(ready.isEmpty());
+    }
+    void managerValidationMessages()
+    {
+        ConnectionManager manager;
+        manager.addDevice("test");
+        ConnectionOptions options;
+        options.phone = "bad name";
+        QVERIFY(!manager.start("test", options, {}));
+        QCOMPARE(manager.status("test"), qtTrId("otg.error.phone_screen_name"));
+        options.phone = "android";
+        options.deskflow.clear();
+        QVERIFY(manager.start("test", options, serverConfiguration("computer", "android", "right")));
+        QVERIFY(!manager.busy());
+        QCOMPARE(manager.status("test"), qtTrId("otg.error.deskflow_program_required"));
+    }
+    void validOptionBoundaries_data()
+    {
+        QTest::addColumn<int>("edge");
+        QTest::newRow("minimum") << 0;
+        QTest::newRow("maximum") << 1;
+    }
+    void validationRetry()
+    {
+        ConnectionOptions options;
+        options.serial = "TEST123"; options.bridge = peerPath(); options.manageServer = false;
+        options.port = options.width = 0;
+        Session session;
+        session.start(options);
+        QCOMPARE(session.statusMessage(), qtTrId("otg.error.port_range"));
+        options.port = 24800;
+        session.start(options);
+        QCOMPARE(session.statusMessage(), qtTrId("otg.error.width_range"));
+        options.width = 1080;
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Connected);
+        QVERIFY(!session.hasFailure());
+        session.stop();
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+    }
+    void validOptionBoundaries()
+    {
+        QFETCH(int, edge);
+        ConnectionOptions options;
+        options.serial = "TEST123"; options.bridge = peerPath(); options.manageServer = false;
+        options.port = edge ? 65535 : 1;
+        options.width = options.height = edge ? 32767 : 1;
+        options.phone = QString(edge ? 63 : 1, 'a');
+        options.sideSwipeDistancePercent = edge ? 100 : 1;
+        options.unlockPin = QString(edge ? 32 : 4, '8');
+        options.motionMultiplier = edge ? 10.0 : 1.0;
+        Session session;
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Connected);
+        QVERIFY(!session.hasFailure());
+        session.stop();
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+    }
     void rightButtonAction_data()
     {
         QTest::addColumn<QString>("action");
@@ -724,9 +927,9 @@ private slots:
         ConnectionOptions options;
         session.start(options);
         QCOMPARE(session.state(), Session::State::Idle);
-        QCOMPARE(session.statusMessage(), "Invalid device serial number, screen name, host or dimensions.");
+        QCOMPARE(session.statusMessage(), "USB serial number is empty. Select the phone or enter its USB serial number.");
         QVERIFY(languages.setLanguage("zh_CN"));
-        QCOMPARE(session.statusMessage(), "设备序列号、屏幕名称、主机或尺寸无效。");
+        QCOMPARE(session.statusMessage(), "USB 序列号为空。请选择手机或填写手机的 USB 序列号。");
         QCOMPARE(qtTrId("otg.action.connect"), "连接");
     }
     void missingScrcpyRuntime_data()
@@ -979,6 +1182,7 @@ private slots:
         ConnectionOptions options;
         options.port = occupied.serverPort();
         options.serial = "ABC";
+        options.deskflow = peerPath();
         session.start(options);
         QCOMPARE(session.state(), Session::State::Idle);
         QVERIFY(changes.last()[1].toString().contains("端口"));

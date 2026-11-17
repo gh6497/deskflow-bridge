@@ -83,9 +83,20 @@ void DeskflowServer::start(const ServerOptions &options)
     m_options = options;
     const auto generation = ++m_generation;
     setState(State::Starting);
-    if (!validScreenName(options.computer) ||
-        options.configuration.isEmpty() || options.port < 1 || options.port > 65535) {
-        fail("otg.error.invalid_options");
+    if (!validScreenName(options.computer)) {
+        fail("otg.error.computer_screen_name");
+        return;
+    }
+    if (options.configuration.isEmpty()) {
+        fail("otg.error.server_layout_required");
+        return;
+    }
+    if (options.port < 1 || options.port > 65535) {
+        fail("otg.error.port_range");
+        return;
+    }
+    if (options.program.isEmpty()) {
+        fail("otg.error.deskflow_program_required");
         return;
     }
     QTcpServer check;
@@ -94,7 +105,6 @@ void DeskflowServer::start(const ServerOptions &options)
         return;
     }
     check.close();
-    if (options.program.isEmpty()) { fail("otg.error.invalid_options"); return; }
     m_deadline.start(30000);
     runCommand(this, options.program, {"--help"}, [this, generation](bool ok, const QString &help) {
         if (generation != m_generation || m_state != State::Starting) return;
