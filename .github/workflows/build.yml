@@ -108,8 +108,8 @@ jobs:
       - name: Configure
         if: runner.os != 'Windows'
         run: cmake -S . -B build -DBUILD_GUI=ON -DBUILD_CLIPBOARD=ON -DOTG_RELEASE_TAG="${{ github.ref_type == 'tag' && github.ref_name || '' }}" -DADB_BUNDLE_DIR="$PWD/adb-bundle/platform-tools" -DCOMPANION_APK="$COMPANION_APK" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-Wall -Wextra -Werror" -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
-      - name: Enable Linux audio
-        if: runner.os == 'Linux'
+      - name: Enable native Unix audio
+        if: runner.os != 'Windows'
         run: cmake -S . -B build -DBUILD_AUDIO=ON -DSCRCPY_VERSION=5.0.1
       - name: Configure Windows with vcpkg
         if: runner.os == 'Windows'

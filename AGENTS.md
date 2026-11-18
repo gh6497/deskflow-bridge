@@ -341,11 +341,11 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   已断开只发一次也过期。CLI 暂无同步；不依赖通知使用权、不改变拔线暂停。
   0.1.5 手机增加默认关闭的连接自动播放，仅指定播放器活动会话、STATE_PAUSED + ACTION_PLAY，
   不启动播放器、不回退、不用切换键。桌面状态 v2 每次真实连接生成 UUID，play_event 仅一次，
-  心跳不带播放请求；离线消耗不补播，排队超4秒丢弃。音频开启时须 RAW 头 + ALSA/WASAPI
+  心跳不带播放请求；离线消耗不补播，排队超4秒丢弃。音频开启时须 RAW 头 + ALSA/AudioQueue/WASAPI
   输出就绪（audio_player_ready 原子快照，经 main 线程 audio-ready/unavailable），不等首帧 PCM。
   手机先持久化最近64个已消耗ID，再检查开关/绑定中监听服务/目标会话；失败、重绑、重启、
-  手动暂停与租约续报不重试。v1只显示状态；旧APK不识别v2，需同时更新。macOS无音频后端仍
-  可用无音频转发的自动播放；BLE仍须显式已有ADB。主机策略/fake ADB/ALSA null不等于真机验收。
+  手动暂停与租约续报不重试。v1只显示状态；旧APK不识别v2，需同时更新。macOS 有/无音频
+  均支持自动播放，开启音频时同样等输出就绪；BLE仍须显式已有ADB。主机策略/fake ADB/ALSA null不等于真机验收。
   `companion_status` fake ADB 和 Java 状态策略回归不等于真机广播投递验收。
 
 - 剪贴板用 `--clipboard` / `-DBUILD_CLIPBOARD=ON` 独立开启，默认关闭、按设备保存。
@@ -370,7 +370,12 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   `platform/posix/scrcpy_session.c` / Windows 对应实现负责 ADB/server/forward 和音频、控制 socket 的
   共享生命周期；`audio_player.c` 仅负责平台音频播放。音频与剪贴板复用一个 ADB/server/forward，按音频、控制顺序
   连接独立 socket，先读首 socket dummy，再接控制；不等待音频头来接控制。
-  纯剪贴板无 ALSA/WASAPI 依赖，POSIX 会话还用于 macOS 剪贴板（音频仍仅 Linux/Windows）。
+  纯剪贴板无音频后端依赖，POSIX 会话复用于 macOS 音频和剪贴板。
+  macOS `platform/macos/audio_player.c` 用 AudioToolbox AudioQueue 的 C 接口播放 RAW PCM，
+  100ms 有界环形缓冲、3个10ms输出缓冲，欠载补静音；满缓冲等候可取消且1秒超时。
+  RAW头+输出初始化即ready，不等首帧；停止先唤醒工作线程，再同步Dispose以结束回调。
+  `full`和两种macOS发布架构启用音频，手动构建仍默认关闭；`test_audio_macos`用SDK类型和
+  fake AudioQueue/socketpair验证，不访问声卡。模拟与构建不等同Android/耳机切换真机验收。
   显式无线 ADB `host:port` / `[IPv6]:port` 由 `src/adb_target.c` 共享启动策略先查状态，
   未在线时执行一次 `adb connect` 并核对 `get-state=device` 后才 push；平台子进程命令均有界。
   不自动 pair、不回退 USB、不 disconnect/kill-server；USB/mDNS 序列号不走自动连接。

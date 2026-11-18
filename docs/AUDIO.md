@@ -1,10 +1,10 @@
 # 音频转发（实验性）
 
 音频功能沿用 scrcpy 的 Android Server 和音频流格式，不通过 AOA HID 传输。
-AOA HID 继续负责键盘鼠标；ADB 独立负责音频：
+AOA/BLE/UHID 继续负责键盘鼠标；ADB 负责音频，UHID 与音频复用同一 server：
 
 ```text
-Android AudioRecord → scrcpy-server(raw PCM) → ADB forward → ALSA/WASAPI
+Android AudioRecord → scrcpy-server(raw PCM) → ADB forward → ALSA/AudioQueue/WASAPI
 ```
 
 ADB 与 USB HID 可以使用不同的传输。`--serial` 始终是 USB AOA HID 的物理设备序列号；
@@ -16,10 +16,10 @@ IP 和**连接端口**，而非配对弹窗的端口。Linux、Windows、macOS �
 未就绪时仅对 TCP 目标自动执行一次 `adb connect` 并再次确认状态为 `device`，然后才推送
 server。USB、mDNS 等其他目标必须已经授权并在线，已在线则不重复连接。
 连接/授权失败会提示检查端口、网络和配对；不自动配对、不回退到另一台 USB 设备，
-退出也不执行 `adb disconnect` 或重启 ADB server。macOS 当前仅提供剪贴板，不提供音频播放。
+退出也不执行 `adb disconnect` 或重启 ADB server。Linux、macOS、Windows 均支持音频播放。
 
 主机端由共享的 `scrcpy_session` 管理 ADB、scrcpy-server、forward 以及音频/控制
-socket 生命周期；`audio_player` 只负责将 RAW PCM 播放到 ALSA/WASAPI。这样只启用
+socket 生命周期；`audio_player` 只负责将 RAW PCM 播放到 ALSA/AudioQueue/WASAPI。这样只启用
 剪贴板时不依赖音频后端，音频和剪贴板组合启用时仍只启动一个 Android Server。
 
 当前实现使用 scrcpy 的：
@@ -35,29 +35,38 @@ ADB forward，音频和控制使用独立 socket。控制 socket 必须在等待
 
 ## 构建
 
-Linux 需要 ALSA 开发包，Windows 使用系统 WASAPI；两者都需要一个与 Android Server
+Linux 需要 ALSA 开发包，macOS 使用系统 AudioToolbox/AudioQueue，Windows 使用系统 WASAPI；三者都需要一个与 Android Server
 实现匹配的 `scrcpy-server`。
 发布包会直接携带这个 server；运行时不需要安装或检测完整的 `scrcpy` 客户端。
 当前实现按 scrcpy `v5.0.1` 的协议和参数实现：
 
 ```bash
 sudo apt install libasound2-dev
-cmake -S . -B build-audio \
+cmake -S . -B build \
   -DBUILD_AUDIO=ON \
   -DBUILD_GUI=ON
-cmake --build build-audio
+cmake --build build
 ```
 
 Windows 使用 Visual Studio 生成器时同样启用 `-DBUILD_AUDIO=ON`，不需要额外音频库：
 WASAPI 由 Windows SDK 提供。ADB 可以是 PATH 中的 `adb.exe`，或 GUI 随包携带的版本。
 
+macOS 使用同样的 `-DBUILD_AUDIO=ON`，无需 ALSA、SDL 或 FFmpeg。也可用
+`cmake -S . -B build -DOTG_PROFILE=full` 构建 GUI、音频、剪贴板和 UHID；手动配置的
+`BUILD_AUDIO` 仍默认关闭。Intel 和 Apple Silicon 发布构建均启用音频。
+AudioQueue 接收 48 kHz 双声道 S16LE PCM，并由系统转换到默认输出格式。无需麦克风或
+屏幕录制权限，也不安装虚拟声卡；在系统设置中选择扬声器/耳机及音量。
+当前没有应用内输出选择，输出设备不可用时记录错误，可选择可用输出后重新连接。
+内部使用 100 ms 有界 PCM 缓冲和三个 10 ms 输出缓冲；欠载补静音，输出阻塞超过一秒
+停止音频，断开会唤醒读流和缓冲等待。缓冲参数不是实测端到端延迟。
+
 GUI 在“ADB 增强功能”区域提供“转发音频”开关，与“共享文本”一样按设备独立保存，
 新设备默认关闭；连接期间仅锁定当前设备的开关，不影响其他空闲设备。当前 GUI 音频支持
-Linux/Windows 的 USB 和 BLE 键鼠连接模式；BLE 模式必须为同一台手机填写显式无线 ADB target。
+Linux/macOS/Windows 的 AOA 和 UHID，以及 Linux/Windows 的 BLE 键鼠连接模式；BLE 模式必须为同一台手机填写显式无线 ADB target。
 未编译音频功能时不显示开关。
 勾选音频后，可在同页的 ADB target 字段填写无线 ADB 序列号；USB serial 仍填写
 `--usb-scan` 得到的物理 USB 序列号。USB 连接方式下 ADB target 留空时，音频回退使用
-USB serial；BLE 连接方式必须填写同一台手机的 ADB target。
+USB serial；BLE 和 UHID 连接方式必须填写同一台手机的 ADB target。
 
 仓库已经内置并打包 `third_party/scrcpy/scrcpy-server-v5.0.1`，不需要联网下载。
 `fetch_scrcpy_server.py` 仍然保留，用于以后升级 server；它会从官方 Release 下载、校验 SHA-256，
@@ -67,7 +76,7 @@ USB serial；BLE 连接方式必须填写同一台手机的 ADB target。
 ## CLI
 
 ```bash
-./build-audio/deskflow-bridge \
+./build/deskflow-bridge \
   --audio \
   --adb /usr/bin/adb \
   --adb-serial 192.168.1.20:5555 \
@@ -81,15 +90,25 @@ USB serial；BLE 连接方式必须填写同一台手机的 ADB target。
 Windows CLI 示例：
 
 ```powershell
-.\build-audio\Release\deskflow-bridge.exe --audio --adb .\platform-tools\adb.exe `
+.\build\Release\deskflow-bridge.exe --audio --adb .\platform-tools\adb.exe `
   --adb-serial 192.168.1.20:5555 `
   --scrcpy-server .\scrcpy-server --scrcpy-version 5.0.1 `
   --serial <手机序列号> --host 127.0.0.1 --port 24800 --name android `
   --width 1080 --height 1920
 ```
 
-ADB、Server 或主机 ALSA/WASAPI 初始化失败会使本次连接失败；Android 运行期间如果音频
-采集被系统禁用，则记录警告并保留键鼠连接。不带该参数时，原有无需 ADB 的 AOA
+macOS CLI 示例（已授权的 USB ADB 序列号或无线连接地址）：
+
+```bash
+./build/deskflow-bridge --transport uhid --adb-serial <ADB目标> --audio \
+  --scrcpy-server ./third_party/scrcpy/scrcpy-server-v5.0.1 --scrcpy-version 5.0.1 \
+  --host 127.0.0.1 --port 24800 --name android --width 1080 --height 1920
+```
+
+ADB、Server 或播放线程创建失败会使本次连接失败；Android 音频采集被禁用、格式无效
+或主机 ALSA/AudioQueue/WASAPI 输出初始化/播放失败时，记录错误或警告并保留键鼠连接。
+音频就绪要求有效 RAW 头和输出初始化成功，不等待首帧 PCM；失败时不会触发伴侣自动播放。
+不带该参数时，原有无需 ADB 的 AOA
 HID 行为不变。
 
 ### 断开时暂停播放
@@ -115,9 +134,9 @@ adb -s <音频设备> shell cmd media_session dispatch pause
 不是播放器已暂停的确认。这不是模拟耳机插拔，也不修改音量；具体播放器/ROM 仍可能
 不响应媒体会话暂停请求。
 USB 拔出、无线 ADB 已掉线或进程被强杀时不能保证暂停，不能保证完全避免手机短暂外放。
-Linux/Windows 共用此行为；macOS 当前不支持音频，不受影响。自动化验证使用 fake ADB，
+Linux/macOS/Windows 共用此行为。自动化验证使用 fake ADB，
 本次 Linux GUI 测试构建已由用户实测确认断开暂停正常；其他播放器/ROM 和 Windows
-仍需分别验证。
+及 macOS 仍需分别验证。
 
 要求 Android 11 或更高版本；Android 11 在设备锁定时可能无法启动采集。DRM、
 通话以及主动禁止音频捕获的应用可能不会出现在输出中。

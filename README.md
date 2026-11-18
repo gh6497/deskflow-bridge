@@ -45,7 +45,7 @@ features vary by platform and release. A [Chinese user guide](docs/USER_GUIDE.zh
 
 The complete path is: `host keyboard and mouse → deskflow → deskflow-bridge → selected HID transport → phone`.
 
-The experimental Linux/Windows audio mode uses scrcpy's Android Server: AOA HID/BLE HID carries keyboard and mouse input, while ADB independently forwards Android audio to the host (ALSA on Linux and WASAPI on Windows). See [Audio forwarding](docs/AUDIO.md) for build and usage instructions. Without `--audio`, the original HID mode, which does not require USB debugging, is unchanged.
+The experimental Linux/macOS/Windows audio mode uses scrcpy's Android Server: the selected HID transport carries keyboard and mouse input, while ADB forwards Android audio to the host (ALSA on Linux, AudioQueue on macOS and WASAPI on Windows). macOS plays through the system default output using the built-in AudioToolbox framework; no extra audio library or microphone permission is needed. See [Audio forwarding](docs/AUDIO.md) for build and usage instructions. Without `--audio`, the original HID mode, which does not require USB debugging, is unchanged.
 
 Optional [text clipboard sharing](docs/CLIPBOARD.md) follows Deskflow's ownership and screen-switch synchronization rules. It reads and writes the phone clipboard through the ADB/scrcpy control channel and does not depend on the system clipboard of the computer running the GUI. After building with `-DBUILD_CLIPBOARD=ON`, enable it per device in the GUI or use `--clipboard`; it is disabled by default. Clipboard sharing is independent of audio but uses the same device ADB/server session. When enabled, copying on the phone in the background may also update the shared clipboard.
 The audio ADB transport can be selected independently with `--adb-serial`, for example `192.168.1.20:5555`, while `--serial` continues to identify only the USB AOA HID device. This is useful on Windows when the ADB USB driver and WinUSB cannot be used at the same time. BLE connections require an explicit wireless ADB target for the same phone.
@@ -268,7 +268,7 @@ cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# macOS: GUI + UHID + clipboard (audio and Linux BLE are not supported)
+# macOS: GUI + UHID + audio + clipboard (BLE is not supported)
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure

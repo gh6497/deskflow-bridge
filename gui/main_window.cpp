@@ -1398,8 +1398,7 @@ void MainWindow::updateEnabled()
     m_clipboardStatus->setText(idle ? qtTrId(m_clipboard->isChecked() ?
         "otg.clipboard.disconnected" : "otg.clipboard.off") : m_session->clipboardStatusMessage());
 #ifdef OTG_GUI_HAVE_AUDIO
-    // Audio is currently USB-only, but keep the option visible in the
-    // ADB-enhancement section for BLE so its unavailable state is explicit.
+    // Audio uses the selected ADB target independently of the HID transport.
     m_adbForm->setRowVisible(m_audio, true);
 #else
     m_adbForm->setRowVisible(m_audio, false);

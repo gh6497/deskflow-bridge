@@ -60,8 +60,9 @@ AOA/BLE 仅在启用增强功能时需要 ADB。手动填写 AOA 设备信息、
 
 完整链路是：`主机键盘鼠标 → deskflow → deskflow-bridge → 选定的 HID 传输 → 手机`。
 
-Linux/Windows 实验性音频模式沿用 scrcpy 的 Android Server：AOA HID/BLE HID 负责键鼠，ADB 独立
-转发 Android 音频到主机（Linux 使用 ALSA，Windows 使用 WASAPI）。构建和使用见[音频转发](docs/AUDIO.md)；不启用
+Linux/macOS/Windows 实验性音频模式沿用 scrcpy 的 Android Server：选定的 HID 传输负责键鼠，ADB
+转发 Android 音频到主机（Linux 使用 ALSA，macOS 使用 AudioQueue，Windows 使用 WASAPI）。
+macOS 通过系统自带的 AudioToolbox 框架向系统默认输出播放，无需额外音频库或麦克风权限。构建和使用见[音频转发](docs/AUDIO.md)；不启用
 `--audio` 时原有无需 USB 调试的 HID 模式不变。
 
 可选[文本剪贴板共享](docs/CLIPBOARD.md)遵循 Deskflow 的所有权和切屏同步规则，
@@ -392,7 +393,7 @@ cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-# macOS：GUI + UHID + 剪贴板（不支持音频和 Linux BLE）
+# macOS：GUI + UHID + 音频 + 剪贴板（不支持 BLE）
 cmake -S . -B build -DOTG_PROFILE=full -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure

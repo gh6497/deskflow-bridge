@@ -31,7 +31,7 @@ This guide is for people installing and using the desktop app. No compilation is
 - **Navigate Android**: assign the middle button to Home, the right button to Back, and side buttons to swipe up or down.
 - **Switch between devices**: save separate settings for phones and tablets, then move between them using your screen layout.
 - **Copy and paste text**: enable sharing to copy on the computer and paste on the phone, or synchronize text in the other direction.
-- **Listen through your computer**: Linux/Windows can forward phone audio.
+- **Listen through your computer**: Linux/macOS/Windows can forward phone audio.
 - **Transfer pictures and files both ways**: use the optional phone companion app to receive phone shares on the computer or send computer files to the phone.
 - **Reduce repeated setup**: remember device settings, keep connections in the tray, and optionally reconnect remembered AOA phones when plugged in.
 
@@ -86,7 +86,7 @@ Use just one phone for your first setup.
 
 **For your first connection, start with USB + ADB + UHID below**, particularly on Windows, where it avoids replacing USB drivers for AOA. Fresh Linux/macOS profiles may default to AOA, so select UHID explicitly. If you do not want debugging, go to the [AOA instructions](#aoa).
 
-Wireless ADB and Bluetooth are different connection types. macOS currently has neither BLE nor audio forwarding. If an option is missing, check the features included in your release.
+Wireless ADB and Bluetooth are different connection types. macOS currently has no BLE mode. If an option is missing, check the features included in your release.
 
 <a id="interface"></a>
 
@@ -226,7 +226,9 @@ This shares text; use **Files & sharing** below for pictures and files. Copying 
 
 ### Forward phone audio
 
-On Linux/Windows, enable **Forward audio** to play phone audio through the computer. Android 11 or later is required. Keep Android 11 unlocked when starting capture. Calls, protected content and apps that disallow capture may be silent. macOS does not currently provide this feature.
+On Linux/macOS/Windows, enable **Forward audio** under **ADB enhancements** to play phone audio through the computer. This option is saved per device and is off by default. Android 11 or later and authorized ADB are required. Keep Android 11 unlocked when starting capture. Calls, protected content and apps that disallow capture may be silent.
+
+On macOS, audio plays through the system default output (speakers or headphones), without microphone permission or an extra audio driver. If there is no sound, check the output device and volume in System Settings, then disconnect and reconnect after selecting an available output. An audio-output failure is logged and keyboard/mouse control remains available. Audio must be included in the build; older macOS packages may not show the switch.
 
 Normal disconnection of an audio session tries to request playback pause. Unplugging or losing ADB can prevent that request; the companion below offers USB-disconnect pause.
 
