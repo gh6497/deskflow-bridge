@@ -8,21 +8,22 @@
 
 class QProcess;
 
-// Prefer bridge hotplug notifications, falling back to polling when unavailable.
-// Descriptor reads stay in short-lived subprocesses and never block the GUI.
+// Each instance observes one transport's attachments. AOA prefers bridge
+// hotplug notifications; wired UHID uses the authorized ADB device list.
 class UsbAutoConnect : public QObject {
     Q_OBJECT
 public:
-    explicit UsbAutoConnect(QObject *parent = nullptr);
+    enum class Source { Aoa, Adb };
+    explicit UsbAutoConnect(QObject *parent = nullptr, Source source = Source::Aoa);
     ~UsbAutoConnect() override;
-    void setProgram(const QString &program) { m_program = program; }
+    void setProgram(const QString &program);
     void setEnabled(bool enabled);
     void setReady(bool ready);
     void setMultipleDevices(bool enabled) { m_multiple = enabled; }
     void setKnownSerials(const QStringList &serials);
     void suppressSerial(const QString &serial);
     void suppressAttachment(const QString &id, const QString &serial);
-    bool acceptSnapshot(const QByteArray &json);
+    bool acceptSnapshot(const QByteArray &data);
     void poll();
     bool usesHotplug() const { return m_hotplug; }
 signals:
@@ -35,6 +36,7 @@ private:
     void fallbackToPolling();
     void readNotifications();
     void scheduleScan(int attempts = 1);
+    const Source m_source;
     QTimer m_timer;
     QTimer m_watchDeadline, m_rescan;
     QProcess *m_watcher = nullptr;

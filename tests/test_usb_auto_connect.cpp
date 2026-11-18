@@ -51,6 +51,44 @@ static QProcess *watcher(UsbAutoConnect &monitor)
 class UsbAutoConnectTest : public QObject {
     Q_OBJECT
 private slots:
+    void wiredAdbAttachments()
+    {
+        UsbAutoConnect monitor(nullptr, UsbAutoConnect::Source::Adb);
+        monitor.setMultipleDevices(true);
+        monitor.setKnownSerials({"PHONE", "TABLET", "192.0.2.1:5555", "[::1]:5555", "emulator-5554",
+                                 "adb-PHONE-abc._adb-tls-connect._tcp", "????????????"});
+        monitor.setReady(true);
+        monitor.setEnabled(true);
+        QSignalSpy requests(&monitor, &UsbAutoConnect::connectRequested);
+        const QByteArray header = "* daemon started successfully *\r\nList of devices attached\r\n";
+        const QByteArray others = "192.0.2.1:5555 device transport_id:31\n[::1]:5555 device transport_id:32\n"
+            "emulator-5554 device transport_id:33\nadb-PHONE-abc._adb-tls-connect._tcp device transport_id:34\n"
+            "???????????? no permissions transport_id:35\nUNKNOWN device transport_id:36\n";
+        const QByteArray phone = "PHONE device model:Demo transport_id:7\n"; // No usb:<path> on native Windows ADB.
+        QVERIFY(monitor.acceptSnapshot(header + others + "PHONE unauthorized transport_id:7\n"));
+        QVERIFY(monitor.acceptSnapshot(header + others + phone + "PHONE offline transport_id:8\n"));
+        QCOMPARE(requests.size(), 0); // Including ambiguous serials, even if just one row is online.
+        QVERIFY(monitor.acceptSnapshot(header + others + phone));
+        QCOMPARE(requests.size(), 1);
+        QCOMPARE(requests.at(0).at(0).toString(), "PHONE");
+        QVERIFY(!monitor.acceptSnapshot("adb: failed to read devices\n"));
+        QVERIFY(!monitor.acceptSnapshot(header + "bad row\n"));
+        QVERIFY(monitor.acceptSnapshot(header + "???????????? no permissions transport_id:7\n"));
+        QVERIFY(monitor.acceptSnapshot(header + "PHONE offline transport_id:7\n"));
+        QVERIFY(monitor.acceptSnapshot(header + phone));
+        QCOMPARE(requests.size(), 1); // A failed scan or loss of authorization is not an unplug.
+        monitor.suppressSerial("PHONE"); // A manual attempt consumes ID 7, not the next insertion.
+        monitor.setReady(false);
+        const auto reinserted = header + "PHONE device usb:1-2 transport_id:10\nTABLET device transport_id:11\n";
+        QVERIFY(monitor.acceptSnapshot(reinserted));
+        monitor.setReady(true);
+        QVERIFY(monitor.acceptSnapshot(reinserted));
+        QCOMPARE(requests.size(), 3); // New transport IDs even without an intervening empty list.
+        QVERIFY(monitor.acceptSnapshot(reinserted));
+        QCOMPARE(requests.size(), 3);
+        monitor.setEnabled(false);
+    }
+
     void hotplugNotifications()
     {
         QTemporaryDir dir;

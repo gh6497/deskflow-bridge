@@ -70,6 +70,20 @@ bool isWirelessAdbTarget(const QString &target)
     return QRegularExpression("^(?:\\[[^\\]]+\\]|[^:]+):[0-9]+$").match(target).hasMatch();
 }
 
+QPair<QString, QString> autoConnectKey(const QVariantMap &profile)
+{
+    const auto transport = profile.value("transport", "usb").toString();
+    if (transport == "usb") return {transport, profile.value("serial").toString()};
+    const auto target = profile.value("adbSerial").toString();
+    if (transport == "uhid" && isUsbAdbSerial(target)) return {transport, target};
+    return {};
+}
+
+bool autoConnectOptedIn(const QVariantMap &profile)
+{
+    return profile.value(profile.value("transport") == "uhid" ? "uhidUsbAutoConnect" : "autoConnect", false).toBool();
+}
+
 QString defaultTransport()
 {
 #if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_UHID)
@@ -248,7 +262,8 @@ QWidget *MainWindow::pathField(QLineEdit *&field, const char *placeholderId)
     return row;
 }
 
-MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion(this)
+MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
+    m_adbAutoConnect(this, UsbAutoConnect::Source::Adb), m_companion(this)
 {
     QSettings settings;
     if (settings.beginReadArray("devices") > 0) {
@@ -259,6 +274,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
     settings.endArray();
     m_session = m_connections.addDevice(m_selectedId);
     m_autoConnect.setMultipleDevices(true);
+    m_adbAutoConnect.setMultipleDevices(true);
     auto &languages = LanguageManager::instance();
     const QString savedLanguage = settings.value("language", LanguageManager::systemLanguage()).toString();
     if (!languages.setLanguage(savedLanguage))
@@ -422,6 +438,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
     m_autoConnectEnabled->setObjectName("autoConnectEnabled");
     setTranslatedProperty(m_autoConnectEnabled, "toolTip", "otg.auto_connect.tooltip");
     deviceForm->addRow(m_autoConnectEnabled);
+    m_uhidAutoConnectEnabled = translated(new QCheckBox, "text", "otg.auto_connect.enabled");
+    m_uhidAutoConnectEnabled->setObjectName("uhidUsbAutoConnect");
+    setTranslatedProperty(m_uhidAutoConnectEnabled, "toolTip", "otg.uhid.auto_connect_hint");
+    deviceForm->addRow(m_uhidAutoConnectEnabled);
     formLayout->addWidget(deviceBox);
 
     auto *adbBox = translated(new QGroupBox, "title", "otg.section.adb");
@@ -854,12 +874,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
     for (int i = 0; i < profileCount; ++i) {
         settings.setArrayIndex(i);
         const auto profile = settings.value("profile").toMap();
-        const auto serial = profile.value("serial").toString();
-        if (!serial.isEmpty())
-            m_profiles.insert(serial, profile);
+        const auto key = autoConnectKey(profile);
+        if (!key.second.isEmpty()) m_profiles.insert(key, profile);
     }
     settings.endArray();
-    m_autoConnect.setKnownSerials(m_profiles.keys());
     m_autoConnectEnabled->setChecked(settings.value("autoConnect", false).toBool());
     m_alias->setText(m_phone->text());
     m_neighbor->addItem(m_computer->text(), m_computer->text());
@@ -887,37 +905,23 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
 #else
         setTranslatedProperty(m_deviceStatus, "text", "otg.ble.setup_hint");
 #endif
-    connect(m_autoConnectEnabled, &QCheckBox::toggled, this, [this](bool enabled) {
+    auto saveAutoConnect = [this] {
         if (m_loadingDevice) return;
-        QSettings().setValue("autoConnect", enabled);
-        if (!m_loadingDevice) {
-            storeDevice();
-            persistDevices();
-        }
-        updateAutoConnect();
-    });
-    connect(&m_autoConnect, &UsbAutoConnect::connectRequested, this, [this](const QString &serial) {
-        if (m_closing || !m_profiles.contains(serial))
-            return;
+        QSettings().setValue("autoConnect", m_autoConnectEnabled->isChecked());
         storeDevice();
-        for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
-            if (it->value("transport", "usb") != "usb" || it->value("serial").toString() != serial ||
-                !it->value("autoConnect", false).toBool() || m_connections.state(it.key()) != Session::State::Idle) continue;
-            auto profile = m_profiles.value(serial);
-            // Global server fields come from the shared form, not an old remembered profile.
-            profile["phone"] = it->value("phone");
-            profile["neighbor"] = it->value("neighbor");
-            profile["direction"] = it->value("direction", "right");
-            profile["alias"] = it->value("alias");
-            profile["autoConnect"] = true;
-            profile["transport"] = "usb";
-            m_records[it.key()] = profile; // Show the exact parameters used, even for a background device.
-            m_pendingProfiles[it.key()] = profile;
-            appendLog(qtTrId("otg.auto_connect.connecting").arg(serial));
-            m_connections.start(it.key(), connectionOptions(profile), layoutConfiguration());
-            if (it.key() == m_selectedId) applyDeviceProfile(profile);
-            break;
-        }
+        persistDevices();
+        updateAutoConnect();
+    };
+    connect(m_autoConnectEnabled, &QCheckBox::toggled, this, saveAutoConnect);
+    connect(m_uhidAutoConnectEnabled, &QCheckBox::toggled, this, saveAutoConnect);
+    connect(&m_autoConnect, &UsbAutoConnect::connectRequested, this, [this](const QString &serial) {
+        autoConnectDevice("usb", serial);
+    });
+    connect(&m_adbAutoConnect, &UsbAutoConnect::connectRequested, this, [this](const QString &serial) {
+        autoConnectDevice("uhid", serial);
+    });
+    connect(&m_adbAutoConnect, &UsbAutoConnect::scanFailed, this, [this] {
+        appendLog(qtTrId("otg.uhid.auto_scan_failed"));
     });
     connect(&m_autoConnect, &UsbAutoConnect::scanFailed, this, [this] {
         appendLog(qtTrId("otg.auto_connect.scan_failed"));
@@ -1011,11 +1015,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
         }
         // Keep remembered USB configurations in the same orientation, including
         // phones rotating while another device is selected or the window hidden.
-        const auto serial = profile.value("serial").toString();
-        if (profile.value("transport", "usb") == "usb" && m_profiles.contains(serial)) {
-            m_pendingProfile = profile;
-            rememberDevice();
-        }
+        if (m_profiles.contains(autoConnectKey(profile))) rememberDevice(profile);
         persistDevices();
     });
     connect(&m_connections, &ConnectionManager::changed, this, [this](const QString &id) {
@@ -1024,10 +1024,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
         updateConnectionStatus();
         if (!id.isEmpty() && m_connections.state(id) == Session::State::Connected && m_pendingProfiles.contains(id)) {
             const auto profile = m_pendingProfiles.take(id);
-            if (profile.value("transport", "usb") == "usb") {
-                m_pendingProfile = profile;
-                rememberDevice();
-            }
+            rememberDevice(profile);
         }
         updateEnabled();
         updateDeviceList();
@@ -1062,11 +1059,13 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this), m_companion
     updateEnabled();
     QTimer::singleShot(0, this, [this] {
         m_autoConnect.setProgram(bridgeExecutable());
+        m_monitorsReady = true;
         updateAutoConnect();
-        // A remembered phone uses its saved dimensions, not ADB. In particular,
-        // do not start ADB or prompt for USB debugging during auto-connect.
-        if (m_transport->currentData() == "uhid" ||
-            (m_transport->currentData() == "usb" && (!m_autoConnectEnabled->isChecked() || m_profiles.isEmpty())))
+        // A remembered target must not be replaced by a different phone that
+        // happens to be the only one online during initial discovery.
+        const auto profile = deviceProfile();
+        if (m_transport->currentData() != "ble" &&
+            !(autoConnectOptedIn(profile) && !autoConnectKey(profile).second.isEmpty()))
             refreshDevices();
     });
 }
@@ -1120,18 +1119,54 @@ void MainWindow::persistDevices()
 
 void MainWindow::updateAutoConnect()
 {
-    QStringList known;
-    QMap<QString, int> counts;
-    for (const auto &record : m_records)
-        if (record.value("transport", "usb") == "usb") ++counts[record.value("serial").toString()];
-    for (const auto &record : m_records) {
-        const auto serial = record.value("serial").toString();
-        if (record.value("transport", "usb") == "usb" && counts.value(serial) == 1 &&
-            record.value("autoConnect", false).toBool() && m_profiles.contains(serial))
-            known.append(serial);
+    if (!m_monitorsReady || m_loadingDevice) return;
+    auto records = m_records;
+    records[m_selectedId] = deviceProfile();
+    QMap<QPair<QString, QString>, int> counts;
+    for (const auto &record : records) ++counts[autoConnectKey(record)];
+    QStringList aoa, adb;
+    bool watchAdb = false;
+    for (auto it = records.cbegin(); it != records.cend(); ++it) {
+        const auto key = autoConnectKey(it.value());
+        if (key.second.isEmpty() || counts.value(key) != 1 || !autoConnectOptedIn(it.value())) continue;
+        if (key.first == "usb") {
+            if (m_profiles.contains(key)) aoa.append(key.second);
+        } else if (m_transport->findData("uhid") >= 0) {
+            watchAdb = true; // Also observe the current attachment during manual connect/cleanup.
+            if (m_profiles.contains(key) && m_connections.state(it.key()) == Session::State::Idle)
+                adb.append(key.second);
+        }
     }
-    m_autoConnect.setKnownSerials(known);
-    m_autoConnect.setEnabled(!known.isEmpty() && !m_closing);
+    m_autoConnect.setKnownSerials(aoa);
+    m_autoConnect.setEnabled(!aoa.isEmpty() && !m_closing);
+    m_adbAutoConnect.setProgram(m_adb->text().trimmed());
+    m_adbAutoConnect.setKnownSerials(adb);
+    m_adbAutoConnect.setReady(!m_closing && !m_scanning && !m_companion.busy() &&
+                              m_connections.serverState() != DeskflowServer::State::Stopping);
+    m_adbAutoConnect.setEnabled(watchAdb && !m_closing && !m_adb->text().trimmed().isEmpty());
+}
+
+void MainWindow::autoConnectDevice(const QString &transport, const QString &serial)
+{
+    const auto key = qMakePair(transport, serial);
+    if (m_closing || !m_profiles.contains(key)) return;
+    storeDevice();
+    for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
+        if (autoConnectKey(it.value()) != key || !autoConnectOptedIn(it.value()) ||
+            m_connections.state(it.key()) != Session::State::Idle) continue;
+        const auto id = it.key();
+        auto profile = m_profiles.value(key);
+        // Preserve current multi-screen layout and opt-ins; restore connection parameters.
+        for (const auto *field : {"phone", "neighbor", "alias", "autoConnect", "uhidUsbAutoConnect"})
+            profile[field] = it->value(field);
+        profile["direction"] = it->value("direction", "right");
+        m_records[id] = profile;
+        m_pendingProfiles[id] = profile;
+        appendLog(qtTrId("otg.auto_connect.connecting").arg(serial), id);
+        if (id == m_selectedId) applyDeviceProfile(profile);
+        m_connections.start(id, connectionOptions(profile), layoutConfiguration());
+        break;
+    }
 }
 
 void MainWindow::addDevice()
@@ -1158,6 +1193,7 @@ void MainWindow::addDevice()
     profile["blePeer"] = "";
     profile["bleIsolate"] = false;
     profile["autoConnect"] = false;
+    profile["uhidUsbAutoConnect"] = false;
     profile["neighbor"] = m_phone->text().trimmed();
     profile["direction"] = "right";
     const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -1372,6 +1408,7 @@ void MainWindow::updateEnabled()
     const bool adbFeatures = m_adbEnabled->isChecked();
     m_adbBox->setVisible(true);
     m_deviceForm->setRowVisible(m_autoConnectEnabled, !ble && !uhid);
+    m_deviceForm->setRowVisible(m_uhidAutoConnectEnabled, uhid);
     setTranslatedProperty(m_adbEnabled, "text", uhid ? "otg.uhid.adb_required" : "otg.adb.enabled");
     setTranslatedProperty(m_adbEnabled, "toolTip", uhid ? "otg.uhid.setup_hint" : "otg.adb.enabled.tooltip");
 #ifdef Q_OS_WIN
@@ -1407,8 +1444,7 @@ void MainWindow::updateEnabled()
     m_adbForm->setRowVisible(m_autoRotate, !ble);
     m_companionBox->setVisible(!ble);
     m_autoConnect.setReady(!m_closing && !m_companion.busy());
-    if (m_closing)
-        m_autoConnect.setEnabled(false);
+    updateAutoConnect();
     m_form->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy());
     m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
     m_layoutBox->setEnabled(!m_closing);
@@ -1456,6 +1492,7 @@ void MainWindow::updateEnabled()
     m_clipboard->setEnabled(adbFeatures);
     m_autoRotate->setEnabled(adbFeatures && !ble && (uhid || m_audio->isChecked() || m_clipboard->isChecked()) && idle);
     m_autoConnectEnabled->setEnabled(!ble && !uhid);
+    m_uhidAutoConnectEnabled->setEnabled(uhid && isUsbAdbSerial(m_adbSerial->text().trimmed()));
     m_adapter->setEnabled(linuxBle);
     m_blePeer->setEnabled(ble);
     m_bleIsolate->setEnabled(linuxBle);
@@ -1700,7 +1737,9 @@ void MainWindow::refreshDevices()
                 if (device.serial == previous)
                     selected = i + 1;
             }
-            if (!selected && m_deviceList.size() == 1)
+            // A USB enumeration must not replace an explicit UHID target
+            // (including a saved wireless address) with another online phone.
+            if (!selected && m_deviceList.size() == 1 && (m_transport->currentData() != "uhid" || previous.isEmpty()))
                 selected = 1;
             m_devices->setCurrentIndex(selected);
         }
@@ -1938,6 +1977,8 @@ void MainWindow::connectDevice()
     storeDevice();
     m_pendingProfiles[m_selectedId] = deviceProfile();
     if (options.transport == "usb") m_autoConnect.suppressSerial(options.serial);
+    else if (options.transport == "uhid" && m_uhidAutoConnectEnabled->isChecked() && isUsbAdbSerial(options.adbSerial))
+        m_adbAutoConnect.suppressSerial(options.adbSerial);
     m_connections.start(m_selectedId, options, layoutConfiguration());
 }
 
@@ -1950,6 +1991,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"transport", m_transport->currentData()}, {"bleAdapter", m_adapter->text()},
             {"blePeer", m_blePeer->text().trimmed().toUpper()}, {"bleIsolate", m_bleIsolate->isChecked()},
             {"autoConnect", m_autoConnectEnabled->isChecked()}, {"neighbor", m_neighbor->currentData()},
+            {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},
             {"originalWidth", m_width->value()}, {"originalHeight", m_height->value()},
             {"sensitivityMultiplier", m_sensitivity->value()},
             {"motionMultiplier", m_motionMultiplier->value()},
@@ -2001,6 +2043,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     const QSignalBlocker autoRotateBlocker(m_autoRotate);
     m_autoRotate->setChecked(profile.value("autoRotate", false).toBool());
     m_autoConnectEnabled->setChecked(profile.value("autoConnect", false).toBool());
+    m_uhidAutoConnectEnabled->setChecked(profile.value("uhidUsbAutoConnect", false).toBool());
     m_direction->setCurrentIndex(qMax(0, m_direction->findData(profile.value("direction", "right"))));
     m_mouseMode->setCurrentIndex(qMax(0, m_mouseMode->findData(profile.value("mouseMode", "absolute"))));
     m_middleButtonAction->setCurrentIndex(qMax(0, m_middleButtonAction->findData(
@@ -2023,13 +2066,11 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_loadingDevice = false;
 }
 
-void MainWindow::rememberDevice()
+void MainWindow::rememberDevice(const QVariantMap &profile)
 {
-    const auto serial = m_pendingProfile.value("serial").toString();
-    if (serial.isEmpty())
-        return;
-    m_profiles.insert(serial, m_pendingProfile);
-    m_pendingProfile.clear();
+    const auto key = autoConnectKey(profile);
+    if (key.second.isEmpty()) return;
+    m_profiles.insert(key, profile);
     QSettings settings;
     settings.beginWriteArray("rememberedDevices", m_profiles.size());
     int index = 0;
@@ -2102,6 +2143,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (m_connections.settled() && !m_companion.busy() && !m_transferDialog) {
         m_closing = true;
         m_autoConnect.setEnabled(false);
+        m_adbAutoConnect.setEnabled(false);
         m_tray->hide();
         event->accept();
         if (!m_exitEmitted) {

@@ -172,8 +172,11 @@ profile this is the preferred connection type; saved AOA/BLE profiles retain the
 3. Read the dimensions or enter them manually, configure Deskflow and click **Connect**.
    ADB is required in this mode. Audio, text clipboard, rotation tracking and companion actions
    use the same selected ADB target; audio/clipboard share the input server/tunnel.
-4. Disconnect/exit releases input and destroys the session's UHID devices. After an ADB failure,
-   reconnect manually. The libusb insertion auto-connect option belongs to AOA and is hidden here.
+4. For a USB cable, enable **Automatically connect this device when USB is inserted** (off by default)
+   and complete one manual connection. Keep the GUI running or in the tray. It checks the ADB list
+   every two seconds and reconnects the remembered USB ADB serial once it is online and authorized.
+   A manual disconnect or failed attempt waits for reinsertion; wireless targets remain manual.
+   Disconnect/exit releases input and destroys the session's UHID devices.
 
 The absolute pointer descriptor is unchanged: this is not scrcpy's relative `--mouse=uhid` mode.
 Each screen entry sends a dedicated HID **System Wake Up** press/release before normal input,
@@ -195,6 +198,8 @@ Build with both `-DBUILD_GUI=ON -DBUILD_BLE_WIN=ON` to make "Bluetooth Low Energ
 This integration does not constitute real-device acceptance of continuous input, reconnection, sleep, or restart behavior. See [Windows BLE usage and limitations](docs/WINDOWS_BLE.md).
 
 ### Automatic USB connection on insertion (without USB debugging)
+
+This section covers AOA. For wired ADB + UHID, see [ADB + UHID](docs/UHID.md).
 
 In the GUI, enable "Automatically connect this device when USB is inserted" for the target device (disabled by default), then connect the phone manually once. The program remembers the USB serial number and its configuration only after the state becomes "Connected"; phones whose forms were merely saved by an older version must also complete one successful connection. USB debugging is not required: enter the USB serial number and original screen dimensions directly. If the serial number is unknown, run `deskflow-bridge --usb-scan` and inspect the `serial` field of readable devices.
 

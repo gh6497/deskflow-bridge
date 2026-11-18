@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "usb_auto_connect.h"
+#include "device_info.h"
 #include "process_utils.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 
-UsbAutoConnect::UsbAutoConnect(QObject *parent) : QObject(parent)
+UsbAutoConnect::UsbAutoConnect(QObject *parent, Source source) : QObject(parent), m_source(source)
 {
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &UsbAutoConnect::poll);
@@ -39,7 +40,12 @@ void UsbAutoConnect::setEnabled(bool enabled)
     m_enabled = enabled;
     ++m_generation;
     if (enabled) {
-        QTimer::singleShot(0, this, &UsbAutoConnect::startWatcher);
+        if (m_source == Source::Adb) {
+            m_timer.start();
+            scheduleScan();
+        } else {
+            QTimer::singleShot(0, this, &UsbAutoConnect::startWatcher);
+        }
     } else {
         m_timer.stop();
         m_rescan.stop();
@@ -59,7 +65,17 @@ void UsbAutoConnect::setReady(bool ready)
 
 void UsbAutoConnect::setKnownSerials(const QStringList &serials)
 {
-    m_known = QSet<QString>(serials.begin(), serials.end());
+    const QSet<QString> known(serials.begin(), serials.end());
+    if (m_known == known) return;
+    m_known = known;
+    scheduleScan();
+}
+
+void UsbAutoConnect::setProgram(const QString &program)
+{
+    if (m_program == program) return;
+    ++m_generation;
+    m_program = program;
     scheduleScan();
 }
 
@@ -167,9 +183,14 @@ void UsbAutoConnect::suppressSerial(const QString &serial)
     // immediately after launch). Consume this suppression on the next scan.
     m_suppressed.insert(serial);
     for (auto it = m_present.cbegin(); it != m_present.cend(); ++it) {
-        if (it.value() == serial)
+        if (it.value() == serial) {
             m_attempted.insert(it.key());
+            // The current ADB attachment is already known. Do not consume the
+            // next transport ID if the user reinserts the cable before a poll.
+            if (m_source == Source::Adb) m_suppressed.remove(serial);
+        }
     }
+    if (m_source == Source::Adb) scheduleScan();
 }
 
 void UsbAutoConnect::suppressAttachment(const QString &id, const QString &serial)
@@ -180,24 +201,71 @@ void UsbAutoConnect::suppressAttachment(const QString &id, const QString &serial
     m_suppressed.remove(serial);
 }
 
-bool UsbAutoConnect::acceptSnapshot(const QByteArray &json)
+static bool parseAdbAttachments(const QByteArray &data, QMap<QString, QString> &present, QSet<QString> &online)
+{
+    bool header = false;
+    for (const auto &line : QString::fromUtf8(data).split('\n')) {
+        const auto row = line.simplified();
+        if (!header) {
+            header = row == "List of devices attached";
+            continue; // ADB may print daemon startup diagnostics before the header.
+        }
+        if (row.isEmpty() || row.startsWith('*')) continue;
+        const auto fields = row.split(' ');
+        if (fields.size() < 2) return false;
+        const auto &serial = fields[0];
+        const bool unreadable = serial.contains('?') && fields[1] == "no";
+        if (!isUsbAdbSerial(serial) && !unreadable) continue;
+        // A new ADB transport ID distinguishes rapid reinsertion between polls.
+        // Offline/unauthorized rows still count as present, but cannot connect.
+        QString id;
+        for (const auto &field : fields) {
+            if (!field.startsWith("transport_id:")) continue;
+            bool ok;
+            const auto number = field.mid(13).toULongLong(&ok);
+            if (!ok || !number || !id.isEmpty()) return false;
+            id = QString::number(number);
+        }
+        if (id.isEmpty()) {
+            if (unreadable) return false; // Cannot distinguish loss of permissions from unplug.
+            // Older external ADB versions may omit the ID. Require an observed
+            // departure to re-arm; unrecognised output is not a valid empty list.
+            if (fields[1] != "device" && fields[1] != "offline" && fields[1] != "unauthorized" &&
+                fields[1] != "no" && fields[1] != "recovery" && fields[1] != "sideload") return false;
+            id = "serial:" + serial;
+        }
+        if (present.contains(id)) return false;
+        present.insert(id, unreadable ? QString() : serial);
+        if (fields[1] == "device") online.insert(id);
+    }
+    return header;
+}
+
+static bool parseAoaAttachments(const QByteArray &json, QMap<QString, QString> &present, QSet<QString> &online)
 {
     const auto doc = QJsonDocument::fromJson(json);
     if (!doc.isObject() || doc.object().value("version").toInt() != 1 ||
         !doc.object().value("devices").isArray())
         return false;
-    QMap<QString, QString> present;
-    QMap<QString, int> counts;
     for (const auto &value : doc.object().value("devices").toArray()) {
         const auto device = value.toObject();
         const auto id = device.value("id").toString();
         if (id.isEmpty() || !device.value("serial").isString() || present.contains(id))
             return false; // Never re-arm devices on partial/malformed output.
-        const auto serial = device.value("serial").toString();
-        present.insert(id, serial);
-        if (!serial.isEmpty())
-            ++counts[serial];
+        present.insert(id, device.value("serial").toString());
+        online.insert(id);
     }
+    return true;
+}
+
+bool UsbAutoConnect::acceptSnapshot(const QByteArray &data)
+{
+    QMap<QString, QString> present;
+    QSet<QString> online;
+    if (!(m_source == Source::Adb ? parseAdbAttachments(data, present, online) :
+                                   parseAoaAttachments(data, present, online))) return false;
+    QMap<QString, int> counts;
+    for (const auto &serial : present) ++counts[serial];
     const auto ids = present.keys();
     m_attempted.intersect(QSet<QString>(ids.begin(), ids.end()));
     for (auto it = present.cbegin(); it != present.cend(); ++it) {
@@ -210,39 +278,28 @@ bool UsbAutoConnect::acceptSnapshot(const QByteArray &json)
         return true;
     // Do not pick an arbitrary phone if multiple remembered phones are plugged
     // in, including devices sharing a non-unique serial number.
-    QString candidate, attachment;
+    QMap<QString, QString> candidates;
     int eligible = 0;
     for (auto it = present.cbegin(); it != present.cend(); ++it) {
         if (!m_known.contains(it.value()))
             continue;
         ++eligible;
-        if (counts.value(it.value()) == 1 && !m_attempted.contains(it.key())) {
-            candidate = it.value();
-            attachment = it.key();
-        }
+        if (online.contains(it.key()) && counts.value(it.value()) == 1 && !m_attempted.contains(it.key()))
+            candidates.insert(it.key(), it.value());
     }
-    if (m_multiple) {
-        QStringList candidates;
-        for (auto it = present.cbegin(); it != present.cend(); ++it) {
-            if (m_known.contains(it.value()) && counts.value(it.value()) == 1 && !m_attempted.contains(it.key())) {
-                m_attempted.insert(it.key());
-                candidates.append(it.value());
-            }
-        }
-        for (const auto &serial : candidates) {
-            if (!m_enabled || !m_ready) break;
-            emit connectRequested(serial);
-        }
-    } else if (eligible == 1 && !candidate.isEmpty()) {
-        m_attempted.insert(attachment); // One attempt per USB attachment, even on failure.
-        emit connectRequested(candidate);
+    if (!m_multiple && eligible != 1) return true;
+    for (auto it = candidates.cbegin(); it != candidates.cend(); ++it) {
+        if (!m_enabled || !m_ready) break;
+        if (!m_known.contains(it.value())) continue;
+        m_attempted.insert(it.key()); // One attempt per attachment, even on failure.
+        emit connectRequested(it.value());
     }
     return true;
 }
 
 void UsbAutoConnect::poll()
 {
-    if (!m_enabled || m_known.isEmpty())
+    if (!m_enabled || (m_source == Source::Aoa && m_known.isEmpty()))
         return;
     if (m_scanning) {
         m_scanPending = true;
@@ -250,7 +307,8 @@ void UsbAutoConnect::poll()
     }
     m_scanning = true;
     const auto generation = m_generation;
-    runCommand(this, m_program, {"--usb-scan"}, [this, generation](bool ok, const QString &text) {
+    const QStringList args = m_source == Source::Adb ? QStringList{"devices", "-l"} : QStringList{"--usb-scan"};
+    runCommand(this, m_program, args, [this, generation](bool ok, const QString &text) {
         m_scanning = false;
         if (!m_enabled)
             return;

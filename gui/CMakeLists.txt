@@ -210,6 +210,16 @@ if(BUILD_TESTING)
     FILES ${i18n_test_sources}
   )
   qt_add_executable(test_window ../tests/test_window.cpp main_window.cpp main_window.h)
+  if(BUILD_UHID)
+    # Multi-config and app-bundle layouts need the runtime pair next to the
+    # window fixture too, so it can exercise the real GUI session start path.
+    set(test_window_data "$<TARGET_FILE_DIR:test_window>/share/deskflow-bridge")
+    add_custom_command(TARGET test_window POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${test_window_data}"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SCRCPY_SERVER}" "${test_window_data}/scrcpy-server"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_BINARY_DIR}/SCRCPY_VERSION.txt" "${test_window_data}"
+      VERBATIM)
+  endif()
   qt_add_resources(test_window otg_app_icon
     PREFIX /icons
     BASE "${PROJECT_SOURCE_DIR}/packaging"
