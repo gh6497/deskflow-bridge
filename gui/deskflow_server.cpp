@@ -51,7 +51,7 @@ DeskflowServer::DeskflowServer(QObject *parent) : QObject(parent)
     });
     m_process.setProcessChannelMode(QProcess::MergedChannels);
     connect(&m_process, &QProcess::readyReadStandardOutput, this, [this] {
-        emit log("[Deskflow] " + QString::fromUtf8(m_process.readAllStandardOutput()).trimmed());
+        emit log(withProcessOutput({}, "Deskflow", QString::fromUtf8(m_process.readAllStandardOutput())));
     });
     connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {

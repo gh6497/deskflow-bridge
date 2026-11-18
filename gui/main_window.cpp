@@ -1071,7 +1071,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
             if (!started) {
                 m_scanning = false;
                 m_adbStatus->setText(qtTrId("otg.adb.status.failed"));
-                appendLog("[ADB] start-server: " + startOutput);
+                appendLog(withProcessOutput(qtTrId("otg.log.adb.server_start_failed"), "ADB", startOutput));
                 updateEnabled();
                 return;
             }
@@ -1079,7 +1079,8 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
                 m_scanning = false;
                 const bool ready = ok && output.trimmed() == "device";
                 m_adbStatus->setText(qtTrId(ready ? "otg.adb.status.ready" : "otg.adb.status.failed"));
-                appendLog(QStringLiteral("[ADB] get-state %1: %2").arg(target, output.trimmed()));
+                appendLog(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
+                                            "ADB", output));
                 updateEnabled();
             });
         });
@@ -1767,7 +1768,7 @@ void MainWindow::refreshDevices()
         m_scanning = false;
         if (!ok) {
             setTranslatedProperty(m_deviceStatus, "text", "otg.device.adb_failed");
-            appendLog("[USB scan] " + output);
+            appendLog(withProcessOutput(qtTrId("otg.log.usb_scan_failed"), qtTrId("otg.log.bridge_source"), output));
             updateEnabled();
             return;
         }
@@ -1807,7 +1808,7 @@ void MainWindow::refreshDevices()
         m_scanning = false;
         if (!ok) {
             setTranslatedProperty(m_deviceStatus, "text", "otg.device.adb_failed");
-            appendLog("[ADB] " + output);
+            appendLog(withProcessOutput(qtTrId("otg.log.adb.scan_failed"), "ADB", output));
             updateEnabled();
             return;
         }
@@ -1852,7 +1853,7 @@ void MainWindow::readDisplayFromAdb()
         if (!started) {
             m_scanning = false;
             m_adbStatus->setText(qtTrId("otg.adb.status.failed"));
-            appendLog("[ADB] start-server: " + startOutput);
+            appendLog(withProcessOutput(qtTrId("otg.log.adb.server_start_failed"), "ADB", startOutput));
             updateEnabled();
             return;
         }
@@ -1865,7 +1866,7 @@ void MainWindow::readDisplayFromAdb()
                     m_scanning = false;
                     m_adbStatus->setText(qtTrId("otg.adb.status.failed"));
                     setTranslatedProperty(m_deviceStatus, "text", "otg.device.size_failed");
-                    appendLog("[ADB wm size] " + text);
+                    appendLog(withProcessOutput(qtTrId("otg.log.adb.size_failed").arg(target), "ADB", text));
                     updateEnabled();
                     return;
                 }
@@ -1896,14 +1897,15 @@ void MainWindow::readDisplayFromAdb()
             if (!isWirelessAdbTarget(target)) {
                 m_scanning = false;
                 m_adbStatus->setText(qtTrId("otg.adb.status.failed"));
-                appendLog(QStringLiteral("[ADB] target %1 is not ready: %2").arg(target, state.trimmed()));
+                appendLog(withProcessOutput(qtTrId("otg.log.adb.target_unavailable").arg(target), "ADB", state));
                 updateEnabled();
                 return;
             }
             runCommand(this, adb, {"connect", target},
                        [this, request, adb, target, readDisplay](bool connected, const QString &output) {
                 if (request != m_request) return;
-                appendLog(QStringLiteral("[ADB] connect %1: %2 (%3)").arg(target, connected ? "ok" : "failed", output.trimmed()));
+                appendLog(withProcessOutput(qtTrId(connected ? "otg.log.adb.connect_requested" : "otg.log.adb.connect_failed").arg(target),
+                                            "ADB", output));
                 if (!connected) {
                     m_scanning = false;
                     m_adbStatus->setText(qtTrId("otg.adb.status.failed"));
@@ -1970,11 +1972,11 @@ void MainWindow::readDevice()
              return;
             const QSize size = sizeOk ? parseScreenSize(text) : QSize();
             if (!size.isValid()) {
+                appendLog(withProcessOutput(qtTrId("otg.log.adb.size_failed").arg(target), "ADB", text));
 #ifdef Q_OS_WIN
                 // ADB is optional for USB HID.  In particular, a stale or
                 // offline TCP target must not prevent a libusb-discovered
                 // device from connecting.  Keep the user-selected size.
-                appendLog("[ADB wm size] " + text);
                 m_scanning = false;
                 setTranslatedProperty(m_deviceStatus, "text", "otg.device.ready");
                 updateEnabled();
@@ -1982,7 +1984,6 @@ void MainWindow::readDevice()
 #else
                 m_scanning = false;
                 setTranslatedProperty(m_deviceStatus, "text", "otg.device.size_failed");
-                appendLog("[ADB wm size] " + text);
                 updateEnabled();
                 return;
 #endif
@@ -2012,11 +2013,11 @@ void MainWindow::readDevice()
     // optional display/audio features can use the same target later.
     const QRegularExpression wirelessTarget("^(?:\\[[^\\]]+\\]|[^:]+):[0-9]+$");
     if (wirelessTarget.match(target).hasMatch()) {
-        appendLog(QStringLiteral("[ADB] connect %1").arg(target));
+        appendLog(qtTrId("otg.log.adb.connecting").arg(target));
         runCommand(this, adb, {"connect", target},
                    [this, target, readDisplay](bool ok, const QString &output) {
-            appendLog(QStringLiteral("[ADB] connect %1: %2 (%3)")
-                          .arg(target, ok ? "ok" : "failed", output.trimmed()));
+            appendLog(withProcessOutput(qtTrId(ok ? "otg.log.adb.connect_requested" : "otg.log.adb.connect_failed").arg(target),
+                                        "ADB", output));
             readDisplay();
         });
     } else {
@@ -2032,7 +2033,7 @@ void MainWindow::readDevice()
             m_scanning = false;
             m_serial->clear();
             setTranslatedProperty(m_deviceStatus, "text", "otg.device.usb_unconfirmed");
-            appendLog("[ADB transport] " + path);
+            appendLog(withProcessOutput(qtTrId("otg.device.usb_unconfirmed"), "ADB", path));
             updateEnabled();
             return;
         }

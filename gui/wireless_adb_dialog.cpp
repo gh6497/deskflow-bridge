@@ -188,14 +188,15 @@ void WirelessAdbDialog::refreshServices()
     runCommand(this, m_adbPath, {QStringLiteral("start-server")},
                [this](bool started, const QString &startOutput) {
         if (!started) {
-            emit logMessage(QStringLiteral("[ADB] start-server: ") + startOutput);
+            emit logMessage(withProcessOutput(qtTrId("otg.log.adb.server_start_failed"), "ADB", startOutput));
             setStatus(qtTrId("otg.wireless.status.adb_failed"));
             setBusy(false);
             return;
         }
         runCommand(this, m_adbPath, {QStringLiteral("mdns"), QStringLiteral("services")},
                    [this](bool ok, const QString &output) {
-            emit logMessage(QStringLiteral("[ADB] mdns services:\n") + output);
+            emit logMessage(withProcessOutput(qtTrId(ok ? "otg.log.adb.discovery_done" : "otg.log.adb.discovery_failed"),
+                                              "ADB", output));
             const auto services = parseWirelessAdbServices(output);
             for (const auto &service : services) {
                 if (service.pairing)
@@ -232,8 +233,8 @@ void WirelessAdbDialog::pairDevice()
                [this, target](bool ok, const QString &output) {
         // Do not include the one-time pairing code in the log or any persisted state.
         m_pairingCode->clear();
-        emit logMessage(QStringLiteral("[ADB] pair %1: %2\n%3")
-                            .arg(target, ok ? QStringLiteral("ok") : QStringLiteral("failed"), output));
+        emit logMessage(withProcessOutput(qtTrId(ok ? "otg.log.adb.paired" : "otg.log.adb.pair_failed").arg(target),
+                                          "ADB", output));
         setBusy(false);
         if (!ok) {
             setStatus(qtTrId("otg.wireless.status.pair_failed"));
@@ -257,8 +258,8 @@ void WirelessAdbDialog::connectDevice()
     setStatus(qtTrId("otg.wireless.status.connecting"));
     runCommand(this, m_adbPath, {QStringLiteral("connect"), target},
                [this, target](bool ok, const QString &output) {
-        emit logMessage(QStringLiteral("[ADB] connect %1: %2\n%3")
-                            .arg(target, ok ? QStringLiteral("ok") : QStringLiteral("failed"), output));
+        emit logMessage(withProcessOutput(qtTrId(ok ? "otg.log.adb.connect_requested" : "otg.log.adb.connect_failed").arg(target),
+                                          "ADB", output));
         if (!ok) {
             setStatus(qtTrId("otg.wireless.status.connect_failed"));
             setBusy(false);
@@ -268,8 +269,8 @@ void WirelessAdbDialog::connectDevice()
                    {QStringLiteral("-s"), target, QStringLiteral("get-state")},
                    [this, target](bool stateOk, const QString &state) {
             const bool ready = stateOk && isDeviceState(state);
-            emit logMessage(QStringLiteral("[ADB] get-state %1: %2")
-                                .arg(target, state.trimmed()));
+            emit logMessage(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
+                                              "ADB", state));
             setBusy(false);
             if (!ready) {
                 setStatus(qtTrId("otg.wireless.status.connect_failed"));

@@ -463,8 +463,19 @@ private slots:
         QCOMPARE(port->value(), 24800);
     }
 
+    void wirelessAdbSetup_data()
+    {
+        QTest::addColumn<QString>("language");
+        QTest::addColumn<QString>("pairLog");
+        QTest::newRow("english") << QStringLiteral("en")
+            << QStringLiteral("ADB pairing succeeded: 192.0.2.10:37123\n[ADB output] Successfully paired to 192.0.2.10:37123");
+        QTest::newRow("chinese") << QStringLiteral("zh_CN")
+            << QStringLiteral("ADB 配对成功：192.0.2.10:37123\n[ADB 原始输出] Successfully paired to 192.0.2.10:37123");
+    }
     void wirelessAdbSetup()
     {
+        QFETCH(QString, language);
+        QFETCH(QString, pairLog);
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -472,6 +483,7 @@ private slots:
         QSettings settings;
         settings.setValue("adb", "");
         settings.setValue("manageServer", false);
+        settings.setValue("language", language);
 
         AutoConnectTestWindow window;
         window.show();
@@ -495,7 +507,8 @@ private slots:
         auto *connect = window.findChild<QPushButton *>("wirelessConnect");
         auto *target = window.findChild<QLineEdit *>("adbSerial");
         auto *enabled = window.findChild<QCheckBox *>("adbEnabled");
-        QVERIFY(dialog && pairing && code && pair && connection && connect && target && enabled);
+        auto *log = window.findChild<QPlainTextEdit *>("runtimeLog");
+        QVERIFY(dialog && pairing && code && pair && connection && connect && target && enabled && log);
         QTRY_COMPARE(pairing->count(), 1);
         QTRY_COMPARE(connection->count(), 1);
         QCOMPARE(pairing->currentText(), "192.0.2.10:37123");
@@ -516,6 +529,8 @@ private slots:
 
         code->setText("123456");
         pair->click();
+        QTRY_VERIFY(log->toPlainText().contains(pairLog));
+        QVERIFY(!log->toPlainText().contains("123456"));
         QTRY_VERIFY(pair->isEnabled());
         QTRY_VERIFY(connect->isEnabled());
         connect->click();
