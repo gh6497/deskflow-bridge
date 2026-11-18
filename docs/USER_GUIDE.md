@@ -298,10 +298,10 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 
 ## 9. Connect multiple phones
 
-![Multiple-device example: android to the right of the computer, followed by android-2](screenshots/multiple-devices-en.png)
+![Multiple-device example: android to the right of the computer, followed by android2](screenshots/multiple-devices-en.png)
 
 1. Disconnect all devices, click **Add device**, and set each phone's own connection target and dimensions.
-2. Use unique **Phone screen names**, such as `android` and `android-2`. **Display name** can be any name that helps you recognize the device.
+2. New devices get unique **Phone screen names** such as `android2` and `android3`. Existing names are not changed. If you use an external Deskflow server, make sure its screen names match. **Display name** can be any name that helps you recognize the device.
 3. Select each device and set its neighbor and direction in **Screen layout**. For example, place the second phone to the right of `android` to obtain the layout shown.
 4. Configure Deskflow once under **Shared server**, then connect individually or click **Connect all**.
 
