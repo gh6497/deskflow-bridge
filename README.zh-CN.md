@@ -927,7 +927,7 @@ sudo ./build/deskflow-bridge --host 127.0.0.1 --port 24800 --name android \
 
 ## 当前限制
 
-- 键盘映射按 **US 布局**（其它布局下部分符号键可能错位）。
+- 请将 Android 的物理键盘设为 **英语（美国）**。Deskflow 协议 1.8 提供逐键语言时，桥接会修正其它电脑布局输入常见 ASCII 符号和数字所需的 Shift/AltGr；不会切换手机布局，也不支持布局特有的重音字母和死键。
 - Deskflow 剪贴板共享支持文本，不同步图片或文件。GUI 可单独将手机截图复制到本机剪贴板。文件传输可使用[伴侣应用](docs/FILE_SHARING.md)；不支持跨 Deskflow 虚拟屏幕拖拽文件。
 - 只支持键盘 + 鼠标，不支持游戏手柄（AOA gamepad 未实现）。
 - 默认绝对指针依赖 Android 的 HID 数位板支持，具体设备兼容性需真机验证。

@@ -37,6 +37,53 @@ static bool report_has_key(const uint8_t *data, uint8_t key)
     return false;
 }
 
+static void test_us_symbol_mapping(void)
+{
+    struct otg_bridge b;
+    registrations = 0;
+    CHECK(!otg_bridge_open(&b, "mock", 1080, 2340, OTG_MOUSE_ABSOLUTE));
+    otg_bridge_enter(&b, 0, 0, 0);
+
+    /* AltGr+Q on a German keyboard gives '@'; US needs Shift+2. */
+    otg_bridge_key_event(&b, 0xEF7E, 1, 0, true, true);
+    unsigned before = keyboard_count;
+    otg_bridge_key_event(&b, '@', 2, DF_MOD_ALTGR, true, true);
+    CHECK(keyboard_count == before + 3);
+    CHECK(keyboard_reports[before][0] == HID_MOD_LSHIFT && keyboard_reports[before][2] == 0);
+    CHECK(keyboard_reports[before + 1][0] == HID_MOD_LSHIFT && keyboard_reports[before + 1][2] == 0x1f);
+    CHECK(report[0] == HID_MOD_RALT && report[2] == 0x1f);
+    otg_bridge_key_event(&b, 0xEF7E, 1, 0, false, false);
+    otg_bridge_key_event(&b, 'q', 2, 0, false, false); /* Release KeyID changed after AltGr. */
+    CHECK(report[0] == 0 && report[2] == 0);
+
+    /* Shift+top row on AZERTY produces a digit, unshifted on US. */
+    otg_bridge_key(&b, 0xEFE1, true);
+    before = keyboard_count;
+    otg_bridge_key_event(&b, '1', 3, DF_MOD_SHIFT, true, true);
+    CHECK(keyboard_count == before + 3);
+    CHECK(keyboard_reports[before + 1][0] == 0 && keyboard_reports[before + 1][2] == HID_KEY_1);
+    CHECK(report[0] == HID_MOD_LSHIFT);
+    otg_bridge_key_event(&b, '1', 3, 0, false, false);
+    otg_bridge_key(&b, 0xEFE1, false);
+
+    /* Shortcuts and legacy events retain physical modifier semantics. */
+    otg_bridge_key(&b, 0xEFE3, true);
+    before = keyboard_count;
+    otg_bridge_key_event(&b, '#', 4, DF_MOD_CONTROL, true, true);
+    CHECK(keyboard_count == before + 1 && report[0] == HID_MOD_LCTRL);
+    otg_bridge_key_event(&b, '#', 4, 0, false, false);
+    otg_bridge_key(&b, 0xEFE3, false);
+    before = keyboard_count;
+    otg_bridge_key(&b, '#', true);
+    CHECK(keyboard_count == before + 1 && report[0] == 0);
+    otg_bridge_key_event(&b, '#', 4, 0, false, false);
+    otg_bridge_key_event(&b, '@', 5, 0, true, true);
+    otg_bridge_release_keyboard(&b);
+    CHECK(!b.keys[0x20] && !b.key_buttons[0x20]);
+    CHECK(!b.keys[0x1f] && !b.key_buttons[0x1f]);
+    otg_bridge_close(&b);
+}
+
 static void check_shortcut(struct otg_bridge *b, uint8_t button, uint8_t usage)
 {
     unsigned before = keyboard_count;
@@ -453,6 +500,7 @@ int main(void)
     test_unlock_cursor_resize();
     test_side_button_swipes();
     test_sensitivity();
+    test_us_symbol_mapping();
     puts("PASS: default USB descriptors, absolute coordinates, buttons, wheel, keyboard, Home/Back shortcuts, side-button swipes, unlock mouse suppression/cursor tracking/resize and close lifecycle");
     return 0;
 }

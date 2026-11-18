@@ -86,6 +86,45 @@ static void check_resize(df_socket fd, df_socket peer)
     CHECK(c.accepted == 1 && df_socket_wait_timeout(peer, 0) == 0);
 }
 
+static void language_key_down(void *ud, uint32_t keyid, uint16_t mask,
+                              uint16_t button, const char *language)
+{
+    CHECK(keyid == '@' && mask == 0 && button == 42);
+    *(int *)ud += language && strcmp(language, "de") == 0 ? 10 : 1;
+}
+
+static void check_languages(df_socket fd, df_socket peer)
+{
+    const uint8_t compact[] = {0, 0, 0, 4, 'e', 'n', 'd', 'e'};
+    const uint8_t comma[] = {0, 0, 0, 5, 'e', 'n', ',', 'd', 'e'};
+    const uint8_t invalid[] = {0, 0, 0, 3, 'e', 'n', ','};
+    char list[DF_LANGUAGE_LIST_SIZE];
+    struct msg m = {compact, sizeof(compact), 0};
+    CHECK(read_languages(&m, list) && strcmp(list, "en,de") == 0);
+    m = (struct msg){comma, sizeof(comma), 0};
+    CHECK(read_languages(&m, list) && strcmp(list, "en,de") == 0);
+    m = (struct msg){invalid, sizeof(invalid), 0};
+    CHECK(!read_languages(&m, list));
+    m = (struct msg){compact, sizeof(compact) - 1, 0};
+    CHECK(!read_languages(&m, list));
+
+    int count = 0;
+    df_client c = {0};
+    c.fd = fd; c.proto_minor = 8; c.ud = &count; c.cbs.on_key_down = language_key_down;
+    CHECK(send_packet(peer, "LSYN\0\0\0\4ende", 12) == 0);
+    CHECK(send_packet(peer, "LSYN\0\0\0\4en", 10) == 0); /* Truncated language list. */
+    CHECK(send_packet(peer, "DKDL\0@\0\0\0\052\0\0\0\2de", 16) == 0);
+    CHECK(send_packet(peer, "DKDL\0@\0\0\0\052\0\0\0\0", 14) == 0);
+    CHECK(send_packet(peer, "DKDN\0@\0\0\0\052", 10) == 0);
+    CHECK(send_packet(peer, "CBYE", 4) == 0);
+    CHECK(df_client_run(&c, NULL) == 0 && count == 12);
+    for (int i = 0; i < 5; ++i) {
+        uint8_t *reply = NULL;
+        CHECK(recv_packet(peer, &reply) == 4 && !memcmp(reply, "CNOP", 4));
+        free(reply);
+    }
+}
+
 int main(void)
 {
     CHECK(df_socket_init() == 0);
@@ -115,6 +154,7 @@ int main(void)
     CHECK(socket_suppress_sigpipe(fds[1]) == 0);
     check_acceptance(fds[0]);
     check_resize(fds[0], fds[1]);
+    check_languages(fds[0], fds[1]);
     df_client_set_stop_check(cancelled);
     uint8_t cancelled_byte;
     CHECK(io_read_full(fds[0], &cancelled_byte, 1) == -1);

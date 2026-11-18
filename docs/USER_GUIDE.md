@@ -338,7 +338,7 @@ Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its pers
 | Connected, but cannot move onto the phone | Check the layout direction, Deskflow's input-capture/Accessibility permissions and any Deskflow screen-switch lock |
 | No phone pointer or no response to clicks | Check logs for UHID unavailable or USB errors. Start with absolute mode; try relative mode after disconnecting for an incompatible device |
 | Wrong orientation or strange movement range | Disconnect and read current dimensions or swap width/height; reset both multipliers to 1 first |
-| Some symbols type incorrectly | Mapping currently uses a US keyboard layout; check computer layout and phone physical-keyboard settings |
+| Some symbols type incorrectly | Set the phone's physical keyboard to English (US). Deskflow protocol 1.8 with per-key language information can correct common symbols and digits such as `@`, `#`, and `1` from other host layouts. The bridge does not switch the phone's layout or correct accented letters and dead keys. |
 | Clipboard, audio or files fail | Check that this phone's ADB target is online and authorized. Files also need an updated, opened companion; audio needs a supported platform and Android version |
 | Sent files do not appear in the phone gallery | Refresh Files & sharing in the companion and Save as, or enable the relevant automatic saving; files first use private companion storage |
 | Control continues after closing the window | Closing hides to the tray when available; use Disconnect or Quit from its menu |

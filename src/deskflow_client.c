@@ -578,18 +578,50 @@ static int msg_read_u32(struct msg *m, uint32_t *out)
     return 0;
 }
 
-/* Skip a length-prefixed string (%s: 4-byte length + bytes). */
-static int msg_skip_string(struct msg *m)
+/* Read a length-prefixed string view (%s: 4-byte length + bytes). */
+static int msg_read_string(struct msg *m, const uint8_t **data, uint32_t *size)
 {
     uint32_t n;
     if (msg_read_u32(m, &n) != 0) {
         return -1;
     }
-    if (m->pos + n > m->len) {
+    if (n > m->len - m->pos) {
         return -1;
     }
+    if (data) *data = m->data + m->pos;
+    if (size) *size = n;
     m->pos += n;
     return 0;
+}
+
+static bool language_code(const uint8_t *s, uint32_t n)
+{
+    return n == 2 && s[0] >= 'a' && s[0] <= 'z' && s[1] >= 'a' && s[1] <= 'z';
+}
+
+/* Upstream sends concatenated two-letter codes, while the protocol reference
+ * describes comma-separated codes. Accept both, but do not guess the active
+ * layout from the advertised order: only DKDL describes a particular key. */
+enum { DF_LANGUAGE_LIST_SIZE = 64 * 3 };
+
+static bool read_languages(struct msg *m, char list[DF_LANGUAGE_LIST_SIZE])
+{
+    const uint8_t *s;
+    uint32_t n;
+    if (msg_read_string(m, &s, &n) != 0 || m->pos != m->len ||
+        n >= DF_LANGUAGE_LIST_SIZE) return false;
+    const bool comma_separated = memchr(s, ',', n) != NULL;
+    size_t end = 0;
+    for (uint32_t i = 0; i < n;) {
+        if (end >= DF_LANGUAGE_LIST_SIZE - 1 || n - i < 2 || !language_code(s + i, 2))
+            return false;
+        if (end) list[end++] = ',';
+        list[end++] = (char)s[i++];
+        list[end++] = (char)s[i++];
+        if (comma_separated && i < n && (s[i++] != ',' || i == n)) return false;
+    }
+    list[end] = '\0';
+    return true;
 }
 
 /* ---- message builders ---------------------------------------------------- */
@@ -1075,6 +1107,12 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
     if (memcmp(code, "CBYE", 4) == 0) {
         return 1; /* server asked us to close */
     }
+    if (memcmp(code, "LSYN", 4) == 0 && c->proto_minor >= 8) {
+        char list[DF_LANGUAGE_LIST_SIZE];
+        if (!read_languages(m, list)) LOG_DBG("ignoring invalid LSYN languages\n");
+        else if (*list) LOG_INFO("Deskflow keyboard languages: %s\n", list);
+        return 0;
+    }
     if (memcmp(code, "CINN", 4) == 0) {
         uint16_t x, y, mask;
         uint32_t seq;
@@ -1102,18 +1140,23 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
             return -1;
         }
         if (c->cbs.on_key_down) {
-            c->cbs.on_key_down(c->ud, a, b);
+            c->cbs.on_key_down(c->ud, a, b, ctr, NULL);
         }
         return 0;
     }
     if (memcmp(code, "DKDL", 4) == 0) {
         /* key down 1.8: "%2i%2i%2i%s" */
+        const uint8_t *language;
+        uint32_t size;
         if (msg_read_u16(m, &a) != 0 || msg_read_u16(m, &b) != 0 ||
-            msg_read_u16(m, &ctr) != 0 || msg_skip_string(m) != 0) {
+            msg_read_u16(m, &ctr) != 0 || msg_read_string(m, &language, &size) != 0) {
             return -1;
         }
         if (c->cbs.on_key_down) {
-            c->cbs.on_key_down(c->ud, a, b);
+            const bool known_language = c->proto_minor >= 8 && language_code(language, size);
+            char tag[3] = {0};
+            if (known_language) memcpy(tag, language, 2);
+            c->cbs.on_key_down(c->ud, a, b, ctr, known_language ? tag : NULL);
         }
         return 0;
     }
@@ -1123,7 +1166,7 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
             return -1;
         }
         if (c->cbs.on_key_up) {
-            c->cbs.on_key_up(c->ud, a, b);
+            c->cbs.on_key_up(c->ud, a, ctr);
         }
         return 0;
     }
@@ -1134,7 +1177,7 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
             msg_read_u16(m, &count) != 0 || msg_read_u16(m, &ctr) != 0) {
             return -1;
         }
-        if (c->proto_minor >= 8 && msg_skip_string(m) != 0) {
+        if (c->proto_minor >= 8 && msg_read_string(m, NULL, NULL) != 0) {
             return -1;
         }
         if (c->cbs.on_key_repeat) {
@@ -1239,7 +1282,7 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
         return -1;
     }
 
-    /* Ignore anything else (language sync "LSYN", secure-input "SECN", file
+    /* Ignore anything else (secure-input "SECN", file
      * transfer "DFTR", drag info "DDRG", future extensions, ...).  The whole
      * packet has already been read, so the stream stays in sync; we simply
      * acknowledge with a no-op like the real deskflow client does. */

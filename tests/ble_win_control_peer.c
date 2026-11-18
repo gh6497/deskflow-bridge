@@ -74,7 +74,7 @@ int df_client_run(df_client *c, volatile sig_atomic_t *stop)
 {
     c->cbs->on_connected(c->ud);
     c->cbs->on_enter(c->ud, 100, 100, 1, 0);
-    c->cbs->on_key_down(c->ud, 'a', 0);
+    c->cbs->on_key_down(c->ud, 'a', 0, 0, NULL);
     c->cbs->on_mouse_down(c->ud, 3);
     c->cbs->on_mouse_up(c->ud, 3);
     c->cbs->on_mouse_down(c->ud, 1);

@@ -304,8 +304,7 @@ static int8_t clamp_i8(int32_t v)
 
 /* Build and send the full keyboard report (mirrors
  * sc_hid_keyboard_generate_input_from_key). */
-static bool send_keyboard_report_with_shortcut(struct otg_bridge *b,
-                                               uint8_t mods, int usage)
+static bool send_keyboard_report_with_mods(struct otg_bridge *b, uint8_t mods, int usage)
 {
     if (!b->transport_ops->ready(b->transport_ctx)) {
         return false;
@@ -313,7 +312,7 @@ static bool send_keyboard_report_with_shortcut(struct otg_bridge *b,
     uint8_t report[AOA_KEYBOARD_REPORT_SIZE];
     memset(report, 0, sizeof(report));
 
-    report[0] = b->hid_mods | mods;
+    report[0] = mods;
     report[1] = 0; /* reserved */
 
     int n = 0;
@@ -341,6 +340,11 @@ static bool send_keyboard_report_with_shortcut(struct otg_bridge *b,
         return false;
     }
     return true;
+}
+
+static bool send_keyboard_report_with_shortcut(struct otg_bridge *b, uint8_t mods, int usage)
+{
+    return send_keyboard_report_with_mods(b, b->hid_mods | mods, usage);
 }
 
 static void send_keyboard_report(struct otg_bridge *b)
@@ -693,6 +697,7 @@ void otg_bridge_reset_input(struct otg_bridge *b)
     }
     b->hid_mods = 0;
     memset(b->keys, 0, sizeof(b->keys));
+    memset(b->key_buttons, 0, sizeof(b->key_buttons));
     b->middle_button_home_down = false;
     b->right_button_back_down = false;
     b->side_button_1_down = false;
@@ -953,6 +958,7 @@ void otg_bridge_release_keyboard(struct otg_bridge *b)
 {
     b->hid_mods = 0;
     memset(b->keys, 0, sizeof(b->keys));
+    memset(b->key_buttons, 0, sizeof(b->key_buttons));
     b->middle_button_home_down = false;
     b->right_button_back_down = false;
     send_keyboard_report(b);
@@ -1037,9 +1043,39 @@ static void side_swipe_tick(struct otg_bridge *b)
     b->side_swipe_step = 0;
 }
 
+static uint8_t symbol_mods(const struct otg_bridge *b, uint32_t keyid, uint16_t mask)
+{
+    const uint8_t shifts = HID_MOD_LSHIFT | HID_MOD_RSHIFT;
+    const uint8_t altgr = (mask & DF_MOD_ALTGR) ? HID_MOD_RALT : 0;
+    bool shift;
+    /* Preserve real Ctrl/Alt/GUI shortcuts, even if a key was held on entry. */
+    if ((mask & (DF_MOD_CONTROL | DF_MOD_ALT | DF_MOD_META | DF_MOD_SUPER)) ||
+        (b->hid_mods & ~(shifts | altgr)) || !keyid_us_symbol_shift(keyid, &shift))
+        return b->hid_mods;
+    uint8_t mods = b->hid_mods & ~altgr;
+    if (!shift) mods &= ~shifts;
+    else if (!(mods & shifts)) mods |= HID_MOD_LSHIFT;
+    return mods;
+}
+
 void otg_bridge_key(struct otg_bridge *b, uint32_t keyid, bool down)
 {
-    int usage = keyid_to_hid(keyid);
+    otg_bridge_key_event(b, keyid, 0, 0, false, down);
+}
+
+void otg_bridge_key_event(struct otg_bridge *b, uint32_t keyid, uint16_t button,
+                          uint16_t mask, bool layout_known, bool down)
+{
+    int usage = -1;
+    if (!down && button) {
+        for (size_t i = 0; i < sizeof(b->keys); ++i) {
+            if (b->key_buttons[i] == button) {
+                usage = (int)i;
+                break;
+            }
+        }
+    }
+    if (usage < 0) usage = keyid_to_hid(keyid);
     if (usage < 0) {
         LOG_DBG("unmapped key 0x%04x\n", keyid);
         return;
@@ -1053,7 +1089,18 @@ void otg_bridge_key(struct otg_bridge *b, uint32_t keyid, bool down)
             b->hid_mods &= (uint8_t)~mod_bit;
         }
     } else if (usage < (int)sizeof(b->keys)) {
+        if (!down && button && b->key_buttons[usage] && b->key_buttons[usage] != button)
+            return;
+        if (down && b->keys[usage]) return;
+        uint8_t mods = down && layout_known ? symbol_mods(b, keyid, mask) : b->hid_mods;
+        /* Send modifier changes before the key, and restore immediately so
+         * the next key or pointer event still sees the physical modifiers. */
+        if (mods != b->hid_mods && !send_keyboard_report_with_mods(b, mods, -1))
+            mods = b->hid_mods;
         b->keys[usage] = down;
+        b->key_buttons[usage] = down ? button : 0;
+        if (mods != b->hid_mods)
+            (void)send_keyboard_report_with_mods(b, mods, -1);
     } else {
         return; /* out of report range */
     }

@@ -110,6 +110,9 @@
  */
 int keyid_to_hid(uint32_t keyid);
 
+/* Whether an ASCII symbol/digit needs Shift on an Android US keyboard. */
+bool keyid_us_symbol_shift(uint32_t keyid, bool *shift);
+
 /*
  * Map a deskflow side-agnostic modifier mask (as received in the "enter"
  * message) to a HID modifier byte.  Side-agnostic modifiers are assigned to
