@@ -1268,7 +1268,7 @@ void MainWindow::addDevice()
     QString name;
     int number = m_records.size() + 1;
     do {
-        name = "android-" + QString::number(number++);
+        name = "android" + QString::number(number++);
     } while (std::any_of(m_records.cbegin(), m_records.cend(), [&](const QVariantMap &record) {
         return record.value("phone").toString().compare(name, Qt::CaseInsensitive) == 0;
     }));
