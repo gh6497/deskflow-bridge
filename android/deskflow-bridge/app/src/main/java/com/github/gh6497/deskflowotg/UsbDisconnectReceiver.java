@@ -36,6 +36,7 @@ public final class UsbDisconnectReceiver extends BroadcastReceiver {
         if (shouldPause) {
             Log.i(TAG, "USB disconnected; pausing playback immediately");
             DeskflowNotificationListenerService.pauseAllPlayback(context);
+            ConnectionStatusReceiver.onUsbDisconnected(context);
         }
     }
 

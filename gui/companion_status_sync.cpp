@@ -11,14 +11,20 @@ CompanionStatusSync::CompanionStatusSync(QObject *parent) : QObject(parent)
 }
 
 void CompanionStatusSync::update(const QString &adb, const QString &target, const QString &state,
-                                 bool playbackReady)
+                                 bool playbackReady, UsbDependency usb)
 {
-    const bool newConnection = state == "connected" &&
-        (m_state != "connected" || m_adb != adb || m_target != target);
+    const bool targetChanged = m_adb != adb || m_target != target;
+    const bool newConnection = state == "connected" && (m_state != "connected" || targetChanged);
+    // Keep the previous ID when BLE goes directly from connected to reconnecting.
+    // A fresh attempt after stopping (or changing targets) has no session to end.
+    if (targetChanged || (state == "connecting" && m_state != "connected" && m_state != "connecting"))
+        m_connectionId.clear();
     if (newConnection) {
         m_connectionId = QUuid::createUuid().toString(QUuid::Id128);
         m_playIssued = false;
     }
+    if (newConnection || targetChanged || m_usb != usb) m_usbAdb.reset();
+    m_usb = usb;
     m_playbackReady = state == "connected" && playbackReady;
     if (!m_playbackReady) m_playPending = false;
     if (m_playbackReady && !m_playIssued) {
@@ -37,6 +43,7 @@ void CompanionStatusSync::update(const QString &adb, const QString &target, cons
         (state != "connecting" && state != "connected" &&
          state != "disconnecting" && state != "disconnected")) {
         m_state.clear();
+        m_connectionId.clear();
         m_playPending = false;
         return;
     }
@@ -70,15 +77,36 @@ void CompanionStatusSync::send()
             finish();
             return;
         }
-        // Explicit receiver and fixed tokens only. No app launch, permission
-        // grants, shell interpolation of screen names, or fallback device.
-        runCommand(this, adb, {"-s", target, "shell", "am", "broadcast", "--user", "current",
-                   "-n", "com.github.gh6497.deskflowotg/.ConnectionStatusReceiver",
-                   "-a", "com.github.gh6497.deskflowotg.CONNECTION_STATUS",
-                   "--ei", "version", "2", "--es", "state", state,
-                   "--es", "connection_id", connectionId.isEmpty() ? "none" : connectionId,
-                   "--ez", "playback_ready", playbackReady ? "true" : "false",
-                   "--ez", "play_event", playEvent ? "true" : "false"},
-                   [finish](bool, const QString &) { finish(); }, 2000);
+        auto report = [this, adb, target, state, connectionId, playbackReady, playEvent, finish](bool usb) {
+            // Explicit receiver and fixed tokens only. No app launch, permission grants or fallback device.
+            QStringList args{"-s", target, "shell", "am", "broadcast", "--user", "current",
+                       "-n", "com.github.gh6497.deskflowotg/.ConnectionStatusReceiver",
+                       "-a", "com.github.gh6497.deskflowotg.CONNECTION_STATUS",
+                       "--ei", "version", "2", "--es", "state", state,
+                       "--es", "connection_id", connectionId.isEmpty() ? "none" : connectionId,
+                       "--ez", "playback_ready", playbackReady ? "true" : "false",
+                       "--ez", "play_event", playEvent ? "true" : "false"};
+            if (usb && (state == "connected" || state == "disconnecting"))
+                args << "--ez" << "usb_required" << "true";
+            // BLE can end one session while immediately waiting for the next handshake.
+            if (state == "connecting" && !connectionId.isEmpty())
+                args << "--ez" << "connection_ended" << "true";
+            runCommand(this, adb, args, [finish](bool, const QString &) { finish(); }, 2000);
+        };
+        if (m_usb != UsbDependency::FromAdb || m_usbAdb || state != "connected") {
+            report(m_usb == UsbDependency::Required || m_usbAdb.value_or(false));
+            return;
+        }
+        // A wireless ADB target (including mDNS) can also drive UHID. Only a positive USB path qualifies.
+        runCommand(this, adb, {"-s", target, "get-devpath"},
+                   [this, revision, report, finish](bool pathOk, const QString &output) {
+            if (revision != m_revision) {
+                finish();
+                return;
+            }
+            const auto path = output.trimmed();
+            if (pathOk && !path.isEmpty()) m_usbAdb = path.startsWith("usb:");
+            report(m_usbAdb.value_or(false));
+        }, 750);
     }, 2000);
 }

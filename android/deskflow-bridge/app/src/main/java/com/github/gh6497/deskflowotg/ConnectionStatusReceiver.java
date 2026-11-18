@@ -23,12 +23,19 @@ public final class ConnectionStatusReceiver extends BroadcastReceiver {
         if (version != 1 && version != 2) return;
         String state = intent.getStringExtra("state");
         if (!ConnectionStatus.valid(state)) return;
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        String id = version == 2 ? intent.getStringExtra("connection_id") : null;
+        boolean knownId = ConnectionStatus.validId(id);
+        SharedPreferences status = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        // A queued desktop heartbeat cannot resurrect a session already ended by local USB removal.
+        if (knownId && id.equals(status.getString("usb_ended_id", "")) && !"disconnected".equals(state)) return;
+        status.edit()
                 .putString("state", state)
                 .putLong("received", SystemClock.elapsedRealtime())
-                .putInt("boot", bootCount(context)).apply();
-        if (version != 2) return; // Old desktops can display state, never auto-play.
-        String id = intent.getStringExtra("connection_id");
+                .putInt("boot", bootCount(context))
+                .putString("connection_id", knownId ? id : "")
+                .putBoolean("usb_required", knownId && intent.getBooleanExtra("usb_required", false)).apply();
+        if (version != 2) return; // Old reports have no connection ID; display state only.
+        ConnectionNotifications.onReport(context, state, id, intent.getBooleanExtra("connection_ended", false));
         SharedPreferences playback = AutoplaySettings.prefs(context);
         // Ordered serialization keeps exactly the most recent IDs across restarts;
         // SharedPreferences string sets do not preserve eviction order.
@@ -44,6 +51,18 @@ public final class ConnectionStatusReceiver extends BroadcastReceiver {
         // listener restart, missing permission/session, disabled setting or failure.
         if (!playback.edit().putString("consumed_ids", String.join(",", consumed)).commit()) return;
         DeskflowNotificationListenerService.playOnConnection(context);
+    }
+
+    static void onUsbDisconnected(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean("usb_required", false)) return;
+        String state = current(context);
+        if (!"connected".equals(state) && !"disconnecting".equals(state)) return;
+        String id = prefs.getString("connection_id", "");
+        if (!ConnectionStatus.validId(id)) return;
+        prefs.edit().putString("state", "disconnected").putString("usb_ended_id", id)
+                .putLong("received", SystemClock.elapsedRealtime()).apply();
+        ConnectionNotifications.onReport(context, "disconnected", id, false);
     }
 
     static String current(Context context) {

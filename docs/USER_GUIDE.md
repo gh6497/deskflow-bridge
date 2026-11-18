@@ -251,6 +251,8 @@ Keyboard/mouse, text clipboard and audio forwarding do not themselves need the c
 3. Click **Open phone setup** and open the companion on the phone. For media pause/autoplay, manually allow notification access as prompted. File sharing alone does not need it.
 4. If the phone restricts auto-start, background activity or battery use, allow the companion to run in the background without battery restrictions. Open it once after installation or an update.
 
+To get phone notifications, turn on **Notify when Deskflow connects or disconnects** on the companion home screen (off by default) and allow Android notifications for the app. It does not need the notification access used for media controls. When the desktop GUI reports changes over authorized ADB, the phone alerts once on connection and once on disconnection. With the updated desktop and companion apps, the phone can alert on unplug for a confirmed wired session, even after ADB goes offline. Plugging or unplugging USB without a Deskflow session does not trigger an alert.
+
 The companion can request that playing media pause when a USB data connection disconnects. Brief disconnections can trigger it too, and it is not limited to Deskflow USB sessions. Autoplay is a separate phone-side option, off by default, requiring a selected player. Whether media actions take effect depends on the player and system.
 
 ### Transfer pictures and files

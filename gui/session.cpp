@@ -146,8 +146,11 @@ void Session::syncCompanionStatus()
     const auto status = m_state == State::Connected ? "connected" :
         m_state == State::Starting ? "connecting" :
         m_state == State::Stopping ? "disconnecting" : "disconnected";
+    using UsbDependency = CompanionStatusSync::UsbDependency;
+    const auto usb = m_options.transport == "usb" ? UsbDependency::Required :
+        m_options.transport == "uhid" ? UsbDependency::FromAdb : UsbDependency::None;
     m_companionStatus.update(m_options.adb, target, QString::fromLatin1(status),
-                             !m_options.audio || m_audioReady);
+                             !m_options.audio || m_audioReady, usb);
 }
 
 static bool isWirelessAdbTarget(const QString &target)

@@ -55,6 +55,10 @@ class CompanionStatusTest : public QObject {
         }
         return result;
     }
+    static QString connectionId(const QStringList &args)
+    {
+        return args.value(args.indexOf("connection_id") + 1);
+    }
 private slots:
     void init()
     {
@@ -89,12 +93,15 @@ private slots:
         QCOMPARE(playIds().first().size(), 32);
         for (const auto &args : broadcasts()) {
             QCOMPARE(args.value(args.indexOf("version") + 1), QString("2"));
-            if (args.value(args.indexOf("state") + 1) == "connected")
+            if (args.value(args.indexOf("state") + 1) == "connected") {
                 QCOMPARE(args.value(args.indexOf("connection_id") + 1), playIds().first());
+                QVERIFY(args.contains("usb_required")); // AOA needs the cable even with wireless ADB.
+            }
         }
         session.stop();
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QTRY_COMPARE(states().last(), QString("disconnected"));
+        QCOMPARE(connectionId(broadcasts().last()), playIds().first());
         for (const auto &args : commands()) {
             QCOMPARE(args.first(), "-s");
             QCOMPARE(args.value(1), options.adbSerial);
@@ -137,6 +144,7 @@ private slots:
         QTRY_VERIFY(states().contains("disconnected"));
         QCOMPARE(states(), QStringList{"disconnected"});
         QCOMPARE(commands().last().value(1), "NEW");
+        QCOMPARE(connectionId(broadcasts().last()), QString("none"));
         QTest::qWait(350); // finish the last fake broadcast before destruction
     }
     void offlineDoesNotPublishOrBlockHid()
@@ -314,7 +322,10 @@ private slots:
         session.stop();
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QTRY_VERIFY(states().contains("disconnected"));
-        for (const auto &args : commands()) QCOMPARE(args.value(1), options.adbSerial);
+        for (const auto &args : commands()) {
+            QCOMPARE(args.value(1), options.adbSerial);
+            QVERIFY(!args.contains("usb_required"));
+        }
         qunsetenv("OTG_TEST_BLE_RECONNECT");
         QFile::remove(m_log);
         // With no explicit ADB identity, even an active BLE session sends nothing.
@@ -327,6 +338,50 @@ private slots:
 #else
         QSKIP("Linux fake BLE lifecycle requires BUILD_BLE");
 #endif
+    }
+    void reconnectAndFreshAttempt()
+    {
+        CompanionStatusSync sync;
+        sync.update(peer(), "USB123", "connected");
+        QTRY_COMPARE(broadcasts().size(), 1);
+        const auto oldId = connectionId(broadcasts().last());
+        QVERIFY(oldId != "none");
+        sync.update(peer(), "USB123", "connecting");
+        QTRY_COMPARE(broadcasts().size(), 2);
+        const auto reconnect = broadcasts().last();
+        QCOMPARE(connectionId(reconnect), oldId);
+        QCOMPARE(reconnect.value(reconnect.indexOf("connection_ended") + 1), QString("true"));
+        sync.update(peer(), "USB123", "connected");
+        QTRY_COMPARE(broadcasts().size(), 3);
+        QVERIFY(connectionId(broadcasts().last()) != oldId);
+        sync.update(peer(), "USB123", "disconnected");
+        QTRY_COMPARE(broadcasts().size(), 4);
+        sync.update(peer(), "USB123", "connecting");
+        QTRY_COMPARE(broadcasts().size(), 5);
+        QCOMPARE(connectionId(broadcasts().last()), QString("none"));
+        QVERIFY(!broadcasts().last().contains("connection_ended"));
+        sync.update(peer(), "USB123", "disconnected");
+        QTRY_COMPARE(broadcasts().size(), 6);
+        QCOMPARE(connectionId(broadcasts().last()), QString("none"));
+    }
+    void adbTransportDeterminesUsbDependency()
+    {
+        using UsbDependency = CompanionStatusSync::UsbDependency;
+        CompanionStatusSync sync;
+        qputenv("OTG_TEST_COMPANION", "wired");
+        sync.update(peer(), "USB123", "connected", true, UsbDependency::FromAdb);
+        QTRY_COMPARE(broadcasts().size(), 1);
+        QVERIFY(broadcasts().last().contains("usb_required"));
+        sync.update(peer(), "USB123", "disconnecting", false, UsbDependency::FromAdb);
+        QTRY_COMPARE(broadcasts().size(), 2);
+        QVERIFY(broadcasts().last().contains("usb_required"));
+        qunsetenv("OTG_TEST_COMPANION");
+        sync.update(peer(), "phone._adb-tls-connect._tcp", "connected", true, UsbDependency::FromAdb);
+        QTRY_COMPARE(broadcasts().size(), 3);
+        QVERIFY(!broadcasts().last().contains("usb_required"));
+        int queries = 0;
+        for (const auto &args : commands()) if (args.contains("get-devpath")) ++queries;
+        QCOMPARE(queries, 2);
     }
     void timeoutCoalescesToLatest()
     {
