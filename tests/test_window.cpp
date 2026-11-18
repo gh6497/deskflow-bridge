@@ -119,6 +119,8 @@ private slots:
             QVERIFY(serial->isHidden());
             QVERIFY(enabled->isChecked() && !enabled->isEnabled());
             QVERIFY(!window.findChild<QCheckBox *>("autoConnectEnabled")->isEnabled());
+            auto *wiredAuto = window.findChild<QCheckBox *>("uhidUsbAutoConnect");
+            QVERIFY(wiredAuto->isEnabled() && !wiredAuto->isHidden() && !wiredAuto->isChecked());
             QVERIFY(window.findChild<QCheckBox *>("autoRotate")->isEnabled());
             target->clear(); QVERIFY(!connect->isEnabled());
             target->setText("MANUAL_ADB_TARGET"); QVERIFY(connect->isEnabled());
@@ -142,6 +144,7 @@ private slots:
         {
             AutoConnectTestWindow restored;
             QCOMPARE(restored.findChild<QComboBox *>("transportSelector")->currentData().toString(), "uhid");
+            QTRY_VERIFY(restored.findChild<QComboBox *>("deviceSelector")->count() > 1);
             QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), "MANUAL_ADB_TARGET");
             restored.findChild<QAction *>("trayQuit")->trigger();
         }
@@ -985,6 +988,87 @@ private slots:
         syncSystemThemePalette(*qobject_cast<QApplication *>(QCoreApplication::instance()));
         QVERIFY(QGuiApplication::palette().color(QPalette::Window).lightness() >= 128);
     }
+    void wiredUhidAutoConnect()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        const auto peer = QCoreApplication::applicationDirPath() + "/test_peer"
+#ifdef Q_OS_WIN
+            ".exe"
+#endif
+            ;
+        settings.setValue("adb", peer);
+        settings.setValue("transport", "uhid");
+        settings.setValue("manageServer", false);
+        settings.setValue("autoConnect", true); // An old AOA opt-in must not opt in UHID.
+        settings.beginWriteArray("rememberedDevices", 1);
+        settings.setArrayIndex(0);
+        settings.setValue("profile", QVariantMap{{"transport", "usb"}, {"serial", "TEST123"}});
+        settings.endArray();
+        const auto logPath = dir.filePath("adb.jsonl");
+        qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_ADB_DEVICES"); qunsetenv("OTG_TEST_UHID_LOG"); });
+        const auto log = [&] {
+            QFile file(logPath);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        const auto scans = [&] { return log().count("[\"devices\",\"-l\"]"); };
+        const QByteArray header = "List of devices attached\n";
+        {
+            AutoConnectTestWindow window; window.show();
+            auto *target = window.findChild<QLineEdit *>("adbSerial");
+            auto *enable = window.findChild<QCheckBox *>("uhidUsbAutoConnect");
+            auto *button = window.findChild<QPushButton *>("connectButton");
+            auto *session = window.findChild<Session *>();
+            QTRY_COMPARE(target->text(), "TEST123");
+            QTRY_VERIFY(button->isEnabled());
+            QVERIFY(!enable->isChecked());
+            target->setText("192.0.2.1:5555");
+            QVERIFY(!enable->isEnabled());
+            target->setText("TEST123");
+            QVERIFY(enable->isEnabled());
+            const auto before = scans();
+            enable->click();
+            QTRY_VERIFY(scans() >= before + 2);
+            QCOMPARE(session->state(), Session::State::Idle); // Same serial remembered only for AOA.
+            button->click();
+            QTRY_COMPARE(session->state(), Session::State::Connected);
+            window.findChild<QAction *>("trayDisconnect")->trigger();
+            QTRY_COMPARE(session->state(), Session::State::Idle);
+            const auto stopped = scans();
+            QTRY_VERIFY_WITH_TIMEOUT(scans() >= stopped + 2, 8000);
+            QCOMPARE(session->state(), Session::State::Idle);
+            qputenv("OTG_TEST_ADB_DEVICES", header + "TEST123 device transport_id:2\n");
+            QTRY_COMPARE(session->state(), Session::State::Connected);
+            window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_COMPARE(session->state(), Session::State::Idle);
+        }
+        // Restart with an unrelated phone attached: keep the saved target. A
+        // later arrival connects even with the window hidden in the tray.
+        qputenv("OTG_TEST_ADB_DEVICES", header + "OTHER device transport_id:4\n");
+        AutoConnectTestWindow restored; restored.show();
+        auto *session = restored.findChild<Session *>();
+        const auto before = scans();
+        QTRY_VERIFY(scans() > before);
+        QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), "TEST123");
+        QVERIFY(restored.findChild<QCheckBox *>("uhidUsbAutoConnect")->isChecked());
+        QCOMPARE(session->state(), Session::State::Idle);
+        restored.close();
+        qputenv("OTG_TEST_ADB_DEVICES", header + "TEST123 device transport_id:5\nOTHER device transport_id:4\n");
+        QTRY_COMPARE(session->state(), Session::State::Connected);
+        restored.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_COMPARE(session->state(), Session::State::Idle);
+        const auto commands = log();
+        QCOMPARE(commands.count("\"--gui\""), 3);
+        QCOMPARE(commands.count("\"--adb-serial\",\"TEST123\""), 3);
+        QVERIFY(!commands.contains("--usb-scan") && !commands.contains("--usb-watch"));
+        QVERIFY(!commands.contains("[\"connect\"") && !commands.contains("[\"pair\""));
+#endif
+    }
+
     void multipleAutoConnectWithoutAdb()
     {
         QTemporaryDir dir;

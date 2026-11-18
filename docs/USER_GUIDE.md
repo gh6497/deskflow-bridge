@@ -33,7 +33,7 @@ This guide is for people installing and using the desktop app. No compilation is
 - **Copy and paste text**: enable sharing to copy on the computer and paste on the phone, or synchronize text in the other direction.
 - **Listen through your computer**: Linux/macOS/Windows can forward phone audio.
 - **Transfer pictures and files both ways**: use the optional phone companion app to receive phone shares on the computer or send computer files to the phone.
-- **Reduce repeated setup**: remember device settings, keep connections in the tray, and optionally reconnect remembered AOA phones when plugged in.
+- **Reduce repeated setup**: keep the app in the tray and reconnect remembered AOA or wired ADB + UHID phones when plugged in.
 
 Start with keyboard and mouse control. Clipboard, audio and file sharing require ADB as well; file sharing also requires the companion app. Each is explained below.
 
@@ -206,11 +206,13 @@ After rotating the phone without rotation tracking enabled, disconnect, read the
 - **Quit** from the tray menu to exit. Without a system tray, closing the window disconnects and exits.
 - Settings are saved automatically. Selecting a different device does not disconnect the others.
 
-### Connect automatically on insertion (AOA only)
+### Connect automatically when you plug in a USB cable
 
-Enable **Automatically connect this device when USB is inserted** for that phone's AOA profile, then connect it successfully once by hand. Keep the app running, optionally hidden in the tray. Plugging in that phone again will use its remembered configuration.
+In the phone's device settings, choose **ADB + UHID** or **USB (AOA HID)**. For UHID, authorize USB debugging on the phone and select its USB ADB serial, not a Wi-Fi address. AOA does not need USB debugging.
 
-A manual disconnect or failed attempt is not retried endlessly during the same insertion; connect manually or unplug/replug. Detection stops when the app exits. This is not computer-startup autostart, and ADB + UHID does not offer this AOA insertion option.
+Enable **Automatically connect this device when USB is inserted** (off by default) and connect once by hand until the status reads **Connected**. Leave the app running, optionally hidden in the tray. Next time you plug in that phone, it reconnects automatically. If UHID is waiting for authorization, approve the prompt on the phone.
+
+After a manual disconnect or failed connection, click **Connect** to retry immediately or unplug and reinsert the cable. Quitting the app stops detection; wireless ADB is not monitored by this option.
 
 <a id="extras"></a>
 

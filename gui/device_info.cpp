@@ -9,6 +9,16 @@
 #include <QSet>
 #include <QPoint>
 
+bool isUsbAdbSerial(const QString &serial)
+{
+    // Native Windows ADB can omit usb:<path> even for a wired device. TCP
+    // endpoints, mDNS services, emulators and unreadable serials are not USB IDs.
+    static const QRegularExpression whitespace("\\s");
+    return !serial.isEmpty() && !serial.contains('?') && !serial.contains(':') &&
+           !serial.startsWith("emulator-") && !serial.contains("adb-tls-", Qt::CaseInsensitive) &&
+           !serial.contains("._tcp", Qt::CaseInsensitive) && !serial.contains(whitespace);
+}
+
 QList<AndroidDevice> parseDevices(const QString &text)
 {
     QList<AndroidDevice> result;

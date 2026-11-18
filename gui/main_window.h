@@ -58,7 +58,8 @@ private:
     void saveSettings();
     QVariantMap deviceProfile() const;
     void applyDeviceProfile(const QVariantMap &profile);
-    void rememberDevice();
+    void rememberDevice(const QVariantMap &profile);
+    void autoConnectDevice(const QString &transport, const QString &serial);
     void updateEnabled();
     void updateConnectionStatus();
     QSize virtualScreenSize() const;
@@ -103,7 +104,7 @@ private:
     QLabel *m_layoutPreview, *m_summary;
     ScreenLayoutPreview *m_layoutCanvas;
     QPushButton *m_connectAll, *m_disconnectAll, *m_addDevice, *m_removeDevice;
-    UsbAutoConnect m_autoConnect;
+    UsbAutoConnect m_autoConnect, m_adbAutoConnect;
     CompanionApp m_companion;
     QString m_companionDeviceId;
     QMap<QString, QString> m_companionStatuses;
@@ -114,8 +115,7 @@ private:
     QPushButton *m_transferFiles;
     QPointer<TransferDialog> m_transferDialog;
     QPointer<WirelessAdbDialog> m_wirelessAdbDialog;
-    QMap<QString, QVariantMap> m_profiles;
-    QVariantMap m_pendingProfile;
+    QMap<QPair<QString, QString>, QVariantMap> m_profiles; // (transport, native serial)
     QSystemTrayIcon *m_tray = nullptr;
     QAction *m_trayDisconnect = nullptr;
     QWidget *m_form;
@@ -144,7 +144,7 @@ private:
     QSpinBox *m_width, *m_height, *m_port, *m_sideSwipeDistance;
     QDoubleSpinBox *m_sensitivity, *m_motionMultiplier;
     QCheckBox *m_manage;
-    QCheckBox *m_autoConnectEnabled;
+    QCheckBox *m_autoConnectEnabled, *m_uhidAutoConnectEnabled;
     QPushButton *m_refresh, *m_connect, *m_disconnect;
     QLabel *m_status, *m_deviceStatus, *m_connectionStatus;
     QLabel *m_virtualSize;
@@ -155,6 +155,7 @@ private:
     QList<AndroidDevice> m_deviceList;
     bool m_scanning = false;
     bool m_uiReady = false;
+    bool m_monitorsReady = false;
     bool m_sessionStatus = false;
     bool m_closing = false;
     bool m_exitEmitted = false;

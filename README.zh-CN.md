@@ -262,8 +262,9 @@ Windows 空闲 BLE provider 也保留其目标占用。Linux 常驻服务仍遵�
    Windows 此时使用 ADB 发现设备，不调用 `usb-scan`，无需替换为供 AOA 使用的 WinUSB 驱动。
 3. 读取或手动填写尺寸，配置 Deskflow 后点击「连接」。此模式必须启用 ADB；音频、文本剪贴板、
    跟随旋转和伴侣操作使用同一选定目标，音频/剪贴板与输入共用 server/隧道。
-4. 断开或退出会释放输入并销毁本会话的 UHID 设备。ADB 断线后手动重新连接；
-   libusb 插入自动连接属于 AOA 模式，在此隐藏。
+4. 使用数据线时，可勾选 **「USB 插入时自动连接此设备」**（默认关闭），并手动成功连接一次。
+   保持 GUI 运行或隐藏到托盘；程序每 2 秒检查 ADB 列表，已记住的 USB ADB 序列号在线且已授权时自动连接。
+   手动断开或连接失败后，重新插线才再次自动尝试；无线目标仍需手动连接。断开或退出会释放输入并销毁本会话的 UHID 设备。
 
 绝对坐标指针描述符保持一致，不是 scrcpy 自带的相对 `--mouse=uhid` 模式。
 每次切入手机先通过独立 HID **System Wake Up** 发送按下/释放，唤醒息屏手机，
@@ -294,6 +295,8 @@ Windows 空闲 BLE provider 也保留其目标占用。Linux 常驻服务仍遵�
 [Windows BLE 用法与限制](docs/WINDOWS_BLE.md)。
 
 ### 插入 USB 自动连接（无需 USB 调试）
+
+本节适用于 AOA；使用数据线和 USB 调试时，请看 [ADB＋UHID 有线连接说明](docs/UHID.md)。
 
 启用音频或剪贴板时，传输启动后 ADB 可能尚未恢复。桥接在 scrcpy-server 上传失败后会在
 总计约 5 秒的窗口内重试，不重复注册 HID、不更换 ADB 目标、不重启 ADB server；仍失败时

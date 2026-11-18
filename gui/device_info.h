@@ -12,6 +12,7 @@ struct AndroidDevice {
 };
 
 QList<AndroidDevice> parseDevices(const QString &text);
+bool isUsbAdbSerial(const QString &serial);
 QList<AndroidDevice> parseUsbScanDevices(const QString &text);
 QSize parseScreenSize(const QString &text);
 int parseRotation(const QString &text);

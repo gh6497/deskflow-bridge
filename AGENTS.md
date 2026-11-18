@@ -288,7 +288,8 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   争用同一 socket。共享剪贴板 ACK 失败只禁用其策略，socket/背压失败终止 UHID/Deskflow。
   先 bridge close（范围结束、键盘释放、DESTROY）再 session stop（有界排空、关闭、清理）。
   启动检查 /dev/uhid 的实际打开权限且响应取消；官方无 CREATE ACK，不能把描述符已发送视为
-  真机成功。GUI UHID 用 ADB 发现，目标栏必填，不回退 AOA serial，隐藏 libusb 自动连接。
+  真机成功。GUI UHID 用 ADB 发现，目标栏必填，不回退 AOA serial。有线 UHID 插线自动连接独立 opt-in，
+  通过 `adb devices -l` 识别已成功连接过且在线的 USB ADB 序列号，按 transport_id 去重，不走 libusb。
   UHID 单独注册 ID=3 的 Generic Desktop/System Control/System Wake Up（usage0x83）设备。
   每次 CINN 先发送唤醒按下/释放，再走 bridge enter 和 GUI 的 ADB 锁屏检测；注册本身不唤醒。
   BUS_VIRTUAL 键鼠在 Android 被视为内部设备，不能依靠普通 Enter/移动唤醒。只发 KEY_WAKEUP，
@@ -408,7 +409,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
 
 - `-DBUILD_GUI=ON` 启用 Qt Widgets 桌面端；默认 OFF 保留纯 C 构建。GUI 支持 Linux、macOS、Windows。
 - `gui/main_window.cpp` 管理界面、ADB 异步查询和 QSettings；`device_info.cpp` 解析设备/尺寸/方向并生成布局。
-- GUI 的可选 USB 自动连接默认关闭；成功 Connected 后按 USB 序列号保存独立配置。
+- GUI 的可选 AOA、USB＋UHID 自动连接默认分别关闭；成功 Connected 后按传输类型和对应序列号保存独立配置。以下为 AOA 检测：
   `usb_auto_connect.cpp` 优先启动桥接 `--usb-watch`（`src/usb_scan.c`），运行时检查 libusb
   hotplug 能力并注册回调；不支持、启动超时、监听错误/退出时回退到每 2 秒异步 `--usb-scan`。
   事件模式只在启动、热插拔、就绪/配置变化时扫描，合并通知并有限次重试权限就绪，不做周期枚举。
