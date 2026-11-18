@@ -34,6 +34,7 @@
 #include <QSpinBox>
 #include <QRegularExpressionValidator>
 #include <QSplitter>
+#include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -91,6 +92,35 @@ QString defaultTransport()
 #else
     return QStringLiteral("usb");
 #endif
+}
+
+QString deviceAdbTarget(const QString &transport, const QString &explicitTarget, const QString &usbSerial)
+{
+    if (!explicitTarget.isEmpty()) return explicitTarget;
+#ifndef Q_OS_WIN
+    if (transport == "usb") return usbSerial;
+#else
+    Q_UNUSED(transport);
+    Q_UNUSED(usbSerial);
+#endif
+    return {};
+}
+
+QString screenshotTarget(const QVariantMap &profile)
+{
+    const auto transport = profile.value("transport", "usb").toString();
+    if (transport != "uhid" && !profile.value("adbEnabled").toBool()) return {};
+    const auto target = deviceAdbTarget(transport, profile.value("adbSerial").toString().trimmed(),
+                                        profile.value("serial").toString().trimmed());
+    if (transport == "ble" && !isWirelessAdbTarget(target)) return {};
+    return target;
+}
+
+QString screenshotDeviceName(const QVariantMap &profile)
+{
+    const auto screen = profile.value("phone").toString();
+    const auto alias = profile.value("alias").toString();
+    return alias.isEmpty() || alias == screen ? screen : QStringLiteral("%1 (%2)").arg(alias, screen);
 }
 
 } // namespace
@@ -197,6 +227,8 @@ void MainWindow::setupTray()
     auto *restore = translated(menu->addAction(QString()), "text", "otg.tray.show");
     restore->setObjectName("trayShow");
     connect(restore, &QAction::triggered, this, &MainWindow::restoreWindow);
+    m_trayScreenshots = translated(menu->addMenu(QString()), "title", "otg.screenshot.copy");
+    m_trayScreenshots->setObjectName("trayScreenshots");
     m_trayDisconnect = translated(menu->addAction(QString()), "text", "otg.action.disconnect");
     m_trayDisconnect->setObjectName("trayDisconnect");
     setTranslatedProperty(m_trayDisconnect, "text", "otg.multi.disconnect_all");
@@ -235,6 +267,49 @@ void MainWindow::updateTray()
         return;
     m_tray->setToolTip(QString("Deskflow Bridge · %1\n%2").arg(m_summary->text(), m_connections.status(m_selectedId)));
     m_trayDisconnect->setEnabled(m_connections.busy());
+    updateScreenshotActions();
+}
+
+void MainWindow::updateScreenshotActions()
+{
+    const bool available = !m_closing && !m_screenshot.busy() && !m_adb->text().trimmed().isEmpty();
+    bool any = false;
+    for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
+        const auto id = it.key();
+        const auto profile = id == m_selectedId ? deviceProfile() : it.value();
+        const bool enabled = available && !screenshotTarget(profile).isEmpty();
+        if (id == m_selectedId) m_copyScreenshot->setEnabled(enabled);
+        auto *&action = m_screenshotActions[id];
+        if (!action) {
+            action = m_trayScreenshots->addAction(QString());
+            action->setData(id);
+            connect(action, &QAction::triggered, this, [this, id] { copyScreenshot(id); });
+        }
+        action->setText(screenshotDeviceName(profile).replace('&', "&&"));
+        action->setEnabled(enabled);
+        any |= enabled;
+    }
+    for (auto it = m_screenshotActions.begin(); it != m_screenshotActions.end();) {
+        if (m_records.contains(it.key())) { ++it; continue; }
+        m_trayScreenshots->removeAction(it.value());
+        it.value()->deleteLater();
+        it = m_screenshotActions.erase(it);
+    }
+    m_trayScreenshots->menuAction()->setEnabled(any);
+}
+
+void MainWindow::copyScreenshot(const QString &id)
+{
+    if (m_closing || m_screenshot.busy() || !m_records.contains(id)) return;
+    const auto profile = id == m_selectedId ? deviceProfile() : m_records.value(id);
+    // Snapshot identity at click time. A later selection (or tray capture of
+    // another phone) must not switch either the ADB target or the result label.
+    m_screenshotDeviceId = id;
+    m_screenshotDeviceName = screenshotDeviceName(profile);
+    if (m_screenshot.start(m_adb->text().trimmed(), screenshotTarget(profile))) {
+        if (m_screenshot.busy()) statusBar()->showMessage(qtTrId("otg.screenshot.working").arg(m_screenshotDeviceName));
+        updateScreenshotActions();
+    }
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -779,6 +854,21 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_connect->setDefault(true);
     m_disconnect = translated(new QPushButton, "text", "otg.action.disconnect");
     buttons->addWidget(m_status, 1);
+    m_copyScreenshot = translated(new QPushButton, "text", "otg.screenshot.copy");
+    m_copyScreenshot->setObjectName("copyScreenshot");
+    setTranslatedProperty(m_copyScreenshot, "toolTip", "otg.screenshot.hint");
+    buttons->addWidget(m_copyScreenshot);
+    connect(m_copyScreenshot, &QPushButton::clicked, this, [this] { copyScreenshot(m_selectedId); });
+    connect(&m_screenshot, &PhoneScreenshot::completed, this, [this](const QString &messageId) {
+        if (m_closing) { QTimer::singleShot(0, this, &QWidget::close); return; }
+        updateScreenshotActions();
+        if (messageId.isEmpty()) return;
+        const auto message = qtTrId(messageId.toLatin1().constData()).arg(m_screenshotDeviceName);
+        appendLog(message, m_screenshotDeviceId);
+        statusBar()->showMessage(message, 6000);
+        if (!isVisible() && m_tray->isVisible() && QSystemTrayIcon::supportsMessages())
+            m_tray->showMessage(windowTitle(), message);
+    });
     m_transferFiles = translated(new QPushButton, "text", "otg.transfer.title");
     m_transferFiles->setObjectName("transferFiles");
     buttons->addWidget(m_transferFiles);
@@ -1545,12 +1635,8 @@ void MainWindow::updateCompanionStatus()
 
 QString MainWindow::adbTargetForCurrentDevice() const
 {
-    const auto explicitTarget = m_adbSerial->text().trimmed();
-    if (!explicitTarget.isEmpty()) return explicitTarget;
-#ifndef Q_OS_WIN
-    if (m_transport->currentData() == "usb") return m_serial->text().trimmed();
-#endif
-    return {};
+    return deviceAdbTarget(m_transport->currentData().toString(), m_adbSerial->text().trimmed(),
+                           m_serial->text().trimmed());
 }
 
 void MainWindow::setupCompanion(CompanionApp::Action action)
@@ -2139,9 +2225,10 @@ void MainWindow::closeEvent(QCloseEvent *event)
         hide();
         return;
     }
+    m_closing = true;
+    m_screenshot.cancel();
     if (m_transferDialog) m_transferDialog->reject();
-    if (m_connections.settled() && !m_companion.busy() && !m_transferDialog) {
-        m_closing = true;
+    if (m_connections.settled() && !m_companion.busy() && !m_transferDialog && !m_screenshot.busy()) {
         m_autoConnect.setEnabled(false);
         m_adbAutoConnect.setEnabled(false);
         m_tray->hide();
@@ -2152,7 +2239,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
         }
         return;
     }
-    m_closing = true;
     event->ignore();
     m_connections.shutdown();
     updateEnabled();

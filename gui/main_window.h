@@ -6,6 +6,7 @@
 #include "connection_manager.h"
 #include "usb_auto_connect.h"
 #include "companion_app.h"
+#include "phone_screenshot.h"
 #include <QMainWindow>
 #include <QPointer>
 #include <QVariantMap>
@@ -13,6 +14,7 @@
 class QCheckBox;
 class QAction;
 class QSystemTrayIcon;
+class QMenu;
 class QComboBox;
 class QDoubleSpinBox;
 class QFormLayout;
@@ -51,6 +53,8 @@ private:
     void restoreWindow();
     void requestExit();
     void updateTray();
+    void copyScreenshot(const QString &id);
+    void updateScreenshotActions();
     void refreshDevices();
     void readDevice();
     void readDisplayFromAdb();
@@ -113,6 +117,11 @@ private:
     QLabel *m_companionStatus;
     QPushButton *m_companionInstall, *m_companionOpen, *m_companionCheck;
     QPushButton *m_transferFiles;
+    QPushButton *m_copyScreenshot;
+    PhoneScreenshot m_screenshot;
+    QString m_screenshotDeviceId, m_screenshotDeviceName;
+    QMenu *m_trayScreenshots = nullptr;
+    QMap<QString, QAction *> m_screenshotActions;
     QPointer<TransferDialog> m_transferDialog;
     QPointer<WirelessAdbDialog> m_wirelessAdbDialog;
     QMap<QPair<QString, QString>, QVariantMap> m_profiles; // (transport, native serial)

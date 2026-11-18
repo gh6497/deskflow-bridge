@@ -349,7 +349,8 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   均支持自动播放，开启音频时同样等输出就绪；BLE仍须显式已有ADB。主机策略/fake ADB/ALSA null不等于真机验收。
   `companion_status` fake ADB 和 Java 状态策略回归不等于真机广播投递验收。
 
-- 剪贴板用 `--clipboard` / `-DBUILD_CLIPBOARD=ON` 独立开启，默认关闭、按设备保存。
+- GUI 的「复制手机截图」由 `gui/phone_screenshot.cpp` 对点击时的明确目标执行 `adb -s TARGET exec-out screencap -p`。单次操作，不经 Deskflow 文本协议；标准输出保留原始 PNG，验证/解码成功后才写 GUI 主机系统剪贴板。托盘按设备选择，退出取消，不自动配对/连接 ADB。
+- 文本剪贴板共享用 `--clipboard` / `-DBUILD_CLIPBOARD=ON` 独立开启，默认关闭、按设备保存。
   Android 0.1.6 / GUI「文件与分享」是独立通道，不是图片剪贴板：`TransferProvider` 以 DUMP
   保护读写且不授予 URI 权限；`ShareActivity` 仅用户确认后读取分享 content URI，文本暂存为
   UTF-8 文件。`gui/companion_transfer.cpp` 固定 `adb -s`，仅 USB 回退 USB serial，BLE 需显式

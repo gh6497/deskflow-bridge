@@ -134,6 +134,10 @@ Each mouse press sends a complete press/release sequence, so holding the mouse b
 
 The optional automatic numeric PIN is saved per device in the GUI's local settings when enabled. It is never written to runtime logs; protect the local settings file accordingly.
 
+### Copy a phone screenshot
+
+Select a phone and click **Copy phone screenshot**, or choose the phone in the tray menu under the same name. Paste the image into a chat or document on the computer running the GUI. This one-shot action needs an online, authorized USB or wireless ADB target. It works without an active Deskflow session, text clipboard sharing or a companion APK. The app does not save a screenshot file. See the [user guide](docs/USER_GUIDE.md#copy-a-phone-screenshot).
+
 ### Share to computer and file transfer
 
 With companion app **0.1.6+** and an already-authorized ADB connection, the desktop **Files & sharing**
@@ -663,7 +667,7 @@ In the GUI's TLS section, click **Generate client certificate** to create a self
 ## Current limitations
 
 - Keyboard mapping uses the **US layout**; some symbol keys may be wrong with other layouts.
-- Clipboard support is optional ADB text sharing only; image/file clipboards and screenshots are not supported. Explicit image/file transfer, including dragging local files into the GUI transfer window, is available separately through the [companion app](docs/FILE_SHARING.md). Dragging files across the Deskflow virtual screen is not supported.
+- Deskflow clipboard sharing supports text, not images or files. The GUI can separately copy a phone screenshot to the local clipboard. Explicit file transfer is available through the [companion app](docs/FILE_SHARING.md); dragging files across the Deskflow virtual screen is not supported.
 - Only keyboard and mouse are supported; gamepads (AOA gamepad) are not implemented.
 - The default absolute pointer depends on Android HID digitizer support; compatibility with specific devices requires real-device validation.
 - `--mouse-mode relative` is a compatibility mode; Android mouse acceleration may cause drift and early boundary contact.

@@ -12,6 +12,8 @@ Deskflow 主端 ⇄ Deskflow 协议 ⇄ deskflow-bridge ⇄ ADB / scrcpy 控制�
 
 ## 默认行为
 
+**GUI 的「复制手机截图」是另一个功能**：只在点击时对所选设备执行 `adb -s TARGET exec-out screencap -p`，成功解码后将图像放进运行 GUI 的电脑的系统剪贴板。不需要 `BUILD_CLIPBOARD`、scrcpy-server 或伴侣应用。不会后台截屏或将 PNG 写入日志/配置。传输超时 20 秒，PNG 上限 32 MiB，画面上限 16,777,216 像素；失败不替换剪贴板。以下规则只适用于 Deskflow 文本共享。
+
 - 每台设备独立启用，默认关闭；新增设备不继承开启状态或另一台手机的 ADB 序列号。
 - 电脑复制后，Deskflow 在切入手机时提供最新内容，桥接写入手机剪贴板。
   Ctrl+V 和手机长按菜单都可以粘贴，不额外注入第二次粘贴。

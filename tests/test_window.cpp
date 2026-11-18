@@ -9,6 +9,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -17,13 +18,17 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMenu>
+#include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QRandomGenerator>
 #include <QSettings>
 #include <QScopeGuard>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QSystemTrayIcon>
 #include <QPalette>
@@ -42,6 +47,15 @@ protected:
     bool trayAvailable() const override { return available; }
 };
 
+static QString testPeerPath()
+{
+    return QCoreApplication::applicationDirPath() + "/test_peer"
+#ifdef Q_OS_WIN
+        ".exe"
+#endif
+        ;
+}
+
 class AutoConnectTestWindow : public TrayTestWindow {
 public:
     AutoConnectTestWindow()
@@ -56,11 +70,7 @@ public:
 protected:
     QString bridgeExecutable() const override
     {
-        return QCoreApplication::applicationDirPath() + "/test_peer"
-#ifdef Q_OS_WIN
-            ".exe"
-#endif
-            ;
+        return testPeerPath();
     }
 };
 
@@ -247,6 +257,129 @@ private slots:
         QCOMPARE(middle->currentData().toString(), "home");
         restored.findChild<QAction *>("trayQuit")->trigger();
     }
+    void screenshotClipboard()
+    {
+        if (QGuiApplication::platformName() != "offscreen") QSKIP("Use the isolated offscreen clipboard");
+        QTemporaryDir dir;
+        const auto path = dir.filePath("frame.png");
+        qputenv("OTG_TEST_SHOT_FILE", path.toUtf8());
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_SHOT_FILE"); qunsetenv("OTG_TEST_SHOT_MODE"); });
+        QImage original(1450, 1024, QImage::Format_RGB32);
+        QRandomGenerator random(123);
+        for (int y = 0; y < original.height(); ++y) {
+            auto *row = reinterpret_cast<QRgb *>(original.scanLine(y));
+            for (int x = 0; x < original.width(); ++x) row[x] = 0xff000000u | random.generate();
+        }
+        QVERIFY(original.save(path, "PNG"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto bytes = file.readAll(); file.close();
+        QVERIFY(bytes.size() > 4 * 1024 * 1024); // Larger than the existing text runner's limit.
+        PhoneScreenshot shot;
+        QSignalSpy done(&shot, &PhoneScreenshot::completed);
+        auto *clipboard = QGuiApplication::clipboard();
+        clipboard->setText("original");
+        QVERIFY(!shot.start(testPeerPath(), ""));
+        QVERIFY(shot.start(testPeerPath(), "USB-ID"));
+        QVERIFY(!shot.start(testPeerPath(), "OTHER-ID"));
+        QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(done.takeFirst().first().toString(), "otg.screenshot.copied");
+        QVERIFY(clipboard->mimeData()->hasImage());
+        QCOMPARE(clipboard->mimeData()->data("image/png"), bytes);
+        QCOMPARE(clipboard->image().size(), original.size());
+        QCOMPARE(clipboard->image().pixel(901, 700), original.pixel(901, 700));
+
+        auto expectFailure = [&](const char *mode, const char *reason, int timeout = 20000) {
+            qputenv("OTG_TEST_SHOT_MODE", mode);
+            QVERIFY(shot.start(testPeerPath(), "[::1]:5555", timeout));
+            QTRY_COMPARE(done.size(), 1);
+            QCOMPARE(done.takeFirst().first().toString(), QString::fromLatin1(reason));
+            QCOMPARE(clipboard->text(), "keep me");
+        };
+        clipboard->setText("keep me");
+        expectFailure("fail", "otg.screenshot.adb_failed"); // Valid PNG, unsuccessful process.
+        expectFailure("unauthorized", "otg.screenshot.unauthorized");
+        expectFailure("hang", "otg.screenshot.timeout", 200);
+        QVERIFY(file.resize(bytes.size() - 12)); // Complete pixel data, missing IEND.
+        expectFailure("", "otg.screenshot.invalid");
+        QVERIFY(file.resize(32 * 1024 * 1024 + 1));
+        expectFailure("", "otg.screenshot.limit");
+    }
+
+    void screenshotDeviceAndTray()
+    {
+        if (QGuiApplication::platformName() != "offscreen") QSKIP("Use the isolated offscreen clipboard");
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("adb", testPeerPath()); settings.setValue("transport", "usb");
+        settings.setValue("manageServer", false);
+        settings.beginWriteArray("devices", 2);
+        settings.setArrayIndex(0); settings.setValue("id", "initial");
+        settings.setValue("profile", QVariantMap{{"phone", "one"}, {"serial", "TEST123"}, {"adbSerial", "USB-ID"}});
+        settings.setArrayIndex(1); settings.setValue("id", "second");
+        settings.setValue("profile", QVariantMap{{"phone", "two"}, {"adbEnabled", true}, {"adbSerial", "[::1]:5555"},
+                                                 {"neighbor", "one"}});
+        settings.endArray();
+        const auto path = dir.filePath("frame.png"), logPath = dir.filePath("commands.jsonl");
+        QImage image(19, 9, QImage::Format_RGB32); image.fill(Qt::green);
+        QVERIFY(image.save(path, "PNG"));
+        qputenv("OTG_TEST_SHOT_FILE", path.toUtf8()); qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_SHOT_FILE"); qunsetenv("OTG_TEST_SHOT_MODE"); qunsetenv("OTG_TEST_UHID_LOG"); });
+        AutoConnectTestWindow window; window.show();
+        auto *button = window.findChild<QPushButton *>("copyScreenshot");
+        auto *menu = window.findChild<QMenu *>("trayScreenshots");
+        auto *selector = window.findChild<QComboBox *>("deviceSelector");
+        auto *target = window.findChild<QLineEdit *>("adbSerial");
+        QTRY_VERIFY(selector->count() > 1);
+        QCOMPARE(menu->actions().size(), 2);
+        QVERIFY(!button->isEnabled());
+        auto *other = menu->actions().last();
+        QCOMPARE(other->data().toString(), "second"); QVERIFY(other->isEnabled());
+        window.close(); // Hidden to tray, no bridge session required.
+        other->trigger();
+        QTRY_VERIFY(window.statusBar()->currentMessage().contains("two") && other->isEnabled());
+        QCOMPARE(QGuiApplication::clipboard()->image().size(), image.size());
+        QCOMPARE(target->text(), "USB-ID"); // The tray action did not switch the selected device.
+
+        window.show();
+        auto *enabled = window.findChild<QCheckBox *>("adbEnabled");
+        enabled->setChecked(true);
+        auto *transport = window.findChild<QComboBox *>("transportSelector");
+        for (const auto *mode : {"uhid", "ble"}) {
+            const auto index = transport->findData(mode);
+            if (index < 0) continue;
+            transport->setCurrentIndex(index); target->clear();
+            QVERIFY(!button->isEnabled()); // Never fall back to the stale AOA serial or BLE peer.
+            target->setText("[::1]:5555"); QVERIFY(button->isEnabled());
+        }
+        transport->setCurrentIndex(transport->findData("usb"));
+        target->setText("USB-ID");
+        auto *connectButton = window.findChild<QPushButton *>("connectButton");
+        QTRY_VERIFY(connectButton->isEnabled()); connectButton->click();
+        auto *manager = window.findChild<ConnectionManager *>();
+        QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
+        QVERIFY(button->isEnabled()); button->click();
+        QTRY_VERIFY(button->isEnabled());
+        QCOMPARE(manager->state("initial"), Session::State::Connected);
+        QFile log(logPath); QVERIFY(log.open(QIODevice::ReadOnly));
+        QStringList targets;
+        for (const auto &line : log.readAll().split('\n')) {
+            const auto args = QJsonDocument::fromJson(line).array();
+            if (args.contains("exec-out")) targets.append(args[1].toString());
+        }
+        QCOMPARE(targets, (QStringList{"[::1]:5555", "USB-ID"}));
+
+        qputenv("OTG_TEST_SHOT_MODE", "hang");
+        QGuiApplication::clipboard()->setText("keep on exit");
+        button->click(); QVERIFY(!button->isEnabled());
+        QSignalSpy quit(&window, &MainWindow::exitReady);
+        window.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_COMPARE(quit.size(), 1);
+        QCOMPARE(QGuiApplication::clipboard()->text(), "keep on exit");
+    }
+
     void fileSharingWindow()
     {
         QTemporaryDir dir;
