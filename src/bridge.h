@@ -61,6 +61,7 @@ struct otg_bridge {
     /* keyboard state */
     uint8_t hid_mods;         /* HID modifier byte (bits 0..7) */
     bool keys[0x74];          /* pressed non-modifier HID usages (0x00..0x73) */
+    uint16_t key_buttons[0x74]; /* Deskflow button used to release by physical identity */
 
     /* mouse state */
     enum otg_mouse_mode mouse_mode;
@@ -146,6 +147,8 @@ void otg_bridge_set_unlock_adb_gated(struct otg_bridge *b, bool gated);
 void otg_bridge_unlock_adb_state(struct otg_bridge *b, bool valid, bool locked);
 void otg_bridge_unlock_tick(struct otg_bridge *b);
 void otg_bridge_key(struct otg_bridge *b, uint32_t keyid, bool down);
+void otg_bridge_key_event(struct otg_bridge *b, uint32_t keyid, uint16_t button,
+                          uint16_t mask, bool layout_known, bool down);
 /* Release a cancelled clipboard input barrier without disturbing pointer state. */
 void otg_bridge_release_keyboard(struct otg_bridge *b);
 void otg_bridge_mouse_button(struct otg_bridge *b, uint8_t button, bool press);

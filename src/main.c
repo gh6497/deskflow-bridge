@@ -357,6 +357,12 @@ static unsigned sensitivity_centi(double value)
 
 /* ---- deskflow callbacks -> bridge --------------------------------------- */
 
+struct keyboard_event {
+    uint32_t id;
+    uint16_t button, mask;
+    bool layout_known, down;
+};
+
 struct app_state {
     struct otg_bridge bridge;
     struct scrcpy_session scrcpy;
@@ -379,8 +385,13 @@ struct app_state {
     bool clipboard_error;
     bool control_polling;
     unsigned held_key_count;
-    struct { uint32_t id; bool down; } held_keys[64];
+    struct keyboard_event held_keys[64];
 };
+
+static void send_keyboard_event(app_state *s, struct keyboard_event key)
+{
+    otg_bridge_key_event(&s->bridge, key.id, key.button, key.mask, key.layout_known, key.down);
+}
 
 static void clipboard_failed(app_state *s)
 {
@@ -436,23 +447,22 @@ static void clipboard_poll(app_state *s)
     }
     if (!otg_clipboard_channel_busy(&s->scrcpy.clipboard)) {
         for (unsigned i = 0; i < s->held_key_count; ++i)
-            otg_bridge_key(&s->bridge, s->held_keys[i].id, s->held_keys[i].down);
+            send_keyboard_event(s, s->held_keys[i]);
         s->held_key_count = 0;
     }
 done:
     s->control_polling = false;
 }
 
-static void clipboard_key(app_state *s, uint32_t keyid, bool down)
+static void clipboard_key(app_state *s, struct keyboard_event key)
 {
     if (!s->clipboard_error && df_client_clipboard_enabled(s->client) && (s->held_key_count ||
         otg_clipboard_channel_busy(&s->scrcpy.clipboard))) {
         if (s->held_key_count == 64) { clipboard_failed(s); return; }
-        s->held_keys[s->held_key_count].id = keyid;
-        s->held_keys[s->held_key_count++].down = down;
+        s->held_keys[s->held_key_count++] = key;
         return;
     }
-    otg_bridge_key(&s->bridge, keyid, down);
+    send_keyboard_event(s, key);
 }
 
 static void cb_connected(void *ud)
@@ -493,18 +503,15 @@ static void cb_leave(void *ud)
     otg_bridge_leave(&s->bridge);
 }
 
-static void cb_key_down(void *ud, uint32_t keyid, uint16_t mask)
+static void cb_key_down(void *ud, uint32_t keyid, uint16_t mask,
+                        uint16_t button, const char *language)
 {
-    (void)mask;
-    app_state *s = ud;
-    clipboard_key(s, keyid, true);
+    clipboard_key(ud, (struct keyboard_event){keyid, button, mask, language != NULL, true});
 }
 
-static void cb_key_up(void *ud, uint32_t keyid, uint16_t mask)
+static void cb_key_up(void *ud, uint32_t keyid, uint16_t button)
 {
-    (void)mask;
-    app_state *s = ud;
-    clipboard_key(s, keyid, false);
+    clipboard_key(ud, (struct keyboard_event){.id = keyid, .button = button});
 }
 
 static void cb_key_repeat(void *ud, uint32_t keyid, uint16_t mask, int32_t count)

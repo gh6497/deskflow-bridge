@@ -23,8 +23,11 @@ typedef struct df_client_callbacks {
     void (*on_connected)(void *ud);
     void (*on_enter)(void *ud, int16_t x, int16_t y, uint32_t seq, uint16_t mask);
     void (*on_leave)(void *ud);
-    void (*on_key_down)(void *ud, uint32_t keyid, uint16_t mask);
-    void (*on_key_up)(void *ud, uint32_t keyid, uint16_t mask);
+    /* language is a two-letter code, or NULL for legacy/unspecified layout.
+     * It is only valid during the callback. */
+    void (*on_key_down)(void *ud, uint32_t keyid, uint16_t mask,
+                        uint16_t button, const char *language);
+    void (*on_key_up)(void *ud, uint32_t keyid, uint16_t button);
     void (*on_key_repeat)(void *ud, uint32_t keyid, uint16_t mask, int32_t count);
     void (*on_mouse_down)(void *ud, uint8_t button);
     void (*on_mouse_up)(void *ud, uint8_t button);

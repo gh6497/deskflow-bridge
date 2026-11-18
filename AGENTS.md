@@ -102,8 +102,9 @@ deskflow 的 `PacketStreamFilter` 给**每条消息**都加一个 4 字节大端
 
 ### 3. 未知消息必须忽略，不能断连
 
-server 会发 `LSYN`（语言同步）、`SECN`（安全输入通知）、`DFTR`、`DDRG` 等，
+server 会发 `SECN`（安全输入通知）、`DFTR`、`DDRG` 等，
 这些对本程序无用，**忽略并回 CNOP 即可**。`handle_message` 的 default 分支已按此处理。
+协议 1.8 的 `LSYN` 可以在握手时到达；兼容连续语言码和逗号分隔两种格式，记录可用语言但不猜当前布局，坏列表不影响连接。
 只有 `EICV`/`EBSY`/`EUNK`/`EBAD` 才是真错误，才 `return -1` 断连。
 
 ### 4. AOA HID 控制请求
@@ -124,6 +125,7 @@ AOAv2 HID（无 adb、无 accessory-mode 握手，直接对已打开设备发 ve
 - 非修饰键（0x00–0x65）进 `keys[0x66]` 数组，报告格式 `[mod][reserved=0][6 个 key]`。
 - 修饰键状态 `hid_mods` 从 `CINN` 的 mask 初始化，之后靠显式的修饰键 key 事件更新。
 - `keymap.c` 按 **US 布局**把 deskflow KeyID（ASCII 或 0xEFxx）映射到 HID usage。
+- `DKDL` 带有效语言码时，按 KeyID 修正常见 ASCII 符号/数字所需的 Shift/AltGr，不改真实修饰键状态或 Ctrl/Alt/GUI 快捷键。`DKUP` 优先按物理 KeyButton 释放，避免修饰键或布局变化后按键卡住。
 - key repeat（`DKRP`）被忽略（HID 键盘会自动重复）。
 
 ### 6. 鼠标模型
@@ -253,7 +255,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   客户端指纹供 Deskflow 信任，绝不能覆盖服务端指纹或指纹数据库。证书生成只在空闲时可用，
   覆盖已有文件须确认，写入使用私有权限与原子替换。Windows `/MT` 桥接配合 `/MD` Qt 时，
   GUI 单独链接 `openssl:x64-windows-static-md`，不要把 `/MT` libcrypto 直接链接到 Qt GUI。
-- 键盘 **US 布局**（其它布局符号键可能错位）。
+- Android 物理键盘使用 **US 布局**；桥接不自动切换 Android 布局，不转换重音字母或死键。
 - 支持键盘 + 鼠标；可选 `BUILD_CLIPBOARD` 通过 ADB/scrcpy 共享纯文本，不支持游戏手柄、文件拖放、视频。
 - Linux 需要 root 或 udev 规则才能访问 USB；macOS 需允许配件连接，Deskflow 需辅助功能权限。
 

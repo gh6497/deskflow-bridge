@@ -5,6 +5,7 @@
 #include "../src/main.c"
 #undef main
 #include "../src/deskflow_client.c"
+#include "keymap.h"
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %d: %s\n", __LINE__, #x); exit(1); } } while (0)
 static unsigned keyboard_count;
@@ -37,6 +38,11 @@ static void sent(int fd, size_t text_size)
     CHECK(io_read_full(fd, data, 14 + text_size) == 1);
     CHECK(data[0] == 9 && data[9] == 0);
 }
+
+static void legacy_key_down(app_state *s, uint32_t keyid)
+{
+    cb_key_down(s, keyid, 0, 0, NULL);
+}
 int main(void)
 {
     app_state s = {0};
@@ -48,10 +54,10 @@ int main(void)
     int fds[2]; CHECK(!socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
     CHECK(!otg_clipboard_channel_open(&s.scrcpy.clipboard, fds[0]));
     cb_enter(&s, 100, 200, 42, 0);
-    cb_key_down(&s, 0xefe3, 0); /* Ctrl already held as the desktop clip arrives. */
+    legacy_key_down(&s, 0xefe3); /* Ctrl already held as the desktop clip arrives. */
     cb_clipboard(&s, "hello", 5);
     unsigned before = keyboard_count;
-    cb_key_down(&s, 'v', 0); cb_key_up(&s, 'v', 0); cb_key_up(&s, 0xefe3, 0);
+    legacy_key_down(&s, 'v'); cb_key_up(&s, 'v', 0); cb_key_up(&s, 0xefe3, 0);
     CHECK(s.held_key_count == 3 && keyboard_count == before);
     clipboard_poll(&s); sent(fds[1], 5);
     CHECK(keyboard_count == before); /* Sending SET is not enough: must await ACK. */
@@ -62,7 +68,7 @@ int main(void)
     CHECK(keyboards[before + 2][0] == 0);
 
     /* Leave while SET is pending: discard queued keys, never paste next entry. */
-    cb_clipboard(&s, "next", 4); cb_key_down(&s, 'v', 0);
+    cb_clipboard(&s, "next", 4); legacy_key_down(&s, 'v');
     cb_leave(&s); sent(fds[1], 4);
     CHECK(!s.held_key_count && !s.bridge.active);
     before = keyboard_count;
@@ -71,17 +77,17 @@ int main(void)
     cb_enter(&s, 50, 60, 43, 0);
 
     /* Server disabling sharing cancels the key barrier and preserves HID. */
-    cb_key_down(&s, 0xefe3, 0);
-    cb_clipboard(&s, "disabled", 8); cb_key_down(&s, 'v', 0);
+    legacy_key_down(&s, 0xefe3);
+    cb_clipboard(&s, "disabled", 8); legacy_key_down(&s, 'v');
     df_client_enable_clipboard(&c, false);
     CHECK(!s.held_key_count && !s.bridge.hid_mods && !s.scrcpy.clipboard.queued);
-    cb_key_down(&s, 'a', 0); cb_key_up(&s, 'a', 0);
+    legacy_key_down(&s, 'a'); cb_key_up(&s, 'a', 0);
     df_client_enable_clipboard(&c, true);
 
     /* ACK timeout releases held modifiers, without changing pointer/drag state. */
     cb_mouse_down(&s, 1);
-    cb_key_down(&s, 0xefe3, 0);
-    cb_clipboard(&s, "timeout", 7); cb_key_down(&s, 'v', 0);
+    legacy_key_down(&s, 0xefe3);
+    cb_clipboard(&s, "timeout", 7); legacy_key_down(&s, 'v');
     clipboard_poll(&s); sent(fds[1], 7);
     s.scrcpy.clipboard.deadline_ms = 0;
     clipboard_poll(&s);
@@ -89,16 +95,16 @@ int main(void)
     CHECK(s.bridge.active && s.bridge.mouse_buttons == 1);
     CHECK(!df_client_clipboard_enabled(&c));
     before = keyboard_count;
-    cb_key_down(&s, 'b', 0); cb_key_up(&s, 'b', 0);
+    legacy_key_down(&s, 'b'); cb_key_up(&s, 'b', 0);
     CHECK(keyboard_count == before + 2);
     s.clipboard_error = false;
     CHECK(!otg_clipboard_channel_open(&s.scrcpy.clipboard, fds[0]));
     df_client_enable_clipboard(&c, true);
-    cb_key_down(&s, 0xefe3, 0);
+    legacy_key_down(&s, 0xefe3);
     cb_clipboard(&s, "overflow", 8);
-    for (unsigned i = 0; i < 64; ++i) cb_key_down(&s, 'a', 0);
+    for (unsigned i = 0; i < 64; ++i) legacy_key_down(&s, 'a');
     CHECK(s.held_key_count == 64);
-    cb_key_down(&s, 'a', 0);
+    legacy_key_down(&s, 'a');
     CHECK(s.clipboard_error && !s.held_key_count && !s.bridge.hid_mods);
     CHECK(s.bridge.active && s.bridge.mouse_buttons == 1);
     /* A live resize retains clipboard ACK/key barriers and the same sockets.
@@ -107,7 +113,7 @@ int main(void)
     CHECK(!otg_clipboard_channel_open(&s.scrcpy.clipboard, fds[0]));
     df_client_enable_clipboard(&c, true);
     cb_clipboard(&s, "rotation", 8);
-    cb_key_down(&s, 'v', 0);
+    cb_key_down(&s, '@', 0, 42, "en");
     CHECK(s.held_key_count == 1);
     int df[2]; CHECK(!socketpair(AF_UNIX, SOCK_STREAM, 0, df));
     CHECK(!socket_suppress_sigpipe(df[0]));
@@ -131,7 +137,10 @@ int main(void)
     clipboard_poll(&s); sent(fds[1], 8);
     before = keyboard_count;
     ack(fds[1], &s.scrcpy.clipboard); clipboard_poll(&s);
-    CHECK(!s.held_key_count && keyboard_count == before + 1 && s.scrcpy.started);
+    CHECK(!s.held_key_count && keyboard_count == before + 3 && s.scrcpy.started);
+    CHECK(keyboards[before + 1][0] == HID_MOD_LSHIFT && keyboards[before + 1][2] == 0x1f);
+    cb_key_up(&s, 'q', 42);
+    CHECK(keyboards[before + 3][0] == 0 && keyboards[before + 3][2] == 0);
     close(df[1]);
     s.display_pending = true;
     s.display_size = (struct otg_display_size){1920, 1080, 1920, 1080};

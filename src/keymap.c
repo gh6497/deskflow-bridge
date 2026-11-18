@@ -5,6 +5,7 @@
  */
 
 #include "keymap.h"
+#include <string.h>
 
 /*
  * deskflow KeyID constants, mirroring deskflow/src/lib/deskflow/KeyTypes.h.
@@ -229,6 +230,14 @@ int keyid_to_hid(uint32_t keyid)
     }
 
     return -1;
+}
+
+bool keyid_us_symbol_shift(uint32_t keyid, bool *shift)
+{
+    if (keyid < '!' || keyid > '~' || (keyid >= 'A' && keyid <= 'Z') ||
+        (keyid >= 'a' && keyid <= 'z')) return false;
+    *shift = strchr("!@#$%^&*()_+{}|:\"<>?~", (int)keyid) != NULL;
+    return true;
 }
 
 uint8_t modmask_to_hid(uint16_t mask)

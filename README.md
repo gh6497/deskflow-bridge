@@ -666,7 +666,7 @@ In the GUI's TLS section, click **Generate client certificate** to create a self
 
 ## Current limitations
 
-- Keyboard mapping uses the **US layout**; some symbol keys may be wrong with other layouts.
+- Set the Android physical keyboard to **English (US)**. With Deskflow protocol 1.8 and per-key language information, the bridge adjusts Shift/AltGr for common ASCII symbols and digits from other host layouts. It does not switch Android layouts or support layout-specific accented letters and dead keys.
 - Deskflow clipboard sharing supports text, not images or files. The GUI can separately copy a phone screenshot to the local clipboard. Explicit file transfer is available through the [companion app](docs/FILE_SHARING.md); dragging files across the Deskflow virtual screen is not supported.
 - Only keyboard and mouse are supported; gamepads (AOA gamepad) are not implemented.
 - The default absolute pointer depends on Android HID digitizer support; compatibility with specific devices requires real-device validation.
