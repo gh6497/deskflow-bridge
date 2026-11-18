@@ -30,6 +30,26 @@
             android:layout_height="wrap_content"
             android:text="@string/connection_help" />
 
+        <Switch
+            android:id="@+id/connection_notifications_enabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/connection_notifications_enabled" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connection_notification_help" />
+
+        <Button
+            android:id="@+id/connection_notification_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connection_notification_settings"
+            android:visibility="gone" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

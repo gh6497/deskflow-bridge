@@ -15,6 +15,8 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 LAYOUTS = {
     "activity_main": {
         "connection_status": "TextView",
+        "connection_notifications_enabled": "Switch",
+        "connection_notification_settings": "Button",
         "notification_status": "TextView",
         "wireless_adb_addresses": "TextView",
         "wireless_adb_settings": "Button",

@@ -20,6 +20,12 @@
     <string name="connection_disconnecting">Deskflow：正在断开</string>
     <string name="connection_disconnected">Deskflow：已断开</string>
     <string name="connection_help">通过已授权的 ADB 接收桌面 GUI 的状态。“已连接”表示 Deskflow 握手已完成，不是仅插入 USB。超过 15 秒未确认时显示状态未知。安装后请先打开本应用一次；CLI 会话及无 ADB 连接无法同步。通知使用权用于媒体暂停及可选的自动播放。</string>
+    <string name="connection_notifications_enabled">Deskflow 连接或断开时通知</string>
+    <string name="connection_notification_help">Deskflow 连接或断开时发送系统通知。桌面端已上报的 USB 会话，拔线后即使 ADB 离线，手机也能检测断开。无需开启媒体控制用的「通知使用权」。</string>
+    <string name="connection_notification_settings">打开系统通知设置</string>
+    <string name="connection_notification_channel">Deskflow 连接提醒</string>
+    <string name="connection_notification_text">现在可以使用电脑的键盘和鼠标控制这台手机。</string>
+    <string name="disconnection_notification_text">电脑已结束通过 Deskflow 对这台手机的控制。</string>
     <string name="autoplay_enabled">连接后自动恢复所选播放器</string>
     <string name="autoplay_help">默认关闭。需要新版桌面 GUI、已授权 ADB 和实际运行的通知监听服务。先打开播放器播放一次，再在下方选择。每次真实 Deskflow 连接仅对支持播放的已暂停会话尝试一次；启用音频转发时等待电脑音频输出就绪。不启动播放器、不切换其他播放器，心跳或服务重启不补播，连接后手动暂停不会再次恢复。发送播放请求不代表播放器已确认播放。</string>
     <string name="autoplay_select_player">从活动媒体会话选择播放器</string>

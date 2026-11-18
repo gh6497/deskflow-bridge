@@ -48,7 +48,7 @@ int main(int argc, char **argv)
         output("connected to 192.0.2.10:39833\n");
         return 0;
     }
-    if (args.contains("start-server") || args.contains("get-state") || args.contains("install") ||
+    if (args.contains("start-server") || args.contains("get-state") || args.contains("get-devpath") || args.contains("install") ||
         args.contains("com.github.gh6497.deskflowotg") || args.contains("enabled_notification_listeners") ||
         args.contains("com.github.gh6497.deskflowotg/.MainActivity") ||
         args.contains("com.github.gh6497.deskflowotg/.ConnectionStatusReceiver")) {
@@ -65,6 +65,7 @@ int main(int argc, char **argv)
         const char *text = "";
         if (args.contains("start-server")) text = "";
         else if (args.contains("get-state")) text = mode == "offline" ? "unauthorized\n" : "device\n";
+        else if (args.contains("get-devpath")) text = mode == "wired" ? "usb:5-1\n" : "unknown\n";
         else if (args.contains("install")) text = mode == "install-failure" ?
             "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]\n" : "Success\n";
         else if (args.contains("pm")) text = mode == "missing" ? "" : "package:/data/app/companion/base.apk\n";

@@ -5,8 +5,10 @@
  */
 package com.github.gh6497.deskflowotg;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -21,11 +23,13 @@ import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Switch;
 import android.widget.Toast;
@@ -48,10 +52,12 @@ import java.util.Set;
  * player resume on a fresh Deskflow connection event.
  */
 public final class MainActivity extends Activity {
+    private static final int REQUEST_CONNECTION_NOTIFICATIONS = 1;
     private TextView status;
     private TextView connectionStatus;
     private TextView autoplayTarget;
     private TextView wirelessAdbAddresses;
+    private View connectionNotificationSettings;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshConnection = new Runnable() {
         @Override
@@ -75,6 +81,24 @@ public final class MainActivity extends Activity {
         connectionStatus = findViewById(R.id.connection_status);
         autoplayTarget = findViewById(R.id.autoplay_target);
         wirelessAdbAddresses = findViewById(R.id.wireless_adb_addresses);
+
+        Switch connectionNotifications = findViewById(R.id.connection_notifications_enabled);
+        connectionNotifications.setChecked(ConnectionNotifications.enabled(this));
+        connectionNotificationSettings = findViewById(R.id.connection_notification_settings);
+        connectionNotificationSettings.setOnClickListener(view -> openConnectionNotificationSettings());
+        connectionNotificationSettings.setVisibility(connectionNotifications.isChecked() ? View.VISIBLE : View.GONE);
+        connectionNotifications.setOnCheckedChangeListener((button, checked) -> {
+            ConnectionNotifications.setEnabled(this, checked);
+            connectionNotificationSettings.setVisibility(checked ? View.VISIBLE : View.GONE);
+            if (checked) {
+                ConnectionNotifications.createChannel(this);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                            REQUEST_CONNECTION_NOTIFICATIONS);
+                }
+            }
+        });
 
         findViewById(R.id.wireless_adb_settings).setOnClickListener(view -> openWirelessAdbSettings());
         findViewById(R.id.wireless_adb_wifi_settings).setOnClickListener(view ->
@@ -111,6 +135,17 @@ public final class MainActivity extends Activity {
     protected void onPause() {
         handler.removeCallbacks(refreshConnection);
         super.onPause();
+    }
+
+    private void openConnectionNotificationSettings() {
+        ConnectionNotifications.createChannel(this);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+        if (manager != null && manager.areNotificationsEnabled()) {
+            intent.setAction(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS);
+            intent.putExtra(Settings.EXTRA_CHANNEL_ID, ConnectionNotifications.CHANNEL_ID);
+        }
+        startActivity(intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
     }
 
     private String playerLabel(String target) {

@@ -6,7 +6,7 @@ final class AutoplayPolicy {
     static boolean shouldConsume(String id, String state, boolean ready,
                                  boolean event, boolean consumed) {
         return event && ready && "connected".equals(state) && !consumed
-                && id != null && id.matches("[0-9a-f]{32}");
+                && ConnectionStatus.validId(id);
     }
 
     interface Actions<T> {

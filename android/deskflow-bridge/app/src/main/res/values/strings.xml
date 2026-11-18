@@ -21,6 +21,12 @@
     <string name="connection_disconnecting">Deskflow: Disconnecting</string>
     <string name="connection_disconnected">Deskflow: Disconnected</string>
     <string name="connection_help">Reported by the desktop GUI via authorized ADB. Connected means the Deskflow handshake completed, not merely that USB is plugged in. Reports expire after 15 seconds without confirmation. Open this app once after installing; CLI sessions and connections without ADB cannot report status. Notification access is needed for media pause and optional auto-play.</string>
+    <string name="connection_notifications_enabled">Notify when Deskflow connects or disconnects</string>
+    <string name="connection_notification_help">Get system notifications when Deskflow connects or disconnects. For a reported USB session, the phone can detect unplugging even after ADB goes offline. Media notification access is not required.</string>
+    <string name="connection_notification_settings">Open system notification settings</string>
+    <string name="connection_notification_channel">Deskflow connection alerts</string>
+    <string name="connection_notification_text">You can now control this phone with your computer keyboard and mouse.</string>
+    <string name="disconnection_notification_text">Your computer is no longer controlling this phone through Deskflow.</string>
     <string name="autoplay_enabled">Resume selected player after connecting</string>
     <string name="autoplay_help">Off by default. Requires an updated desktop GUI, authorized ADB and a running notification listener. Start your player once, then select it below. Each real Deskflow connection attempts play only once for a paused session that supports play; when audio forwarding is enabled, wait for the computer audio output to be ready. No player is launched, no other player is selected, and heartbeats or service restarts never retry. Manual pauses are respected. A play request does not guarantee playback.</string>
     <string name="autoplay_select_player">Select player from active media sessions</string>
