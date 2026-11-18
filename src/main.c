@@ -301,7 +301,7 @@ static void usage(const char *prog)
                "      --side-button-2-action MODE swipe-down (default), swipe-up or normal\n"
                "      --side-swipe-distance PERCENT 1..100 (default 17; screen-height percentage)\n"
               "      OTG_UNLOCK_PIN       GUI/experimental numeric PIN sent once on first enter\n"
-             "      --audio             Forward Android output audio through ADB (Linux/Windows)\n"
+             "      --audio             Forward Android output audio through ADB (Linux/macOS/Windows)\n"
               "      --clipboard         Share Deskflow text clipboard through ADB/scrcpy\n"
               "      --tls               Use Deskflow TLS for the server connection\n"
               "      --tls-cert FILE     PEM client certificate and private key (optional)\n"

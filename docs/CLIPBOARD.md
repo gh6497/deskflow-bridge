@@ -35,8 +35,8 @@ cmake -S . -B build-clipboard -DBUILD_GUI=ON -DBUILD_CLIPBOARD=ON
 cmake --build build-clipboard --parallel
 ```
 
-`BUILD_CLIPBOARD` 与 `BUILD_AUDIO` 独立。只开剪贴板不要求 ALSA/WASAPI 或音频播放设备。
-Linux/Windows 可以叠加 `-DBUILD_AUDIO=ON`；macOS 只提供 POSIX 剪贴板会话，不提供音频。
+`BUILD_CLIPBOARD` 与 `BUILD_AUDIO` 独立。只开剪贴板不要求 ALSA/AudioQueue/WASAPI 或音频播放设备。
+Linux/macOS/Windows 均可以叠加 `-DBUILD_AUDIO=ON`；macOS 复用 POSIX 会话并使用原生 AudioQueue 播放。
 跨平台构建列入 CI，但本地验证不等于 Windows/macOS 或 Android 真机验收。
 
 GUI 在当前设备页的「ADB 增强功能」中启用该设备的 ADB，然后勾选「共享文本剪贴板」；
