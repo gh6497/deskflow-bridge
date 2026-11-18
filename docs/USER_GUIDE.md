@@ -98,7 +98,7 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 - **Device settings**: select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach dimensions, mouse buttons and the companion app.
 - **Screen layout**: choose which side of the computer the phone occupies and therefore which edge you cross to reach it.
 - **Shared server**: select Deskflow and choose automatic startup or an existing server.
-- **Bottom-right buttons**: Connect and Disconnect apply to the selected device; Files & sharing opens the transfer window.
+- **Bottom-right buttons**: Connect, Disconnect and Copy phone screenshot apply to the selected device. Files & sharing opens the transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
 - **Language at the top right**: switch between English and Chinese at any time. Appearance follows the system theme.
 
@@ -225,6 +225,12 @@ Disconnect the device you want to change, update **Device settings → ADB enhan
 Enable **Share text clipboard**, connect, copy text on the computer, move to the phone and paste into a text field. Copying on the phone can synchronize text back to the computer. No companion app is needed.
 
 This shares text; use **Files & sharing** below for pictures and files. Copying on a phone in the background may also update the shared clipboard.
+
+### Copy a phone screenshot
+
+Select a phone on the left and click **Copy phone screenshot**. With the window hidden, choose **Copy phone screenshot → device name** in the tray. When the copy completes, press **Ctrl+V** (macOS: **⌘V**) in an app that accepts images. The screenshot goes to the clipboard of the computer running the GUI, even if the Deskflow server runs elsewhere.
+
+The phone must already be online in ADB and have authorized the computer. For AOA/BLE, enable **ADB enhancements**; BLE requires that phone’s explicit wireless ADB address. No companion app, text sharing or active Deskflow session is needed. An offline phone, failed capture or timeout leaves the clipboard unchanged. Android may blank protected content.
 
 ### Forward phone audio
 

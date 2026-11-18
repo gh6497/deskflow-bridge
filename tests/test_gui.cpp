@@ -1061,7 +1061,7 @@ private slots:
         // Include indirect ID references in property bindings, states and arrays.
         QSet<QString> references;
         const QRegularExpression pattern("\"(otg\\.[a-z0-9_.]+)\"");
-        for (const char *name : {"main_window.cpp", "session.cpp", "process_utils.cpp", "deskflow_server.cpp", "connection_manager.cpp", "companion_app.cpp", "companion_transfer.cpp", "wireless_adb_dialog.cpp", "transfer_dialog.cpp"}) {
+        for (const char *name : {"main_window.cpp", "session.cpp", "process_utils.cpp", "deskflow_server.cpp", "connection_manager.cpp", "companion_app.cpp", "companion_transfer.cpp", "wireless_adb_dialog.cpp", "transfer_dialog.cpp", "phone_screenshot.cpp"}) {
             QFile source(QString(":/i18n-test/gui/") + name + ".txt");
             QVERIFY(source.open(QIODevice::ReadOnly));
             auto matches = pattern.globalMatch(QString::fromUtf8(source.readAll()));

@@ -12,6 +12,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#ifdef Q_OS_WIN
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 static void output(const char *text)
 {
@@ -28,6 +32,24 @@ int main(int argc, char **argv)
         QFile log(uhidLog);
         if (log.open(QIODevice::WriteOnly | QIODevice::Append))
             log.write(QJsonDocument(QJsonArray::fromStringList(args.mid(1))).toJson(QJsonDocument::Compact) + '\n');
+    }
+    if (args.contains("exec-out")) {
+        if (args.size() != 6 || args[1] != "-s" || args[2].isEmpty() ||
+            args.mid(3) != QStringList{"exec-out", "screencap", "-p"}) return 2;
+        const auto mode = qgetenv("OTG_TEST_SHOT_MODE");
+        if (mode == "hang") return app.exec();
+        if (mode == "unauthorized") { std::fputs("adb: device unauthorized\n", stderr); return 1; }
+#ifdef Q_OS_WIN
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
+        std::fputs("fake adb diagnostic on stderr\n", stderr);
+        QFile png(qEnvironmentVariable("OTG_TEST_SHOT_FILE"));
+        if (!png.open(QIODevice::ReadOnly)) return 2;
+        while (!png.atEnd()) {
+            const auto bytes = png.read(65536);
+            if (bytes.isEmpty() || std::fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout) != size_t(bytes.size())) return 2;
+        }
+        return mode == "fail" ? 1 : 0;
     }
     if (args.contains("mdns") || args.contains("pair") || args.contains("connect")) {
         const auto mode = qEnvironmentVariable("OTG_TEST_WIRELESS_ADB");
