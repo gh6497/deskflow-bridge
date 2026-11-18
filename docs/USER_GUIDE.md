@@ -343,6 +343,8 @@ Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its pers
 | Sent files do not appear in the phone gallery | Refresh Files & sharing in the companion and Save as, or enable the relevant automatic saving; files first use private companion storage |
 | Control continues after closing the window | Closing hides to the tray when available; use Disconnect or Quit from its menu |
 
+The app's own runtime messages use the selected interface language. External output under labels such as `[ADB output]` and `[Deskflow output]` is left untranslated for troubleshooting. Switching languages affects new entries, not the ones already displayed.
+
 **To report a problem**, check the version under **About**, note the computer OS, phone model/Android version, connection type and steps, and include relevant runtime logs or screenshots in [project Issues](https://github.com/gh6497/deskflow-bridge/issues). Remove device identifiers or paths you do not want public, and do not attach a PIN or private-key file.
 
 <a id="more"></a>

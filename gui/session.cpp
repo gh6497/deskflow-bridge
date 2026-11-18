@@ -34,7 +34,7 @@ Session::Session(QObject *parent) : QObject(parent)
     });
     connect(&m_bleProvider, &QProcess::readyReadStandardOutput, this, &Session::readBleEvents);
     connect(&m_bleProvider, &QProcess::readyReadStandardError, this, [this] {
-        emit log(qtTrId("otg.log.bridge_prefix") + QString::fromUtf8(m_bleProvider.readAllStandardError()).trimmed());
+        emit log(withProcessOutput({}, qtTrId("otg.log.bridge_source"), QString::fromUtf8(m_bleProvider.readAllStandardError())));
     });
     connect(&m_bleProvider, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart) {
@@ -83,7 +83,7 @@ Session::Session(QObject *parent) : QObject(parent)
     });
     connect(&m_bridge, &QProcess::readyReadStandardOutput, this, &Session::readBridgeEvents);
     connect(&m_bridge, &QProcess::readyReadStandardError, this, [this] {
-        emit log(qtTrId("otg.log.bridge_prefix") + QString::fromUtf8(m_bridge.readAllStandardError()).trimmed());
+        emit log(withProcessOutput({}, qtTrId("otg.log.bridge_source"), QString::fromUtf8(m_bridge.readAllStandardError())));
     });
     connect(&m_bridge, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart) {
@@ -400,12 +400,12 @@ void Session::startConnection()
     if (needsAdb && !m_adbServerStarted) {
         m_adbServerStarted = true;
         const auto generation = m_generation;
-        emit log(QStringLiteral("[ADB] start-server: %1").arg(m_options.adb));
+        emit log(qtTrId("otg.log.adb.server_starting").arg(m_options.adb));
         runCommand(this, m_options.adb, {"start-server"},
                    [this, generation](bool ok, const QString &output) {
             if (generation != m_generation || m_state != State::Starting) return;
-            emit log(QStringLiteral("[ADB] start-server %1: %2")
-                         .arg(ok ? "ok" : "failed", output.trimmed()));
+            emit log(withProcessOutput(qtTrId(ok ? "otg.log.adb.server_ready" : "otg.log.adb.server_start_failed"),
+                                       "ADB", output));
             if (!ok) {
                 fail("otg.error.bridge_start", output.trimmed());
                 return;
@@ -418,40 +418,42 @@ void Session::startConnection()
     if (needsAdb && !m_adbTargetPrepared) {
         m_adbTargetPrepared = true;
         const auto generation = m_generation;
-        emit log(QStringLiteral("[ADB] get-state: %1").arg(target));
+        emit log(qtTrId("otg.log.adb.checking_target").arg(target));
         runCommand(this, m_options.adb, {"-s", target, "get-state"},
                    [this, generation, target](bool ok, const QString &output) {
             if (generation != m_generation || m_state != State::Starting) return;
-            emit log(QStringLiteral("[ADB] get-state %1: %2 (%3)")
-                         .arg(target, ok ? "ok" : "failed", output.trimmed()));
-            if (ok && adbDeviceState(output)) {
+            const bool ready = ok && adbDeviceState(output);
+            emit log(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
+                                       "ADB", output));
+            if (ready) {
                 startConnection();
                 return;
             }
             if (!isWirelessAdbTarget(target)) {
                 fail("otg.error.bridge_start",
-                     QStringLiteral("ADB target %1 is not ready").arg(target));
+                     qtTrId("otg.log.adb.target_unavailable").arg(target));
                 return;
             }
-            emit log(QStringLiteral("[ADB] wireless target not ready; connecting %1").arg(target));
+            emit log(qtTrId("otg.log.adb.connecting").arg(target));
             runCommand(this, m_options.adb, {"connect", target},
                        [this, generation, target](bool connected, const QString &connectOutput) {
                 if (generation != m_generation || m_state != State::Starting) return;
-                emit log(QStringLiteral("[ADB] connect %1: %2 (%3)")
-                             .arg(target, connected ? "ok" : "failed", connectOutput.trimmed()));
+                emit log(withProcessOutput(qtTrId(connected ? "otg.log.adb.connect_requested" : "otg.log.adb.connect_failed").arg(target),
+                                           "ADB", connectOutput));
                 if (!connected) {
                     fail("otg.error.bridge_start", connectOutput.trimmed());
                     return;
                 }
-                emit log(QStringLiteral("[ADB] get-state after connect: %1").arg(target));
+                emit log(qtTrId("otg.log.adb.checking_target").arg(target));
                 runCommand(this, m_options.adb, {"-s", target, "get-state"},
-                           [this, generation, target](bool ready, const QString &stateOutput) {
+                           [this, generation, target](bool ok, const QString &stateOutput) {
                     if (generation != m_generation || m_state != State::Starting) return;
-                    emit log(QStringLiteral("[ADB] get-state after connect %1: %2 (%3)")
-                                 .arg(target, ready ? "ok" : "failed", stateOutput.trimmed()));
-                    if (!ready || !adbDeviceState(stateOutput)) {
+                    const bool ready = ok && adbDeviceState(stateOutput);
+                    emit log(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
+                                               "ADB", stateOutput));
+                    if (!ready) {
                         fail("otg.error.bridge_start",
-                             QStringLiteral("ADB target %1 is not ready").arg(target));
+                             qtTrId("otg.log.adb.target_unavailable").arg(target));
                         return;
                     }
                     startConnection();

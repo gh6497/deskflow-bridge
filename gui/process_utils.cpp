@@ -72,6 +72,14 @@ void runCommand(QObject *owner, const QString &program, const QStringList &args,
     process->start(program, args);
 }
 
+QString withProcessOutput(const QString &summary, const QString &source, const QString &output)
+{
+    const auto detail = output.trimmed();
+    if (detail.isEmpty()) return summary;
+    const auto entry = qtTrId("otg.log.process_output").arg(source, detail);
+    return summary.isEmpty() ? entry : summary + '\n' + entry;
+}
+
 static QString executable(const QString &path)
 {
 #ifdef Q_OS_WIN
