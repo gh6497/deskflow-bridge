@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "session.h"
+#include "audio_gain.h"
 #include "device_info.h"
 #include "process_utils.h"
 #include "i18n.h"
@@ -193,6 +194,7 @@ static QStringList auxiliarySignature(const ConnectionOptions &options)
      * provider; otherwise a later session silently reuses the old target. */
     return {options.adb, options.adbSerial, options.scrcpyServer, options.scrcpyVersion,
             options.audio ? QStringLiteral("audio") : QStringLiteral("no-audio"),
+            options.audio ? QString::number(options.audioGainDb) : QString(),
             options.clipboard ? QStringLiteral("clipboard") : QStringLiteral("no-clipboard"),
             options.unlockAdb ? QStringLiteral("unlock") : QStringLiteral("no-unlock"),
             options.unlockPin};
@@ -208,6 +210,8 @@ static const char *connectionOptionsError(const ConnectionOptions &options)
         return "otg.error.transport";
     if (options.transport == "usb" && options.serial.isEmpty())
         return "otg.error.usb_serial_required";
+    if (options.audio && (options.audioGainDb < 0 || options.audioGainDb > OTG_AUDIO_GAIN_MAX_DB))
+        return "otg.error.audio_gain_range";
     if (adbRequired(options) && options.adb.isEmpty())
         return "otg.error.adb_program_required";
     if ((uhid && options.adbSerial.trimmed().isEmpty()) ||
@@ -503,7 +507,10 @@ void Session::launchBridge()
                       "--side-button-2-action", m_options.sideButton2Action,
                       "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
     if (adbRequired(m_options)) {
-        if (m_options.audio) args << "--audio";
+        if (m_options.audio) {
+            args << "--audio";
+            if (m_options.audioGainDb) args << "--audio-gain-db" << QString::number(m_options.audioGainDb);
+        }
         if (m_options.clipboard) args << "--clipboard";
         args << "--adb" << m_options.adb;
         if (m_options.transport == "uhid" || m_options.audio || m_options.clipboard) {

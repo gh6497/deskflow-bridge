@@ -927,15 +927,21 @@ private slots:
             AutoConnectTestWindow window;
             auto *feature = window.findChild<QCheckBox *>(objectName);
             auto *list = window.findChild<QListWidget *>("deviceSidebar");
-            QVERIFY(feature && list);
+            auto *gain = window.findChild<QSpinBox *>("audioGainDb");
+            const bool audioProfile = objectName == "audioEnabled";
+            QVERIFY(feature && list && gain);
             QVERIFY(!feature->isChecked());
+            QCOMPARE(gain->value(), 0);
             feature->setChecked(true);
+            if (audioProfile) gain->setValue(6);
             window.findChild<QLineEdit *>("usbSerial")->setText("A");
             window.findChild<QPushButton *>("addDeviceButton")->click();
             QVERIFY(!feature->isChecked());
+            QCOMPARE(gain->value(), 0);
             window.findChild<QLineEdit *>("usbSerial")->setText("B");
             list->setCurrentRow(0);
             QVERIFY(feature->isChecked());
+            if (audioProfile) QCOMPARE(gain->value(), 6);
             list->setCurrentRow(1);
             QVERIFY(!feature->isChecked());
         }
@@ -943,8 +949,11 @@ private slots:
         auto *list = restored.findChild<QListWidget *>("deviceSidebar");
         list->setCurrentRow(0);
         QVERIFY(restored.findChild<QCheckBox *>(objectName)->isChecked());
+        if (objectName == "audioEnabled")
+            QCOMPARE(restored.findChild<QSpinBox *>("audioGainDb")->value(), 6);
         list->setCurrentRow(1);
         QVERIFY(!restored.findChild<QCheckBox *>(objectName)->isChecked());
+        QCOMPARE(restored.findChild<QSpinBox *>("audioGainDb")->value(), 0);
     }
     void audioPlacementAndAvailability()
     {
@@ -957,15 +966,18 @@ private slots:
         window.show();
         auto *adbEnabled = window.findChild<QCheckBox *>("adbEnabled");
         auto *audio = window.findChild<QCheckBox *>("audioEnabled");
+        auto *gain = window.findChild<QSpinBox *>("audioGainDb");
         auto *clipboard = window.findChild<QCheckBox *>("clipboardEnabled");
         auto *autoRotate = window.findChild<QCheckBox *>("autoRotate");
         auto *unlock = window.findChild<QCheckBox *>("unlockEnabled");
         auto *pin = window.findChild<QLineEdit *>("unlockPin");
         auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
         auto *transport = window.findChild<QComboBox *>("transportSelector");
-        QVERIFY(adbEnabled && audio && clipboard && autoRotate && unlock && pin && tabs && transport);
+        QVERIFY(adbEnabled && audio && gain && clipboard && autoRotate && unlock && pin && tabs && transport);
         QVERIFY(!adbEnabled->isChecked());
         QVERIFY(!audio->isEnabled());
+        QVERIFY(gain->isHidden());
+        QCOMPARE(gain->value(), 0);
         adbEnabled->setChecked(true);
         QVERIFY(!pin->isEnabled());
         unlock->setChecked(true);
@@ -977,8 +989,14 @@ private slots:
         QVERIFY(!autoRotate->isEnabled());
 #ifdef OTG_GUI_HAVE_AUDIO
         audio->setChecked(true);
+        QVERIFY(!gain->isHidden() && gain->isEnabled());
+        QCOMPARE(gain->maximum(), 12);
+        QVERIFY(gain->toolTip().contains("手机媒体音量"));
+        gain->setValue(6);
         QVERIFY(autoRotate->isEnabled());
         audio->setChecked(false);
+        QVERIFY(gain->isHidden());
+        QCOMPARE(gain->value(), 6);
         QVERIFY(!autoRotate->isEnabled());
 #endif
 #ifdef OTG_GUI_HAVE_CLIPBOARD
@@ -992,6 +1010,7 @@ private slots:
         QVERIFY(language);
         language->setCurrentIndex(language->findData("en"));
         QCOMPARE(audio->text(), "Forward audio");
+        QVERIFY(gain->toolTip().contains("Boost phone audio"));
         language->setCurrentIndex(language->findData("zh_CN"));
         QCOMPARE(audio->text(), "转发音频");
         QVERIFY(tabs->widget(0)->isAncestorOf(audio));
@@ -1001,6 +1020,9 @@ private slots:
         QVERIFY(!audio->isHidden());
 #else
         QVERIFY(audio->isHidden());
+        audio->setChecked(true);
+        QVERIFY(gain->isHidden());
+        audio->setChecked(false);
 #endif
         const int ble = transport->findData("ble");
         if (ble >= 0) {

@@ -68,6 +68,16 @@ Linux/macOS/Windows 的 AOA 和 UHID，以及 Linux/Windows 的 BLE 键鼠连接
 `--usb-scan` 得到的物理 USB 序列号。USB 连接方式下 ADB target 留空时，音频回退使用
 USB serial；BLE 和 UHID 连接方式必须填写同一台手机的 ADB target。
 
+### 转发音量增益
+
+勾选「转发音频」后，下方出现「转发音量增益」。该值按设备保存，范围为整数 `0–12 dB`，
+默认 `0 dB`，连接期间不可修改，重新连接后应用。偏小时建议先试 `3 dB` 或 `6 dB`。
+Windows BLE 更改增益后，需先停止空闲蓝牙服务再重新连接。
+
+三个平台在送出 S16LE PCM 前共用增益处理：`0 dB` 原样通过；正增益时两个声道一起限制
+采样峰值，并在声音变小后平滑恢复增益，无需增加缓冲。增益只影响电脑播放，不修改手机
+媒体音量或采集方式，无法补偿没有采集到的声音。
+
 仓库已经内置并打包 `third_party/scrcpy/scrcpy-server-v5.0.1`，不需要联网下载。
 `fetch_scrcpy_server.py` 仍然保留，用于以后升级 server；它会从官方 Release 下载、校验 SHA-256，
 并使用 `.cache/scrcpy/` 缓存。升级后需要同步修改 CMake 中的版本和文件名，然后提交新的 server 文件。
@@ -75,9 +85,12 @@ USB serial；BLE 和 UHID 连接方式必须填写同一台手机的 ADB target�
 
 ## CLI
 
+使用 `--audio` 时，可加 `--audio-gain-db 6` 放大电脑的转发声音；参数必须为 `0–12` 的整数，省略时为 `0`。
+
 ```bash
 ./build/deskflow-bridge \
   --audio \
+  --audio-gain-db 6 \
   --adb /usr/bin/adb \
   --adb-serial 192.168.1.20:5555 \
   --scrcpy-server $HOME/.local/share/scrcpy/scrcpy-server \

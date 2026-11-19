@@ -196,6 +196,9 @@
    <message id="otg.error.adb_disabled"><source>ADB-dependent features are disabled for this device.</source><translation>ADB-dependent features are disabled for this device.</translation></message>
   <message id="otg.path.adb_hint"><source>Use bundled ADB by default, or select an external executable</source><translation>Use bundled ADB by default, or select an external executable</translation></message>
    <message id="otg.audio.enabled"><source>Forward audio</source><translation>Forward audio</translation></message>
+   <message id="otg.audio.gain"><source>Forwarded audio gain</source><translation>Forwarded audio gain</translation></message>
+   <message id="otg.audio.gain_tooltip"><source>Boost phone audio on this computer only. 0 dB leaves the sound unchanged. Reconnect after changing the gain.</source><translation>Boost phone audio on this computer only. 0 dB leaves the sound unchanged. Reconnect after changing the gain.</translation></message>
+   <message id="otg.error.audio_gain_range"><source>Forwarded audio gain is out of range.</source><translation>Forwarded audio gain is out of range.</translation></message>
    <message id="otg.clipboard.enabled"><source>Share text clipboard</source><translation>Share text clipboard</translation></message>
    <message id="otg.display.auto_rotate"><source>Follow screen rotation</source><translation>Follow screen rotation</translation></message>
   <message id="otg.display.auto_rotate.tooltip"><source>Requires ADB with audio or clipboard enabled; updates the Deskflow screen size after rotation. Disabled by default.</source><translation>Requires ADB with audio or clipboard enabled; updates the Deskflow screen size after rotation. Disabled by default.</translation></message>

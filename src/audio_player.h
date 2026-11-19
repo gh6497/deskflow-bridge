@@ -11,8 +11,9 @@ struct audio_player;
 
 /* Borrow a connected socket positioned after the scrcpy dummy byte. The owner
  * must keep it open until stop returns. Playback failures remain nonfatal to
- * the shared session. Available only when OTG_HAVE_AUDIO is enabled. */
-struct audio_player *audio_player_start(intptr_t socket_fd);
+ * the shared session. gain_db applies only to PCM sent to the desktop output.
+ * Available only when OTG_HAVE_AUDIO is enabled. */
+struct audio_player *audio_player_start(intptr_t socket_fd, int gain_db);
 
 /* Thread-safe snapshot: valid codec header and platform output opened. This
  * does not wait for PCM (a paused phone may produce no frames). NULL is false. */

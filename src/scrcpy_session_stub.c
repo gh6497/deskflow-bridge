@@ -9,7 +9,8 @@
 
 int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
                           const char *adb_serial, const char *server_path,
-                          const char *server_version, bool audio, bool clipboard, bool uhid,
+                          const char *server_version, bool audio, int audio_gain_db,
+                          bool clipboard, bool uhid,
                           int (*stop_requested)(void))
 {
     (void)session;
@@ -18,6 +19,7 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     (void)server_path;
     (void)server_version;
     (void)audio;
+    (void)audio_gain_db;
     (void)clipboard;
     (void)uhid;
     (void)stop_requested;

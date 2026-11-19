@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "audio_gain.h"
 #include "bridge.h"
 #include "build_version.h"
 #include "deskflow_client.h"
@@ -91,6 +92,7 @@ struct app_options {
     const char *scrcpy_server;
     const char *scrcpy_version;
     int audio;
+    int audio_gain_db;
     int clipboard;
     int auto_rotate;
     const char *unlock_pin;
@@ -302,6 +304,7 @@ static void usage(const char *prog)
                "      --side-swipe-distance PERCENT 1..100 (default 17; screen-height percentage)\n"
               "      OTG_UNLOCK_PIN       GUI/experimental numeric PIN sent once on first enter\n"
              "      --audio             Forward Android output audio through ADB (Linux/macOS/Windows)\n"
+             "      --audio-gain-db DB   Desktop playback gain, 0..%d (default 0; requires --audio)\n"
               "      --clipboard         Share Deskflow text clipboard through ADB/scrcpy\n"
               "      --tls               Use Deskflow TLS for the server connection\n"
               "      --tls-cert FILE     PEM client certificate and private key (optional)\n"
@@ -323,7 +326,7 @@ static void usage(const char *prog)
             "Use the phone's resolution/aspect ratio for natural movement.\n"
             "Relative mode may drift due to Android pointer speed/acceleration.\n",
             prog, DEFAULT_HOST, (unsigned)DEFAULT_PORT, DEFAULT_NAME,
-            DEFAULT_WIDTH, DEFAULT_HEIGHT);
+            DEFAULT_WIDTH, DEFAULT_HEIGHT, OTG_AUDIO_GAIN_MAX_DB);
 }
 
 static int parse_screen_size(const char *arg)
@@ -779,6 +782,7 @@ int main(int argc, char **argv)
         .adb_path = "adb",
     };
     char unlock_pin_file_data[64] = {0};
+    bool audio_gain_set = false;
 
     if (argc == 2 && strcmp(argv[1], "--usb-scan") == 0) {
         return otg_usb_scan();
@@ -902,6 +906,18 @@ int main(int argc, char **argv)
             opts.side_swipe_distance_percent = (unsigned)distance;
         } else if (strcmp(a, "--audio") == 0) {
             opts.audio = 1;
+        } else if (strcmp(a, "--audio-gain-db") == 0) {
+            const char *value = i + 1 < argc ? argv[++i] : "";
+            char *end;
+            errno = 0;
+            const long gain = strtol(value, &end, 10);
+            if (errno || end == value || *end || gain < 0 || gain > OTG_AUDIO_GAIN_MAX_DB) {
+                fprintf(stderr, "ERROR: --audio-gain-db requires an integer from 0 to %d\n",
+                        OTG_AUDIO_GAIN_MAX_DB);
+                return 2;
+            }
+            opts.audio_gain_db = (int)gain;
+            audio_gain_set = true;
         } else if (strcmp(a, "--clipboard") == 0) {
             opts.clipboard = 1;
         } else if (strcmp(a, "--tls") == 0) {
@@ -970,6 +986,10 @@ int main(int argc, char **argv)
         }
         opts.unlock_pin = unlock_pin_file_data;
         opts.unlock_adb_gate = 1;
+    }
+    if (audio_gain_set && !opts.audio) {
+        fprintf(stderr, "ERROR: --audio-gain-db requires --audio\n");
+        return 2;
     }
     const bool uhid = strcmp(opts.transport, "uhid") == 0;
     const int adb_features = uhid || opts.audio || opts.clipboard || opts.unlock_adb_gate;
@@ -1196,8 +1216,8 @@ int main(int argc, char **argv)
 #ifdef OTG_HAVE_UHID
     else if (uhid) {
         if (scrcpy_session_start(&state.scrcpy, opts.adb_path, opts.adb_serial,
-                opts.scrcpy_server, opts.scrcpy_version, opts.audio != 0, opts.clipboard != 0,
-                true, app_stop_requested))
+                opts.scrcpy_server, opts.scrcpy_version, opts.audio != 0, opts.audio_gain_db,
+                opts.clipboard != 0, true, app_stop_requested))
             return g_stop ? 0 : 1;
         otg_uhid_init(&state.uhid_transport, &state.scrcpy.clipboard);
         if (otg_bridge_open_transport(&state.bridge, otg_uhid_ops(), &state.uhid_transport,
@@ -1356,7 +1376,7 @@ int main(int argc, char **argv)
         state.audio_ready_reported = false;
         if (!uhid && (opts.audio || opts.clipboard) && scrcpy_session_start(&state.scrcpy, opts.adb_path,
                 opts.adb_serial ? opts.adb_serial : opts.serial, opts.scrcpy_server, opts.scrcpy_version,
-                opts.audio != 0, opts.clipboard != 0, false, app_stop_requested)) {
+                opts.audio != 0, opts.audio_gain_db, opts.clipboard != 0, false, app_stop_requested)) {
             if (!opts.clipboard) { ret = 1; break; } /* Preserve audio-only startup semantics. */
             clipboard_failed(&state);
         }

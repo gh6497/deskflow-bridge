@@ -2,6 +2,7 @@
  * Protocol reference: scrcpy demuxer/audio raw stream; AudioQueue replaces SDL.
  * SPDX-License-Identifier: Apache-2.0 */
 #define _DARWIN_C_SOURCE
+#include "audio_gain.h"
 #include "audio_player.h"
 
 #include <AudioToolbox/AudioQueue.h>
@@ -17,7 +18,7 @@
 #include <unistd.h>
 
 #define AUDIO_SAMPLE_RATE 48000U
-#define AUDIO_BYTES_PER_FRAME 4U
+#define AUDIO_BYTES_PER_FRAME OTG_AUDIO_PCM_BYTES_PER_FRAME
 #define AUDIO_BUFFER_SIZE (480U * AUDIO_BYTES_PER_FRAME) /* 10 ms */
 #define AUDIO_BUFFER_COUNT 3U
 #define AUDIO_RING_SIZE (4800U * AUDIO_BYTES_PER_FRAME) /* 100 ms */
@@ -30,6 +31,7 @@ struct audio_player {
     int socket_fd;
     pthread_t thread;
     atomic_bool ready;
+    struct audio_gain gain;
     pthread_mutex_t mutex;
     pthread_cond_t space;
     bool stopped;
@@ -215,7 +217,9 @@ static void *audio_thread_main(void *userdata)
             LOG_ERR("invalid scrcpy audio frame size: %u\n", size);
             break;
         }
-        if (read_full(player, payload, size) != 1 || buffer_pcm(player, payload, size)) break;
+        if (read_full(player, payload, size) != 1) break;
+        audio_gain_apply(&player->gain, payload, size);
+        if (buffer_pcm(player, payload, size)) break;
     }
 done:
     pthread_mutex_lock(&player->mutex);
@@ -231,11 +235,12 @@ done:
     return NULL;
 }
 
-struct audio_player *audio_player_start(intptr_t socket_fd)
+struct audio_player *audio_player_start(intptr_t socket_fd, int gain_db)
 {
     struct audio_player *player = calloc(1, sizeof(*player));
     if (!player) return NULL;
     player->socket_fd = (int)socket_fd;
+    audio_gain_init(&player->gain, gain_db);
     atomic_init(&player->ready, false);
     if (pthread_mutex_init(&player->mutex, NULL)) goto fail;
     if (pthread_cond_init(&player->space, NULL)) goto fail_mutex;

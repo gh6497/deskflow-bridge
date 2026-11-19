@@ -147,6 +147,7 @@ private:
     QPushButton *m_tlsRegenerateCertificate;
     QCheckBox *m_tls;
     QCheckBox *m_audio;
+    QSpinBox *m_audioGain;
     QCheckBox *m_clipboard;
     QCheckBox *m_autoRotate;
     QLabel *m_clipboardStatus;

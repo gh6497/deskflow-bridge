@@ -137,14 +137,14 @@ static void frame_header(int fd, unsigned size)
     write_all(fd, header, sizeof(header));
 }
 
-static struct audio_player *start(int sockets[2], int failure, bool raw)
+static struct audio_player *start_with_gain(int sockets[2], int failure, bool raw, int gain_db)
 {
     assert(!output.allocated);
     atomic_store(&output.fail, failure);
     atomic_store(&output.disposed, 0);
     atomic_store(&output.enqueues, 0);
     assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
-    struct audio_player *player = audio_player_start(sockets[0]);
+    struct audio_player *player = audio_player_start(sockets[0], gain_db);
     assert(player && !audio_player_ready(player));
     if (raw) {
         const unsigned char codec[] = {0, 'r', 'a', 'w'};
@@ -154,6 +154,11 @@ static struct audio_player *start(int sockets[2], int failure, bool raw)
         write_all(sockets[1], codec + 1, 3);
     }
     return player;
+}
+
+static struct audio_player *start(int sockets[2], int failure, bool raw)
+{
+    return start_with_gain(sockets, failure, raw, 0);
 }
 
 static void stop(struct audio_player *player, int sockets[2])
@@ -253,6 +258,33 @@ static void test_errors_and_cancellation(void)
     stop(player, sockets);
 }
 
+static void test_pcm_gain(void)
+{
+    int sockets[2];
+    struct audio_player *player = start_with_gain(sockets, FAIL_NONE, true, 6);
+    wait_ready(player, true);
+    const unsigned char pcm[] = {0xe8, 0x03, 0x18, 0xfc}; /* +1000, -1000 */
+    const unsigned char expected[] = {0xcb, 0x07, 0x35, 0xf8}; /* +1995, -1995 */
+    frame_header(sockets[1], sizeof(pcm));
+    write_all(sockets[1], pcm, sizeof(pcm));
+    bool received = false;
+    const double deadline = now() + 1;
+    while (!received && now() < deadline) {
+        pthread_mutex_lock(&output.lock);
+        AudioQueueBufferRef buffer = output.buffers[0];
+        output.callback(output.userdata, (AudioQueueRef)&output, buffer);
+        const unsigned char *data = buffer->mAudioData;
+        if (data[0]) {
+            assert(!memcmp(data, expected, sizeof(expected)));
+            received = true;
+        }
+        pthread_mutex_unlock(&output.lock);
+        delay();
+    }
+    assert(received);
+    stop(player, sockets);
+}
+
 static void test_stalled_output(void)
 {
     int sockets[2];
@@ -308,6 +340,7 @@ int main(void)
     assert(!audio_player_ready(NULL));
     audio_player_stop(NULL);
     test_pcm_and_silence();
+    test_pcm_gain();
     test_errors_and_cancellation();
     test_stalled_output();
     test_callback_stop_race();

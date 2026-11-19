@@ -64,6 +64,7 @@ Linux/macOS/Windows 实验性音频模式沿用 scrcpy 的 Android Server：选�
 转发 Android 音频到主机（Linux 使用 ALSA，macOS 使用 AudioQueue，Windows 使用 WASAPI）。
 macOS 通过系统自带的 AudioToolbox 框架向系统默认输出播放，无需额外音频库或麦克风权限。构建和使用见[音频转发](docs/AUDIO.md)；不启用
 `--audio` 时原有无需 USB 调试的 HID 模式不变。
+如果转发声音偏小，可在 GUI 中按设备设置 **「转发音量增益」**，或在使用 `--audio` 的命令中加上 `--audio-gain-db 6`。默认 0 dB，只影响电脑端播放。
 
 可选[文本剪贴板共享](docs/CLIPBOARD.md)遵循 Deskflow 的所有权和切屏同步规则，
 通过 ADB/scrcpy 控制通道读写手机剪贴板，不依赖 GUI 所在电脑的系统剪贴板。

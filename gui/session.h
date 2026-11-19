@@ -50,6 +50,7 @@ struct ConnectionOptions {
     bool manageServer = true;
     bool tls = false;
     bool audio = false;
+    int audioGainDb = 0;
     bool clipboard = false;
     bool autoRotate = false;
     // Non-GUI callers historically enabled ADB implicitly by selecting an

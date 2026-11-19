@@ -23,11 +23,13 @@ int main(void)
     assert(!audio_player_ready(NULL));
     int sockets[2];
     assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
-    struct audio_player *player = audio_player_start(sockets[0]);
+    struct audio_player *player = audio_player_start(sockets[0], 6);
     assert(player && !audio_player_ready(player));
     const unsigned char raw[] = {0, 'r', 'a', 'w'};
     assert(write(sockets[1], raw, sizeof(raw)) == sizeof(raw));
     wait_ready(player, true); // No PCM at all: paused player must not deadlock.
+    const unsigned char frame[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0xe8, 3, 0x18, 0xfc};
+    assert(write(sockets[1], frame, sizeof(frame)) == sizeof(frame));
     close(sockets[1]);
     wait_ready(player, false);
     audio_player_stop(player);
@@ -35,7 +37,7 @@ int main(void)
     // Capture disabled or wrong codec must never report ready.
     for (unsigned codec = 0; codec < 2; ++codec) {
         assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
-        player = audio_player_start(sockets[0]);
+        player = audio_player_start(sockets[0], 0);
         assert(player);
         const unsigned char invalid[] = {0, 0, 0, (unsigned char)codec};
         assert(write(sockets[1], invalid, sizeof(invalid)) == sizeof(invalid));
@@ -45,7 +47,7 @@ int main(void)
     }
     // Stopping during a partial header interrupts the read and joins the thread.
     assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
-    player = audio_player_start(sockets[0]);
+    player = audio_player_start(sockets[0], 0);
     assert(player);
     assert(write(sockets[1], raw, 1) == 1);
     assert(!audio_player_ready(player));

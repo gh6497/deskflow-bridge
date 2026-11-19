@@ -21,6 +21,7 @@ add_library(otg_gui_support STATIC
 )
 target_include_directories(otg_gui_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(otg_gui_support PUBLIC "${PROJECT_BINARY_DIR}/generated")
+target_include_directories(otg_gui_support PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(otg_gui_support PUBLIC Qt6::Network Qt6::Widgets)
 if(MSVC AND VCPKG_TARGET_TRIPLET MATCHES "-windows-static$")
   # The bridge uses /MT with static libusb, while Qt uses /MD. Link the GUI

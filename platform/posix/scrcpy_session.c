@@ -351,10 +351,12 @@ static void cleanup_process(struct scrcpy_session *session)
 
 int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
                          const char *adb_serial, const char *server_path,
-                         const char *server_version, bool audio, bool clipboard, bool uhid,
+                          const char *server_version, bool audio, int audio_gain_db,
+                          bool clipboard, bool uhid,
                          int (*stop_requested)(void))
 {
 #ifndef OTG_HAVE_AUDIO
+    (void)audio_gain_db;
     if (audio) return -1;
 #endif
     unsigned scid;
@@ -425,7 +427,7 @@ int scrcpy_session_start(struct scrcpy_session *session, const char *adb_path,
     }
 #ifdef OTG_HAVE_AUDIO
     if (audio) {
-        session->player = audio_player_start(session->audio_fd);
+        session->player = audio_player_start(session->audio_fd, audio_gain_db);
         if (!session->player) goto fail;
     }
 #endif

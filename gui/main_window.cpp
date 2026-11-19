@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.h"
+#include "audio_gain.h"
 #include "transfer_dialog.h"
 #include "process_utils.h"
 #include "i18n.h"
@@ -45,6 +46,13 @@
 #include <algorithm>
 
 namespace {
+
+int storedAudioGain(const QVariant &value)
+{
+    bool ok;
+    const int gain = value.toInt(&ok);
+    return ok && gain >= 0 && gain <= OTG_AUDIO_GAIN_MAX_DB ? gain : 0;
+}
 
 template <typename Widget>
 class NoWheelWidget : public Widget {
@@ -557,6 +565,14 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     setTranslatedProperty(m_audio, "toolTip", "otg.audio.tooltip");
     adbForm->addRow(m_audio);
 
+    m_audioGain = new NoWheelWidget<QSpinBox>;
+    m_audioGain->setObjectName("audioGainDb");
+    m_audioGain->setRange(0, OTG_AUDIO_GAIN_MAX_DB);
+    m_audioGain->setSuffix(" dB");
+    m_audioGain->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    setTranslatedProperty(m_audioGain, "toolTip", "otg.audio.gain_tooltip");
+    addTranslatedRow(adbForm, "otg.audio.gain", m_audioGain);
+
     m_clipboard = translated(new QCheckBox, "text", "otg.clipboard.enabled");
     m_clipboard->setObjectName("clipboardEnabled");
     setTranslatedProperty(m_clipboard, "toolTip", "otg.clipboard.tooltip");
@@ -914,9 +930,13 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_adbSerial->setText(settings.value("adbSerial").toString());
     m_adbEnabled->setChecked(settings.value("adbEnabled", false).toBool());
     m_audio->setChecked(settings.value("audio", false).toBool());
+    m_audioGain->setValue(storedAudioGain(settings.value("audioGainDb")));
     m_clipboard->setChecked(settings.value("clipboard", false).toBool());
     m_autoRotate->setChecked(settings.value("autoRotate", false).toBool());
     connect(m_audio, &QCheckBox::toggled, this, [this] { updateEnabled(); });
+    connect(m_audioGain, &QSpinBox::valueChanged, this, [this] {
+        if (m_uiReady && !m_loadingDevice) { storeDevice(); persistDevices(); }
+    });
     connect(m_clipboard, &QCheckBox::toggled, this, [this] { updateEnabled(); });
     connect(m_autoRotate, &QCheckBox::toggled, this, [this] { updateEnabled(); });
     connect(m_adbEnabled, &QCheckBox::toggled, this, [this] {
@@ -1251,6 +1271,8 @@ void MainWindow::autoConnectDevice(const QString &transport, const QString &seri
         for (const auto *field : {"phone", "neighbor", "alias", "autoConnect", "uhidUsbAutoConnect"})
             profile[field] = it->value(field);
         profile["direction"] = it->value("direction", "right");
+        // Use the currently configured gain, even if edited since the last connection.
+        if (it->contains("audioGainDb")) profile["audioGainDb"] = it->value("audioGainDb");
         m_records[id] = profile;
         m_pendingProfiles[id] = profile;
         appendLog(qtTrId("otg.auto_connect.connecting").arg(serial), id);
@@ -1278,6 +1300,7 @@ void MainWindow::addDevice()
     profile["adbSerial"] = "";
     profile["adbEnabled"] = defaultTransport() == "uhid";
     profile["audio"] = false;
+    profile["audioGainDb"] = 0;
     profile["clipboard"] = false;
     profile["autoRotate"] = false;
     profile["transport"] = defaultTransport();
@@ -1425,6 +1448,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     if (options.transport == "uhid") options.adbEnabled = true;
 #ifdef OTG_GUI_HAVE_AUDIO
     options.audio = options.adbEnabled && profile.value("audio", false).toBool();
+    if (options.audio) options.audioGainDb = storedAudioGain(profile.value("audioGainDb"));
 #else
     options.audio = false;
 #endif
@@ -1528,8 +1552,10 @@ void MainWindow::updateEnabled()
 #ifdef OTG_GUI_HAVE_AUDIO
     // Audio uses the selected ADB target independently of the HID transport.
     m_adbForm->setRowVisible(m_audio, true);
+    m_adbForm->setRowVisible(m_audioGain, adbFeatures && m_audio->isChecked());
 #else
     m_adbForm->setRowVisible(m_audio, false);
+    m_adbForm->setRowVisible(m_audioGain, false);
 #endif
     m_featuresForm->setRowVisible(m_mouseMode, !ble);
     m_adbForm->setRowVisible(m_autoRotate, !ble);
@@ -2089,6 +2115,7 @@ QVariantMap MainWindow::deviceProfile() const
                {"tlsFingerprintFile", m_tlsFingerprintFile->text()},
                {"direction", m_direction->currentData()},
                 {"mouseMode", m_mouseMode->currentData()}, {"audio", m_audio->isChecked()},
+                {"audioGainDb", m_audioGain->value()},
                   {"middleButtonAction", m_middleButtonAction->currentData()},
                   {"rightButtonAction", m_rightButtonAction->currentData()},
                   {"sideButton1Action", m_sideButton1Action->currentData()},
@@ -2125,6 +2152,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_bleIsolate->setChecked(profile.value("bleIsolate", false).toBool());
     const QSignalBlocker audioBlocker(m_audio);
     m_audio->setChecked(profile.value("audio", false).toBool());
+    m_audioGain->setValue(storedAudioGain(profile.value("audioGainDb")));
     const QSignalBlocker clipboardBlocker(m_clipboard);
     m_clipboard->setChecked(profile.value("clipboard", false).toBool());
     const QSignalBlocker autoRotateBlocker(m_autoRotate);
@@ -2180,6 +2208,7 @@ void MainWindow::saveSettings()
     // the temporary mount point of an AppImage). Explicit custom APKs stay saved.
     settings.setValue("companionApk", apk == CompanionApp::bundledApk() ? QString() : apk);
     settings.setValue("audio", m_audio->isChecked());
+    settings.setValue("audioGainDb", m_audioGain->value());
     settings.setValue("clipboard", m_clipboard->isChecked());
     settings.setValue("autoRotate", m_autoRotate->isChecked());
     settings.setValue("deskflow", m_deskflow->text());

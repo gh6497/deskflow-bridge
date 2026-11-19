@@ -236,6 +236,8 @@ The phone must already be online in ADB and have authorized the computer. For AO
 
 On Linux/macOS/Windows, enable **Forward audio** under **ADB enhancements** to play phone audio through the computer. This option is saved per device and is off by default. Android 11 or later and authorized ADB are required. Keep Android 11 unlocked when starting capture. Calls, protected content and apps that disallow capture may be silent.
 
+**If the forwarded sound is too quiet:** disconnect the device, keep **Forward audio** checked, and set **Forwarded audio gain** just below it. Try `3 dB` or `6 dB` first, then reconnect and listen. The `0–12 dB` setting is saved per device; `0 dB` leaves playback unchanged. Boosting affects only sound played on the computer, does not change the phone's media volume, and cannot restore sound that was not captured. In Windows BLE mode, click **Stop idle Bluetooth service** before reconnecting with a different gain.
+
 On macOS, audio plays through the system default output (speakers or headphones), without microphone permission or an extra audio driver. If there is no sound, check the output device and volume in System Settings, then disconnect and reconnect after selecting an available output. An audio-output failure is logged and keyboard/mouse control remains available. Audio must be included in the build; older macOS packages may not show the switch.
 
 Normal disconnection of an audio session tries to request playback pause. Unplugging or losing ADB can prevent that request; the companion below offers USB-disconnect pause.

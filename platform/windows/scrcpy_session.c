@@ -241,12 +241,14 @@ static int start_server(struct scrcpy_session *s, char *command)
 }
 
 int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *adb_serial,
-                        const char *server, const char *version, bool audio, bool clipboard, bool uhid,
+                        const char *server, const char *version, bool audio, int audio_gain_db,
+                        bool clipboard, bool uhid,
                         int (*stop_requested)(void)) {
     WSADATA wsa; char forward[128], remote[128];
     SOCKET sock; unsigned port = 27183U + (GetCurrentProcessId() % 10000U);
     unsigned scid = (unsigned)GetCurrentProcessId() & 0x7fffffffU;
 #ifndef OTG_HAVE_AUDIO
+    (void)audio_gain_db;
     if (audio) return -1;
 #endif
     if (!s) return -1;
@@ -307,7 +309,7 @@ int scrcpy_session_start(struct scrcpy_session *s, const char *adb, const char *
     }
 #ifdef OTG_HAVE_AUDIO
     if (audio) {
-        s->player = audio_player_start(s->audio_fd);
+        s->player = audio_player_start(s->audio_fd, audio_gain_db);
         if (!s->player) goto fail;
     }
 #endif

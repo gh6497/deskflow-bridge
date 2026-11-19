@@ -462,13 +462,16 @@ private slots:
     void uhidSession_data()
     {
         QTest::addColumn<bool>("extras");
-        QTest::newRow("uhid-only") << false;
-        QTest::newRow("uhid-audio-clipboard") << true;
+        QTest::addColumn<int>("audioGainDb");
+        QTest::newRow("uhid-only") << false << 6;
+        QTest::newRow("uhid-audio-clipboard") << true << 0;
+        QTest::newRow("uhid-audio-gain") << true << 6;
     }
     void uhidSession()
     {
 #ifdef OTG_GUI_HAVE_UHID
         QFETCH(bool, extras);
+        QFETCH(int, audioGainDb);
         QTemporaryDir dir;
         const auto logPath = dir.filePath("calls.jsonl");
         qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
@@ -480,6 +483,7 @@ private slots:
         options.adb = options.bridge = peerPath();
         options.scrcpyServer = "fake-server"; options.scrcpyVersion = "5.0.1";
         options.audio = options.clipboard = extras;
+        options.audioGainDb = audioGainDb;
         Session session;
         QSignalSpy usb(&session, &Session::usbAttached);
         session.start(options);
@@ -497,6 +501,13 @@ private slots:
             QVERIFY(args.contains("--scrcpy-server"));
             QCOMPARE(args.contains("--clipboard"), extras);
             QCOMPARE(args.contains("--audio"), extras);
+            const auto gainArg = args.toVariantList().indexOf(QStringLiteral("--audio-gain-db"));
+            if (extras && audioGainDb) {
+                QVERIFY(gainArg >= 0 && gainArg + 1 < args.size());
+                QCOMPARE(args.at(gainArg + 1).toString(), QString::number(audioGainDb));
+            } else {
+                QCOMPARE(gainArg, -1);
+            }
             launched = true;
         }
         QVERIFY(launched);
