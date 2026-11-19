@@ -46,7 +46,7 @@ struct scrcpy_session {
 int scrcpy_session_start(struct scrcpy_session *session,
                         const char *adb_path, const char *adb_serial,
                         const char *server_path, const char *server_version,
-                        bool audio, bool clipboard, bool uhid,
+                        bool audio, int audio_gain_db, bool clipboard, bool uhid,
                         int (*stop_requested)(void));
 
 void scrcpy_session_stop(struct scrcpy_session *session);

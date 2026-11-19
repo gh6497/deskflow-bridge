@@ -3,6 +3,7 @@
  * Protocol reference: scrcpy demuxer/audio raw stream; ALSA replaces SDL.
  * SPDX-License-Identifier: Apache-2.0 */
 #define _POSIX_C_SOURCE 200809L
+#include "audio_gain.h"
 #include "audio_player.h"
 
 #include <alsa/asoundlib.h>
@@ -16,9 +17,8 @@
 
 #define AUDIO_SAMPLE_RATE 48000U
 #define AUDIO_CHANNELS 2U
-#define AUDIO_BYTES_PER_SAMPLE 2U
 #define AUDIO_FRAME_HEADER_SIZE 12U
-#define AUDIO_MAX_FRAME_SIZE (1024U * AUDIO_CHANNELS * AUDIO_BYTES_PER_SAMPLE)
+#define AUDIO_MAX_FRAME_SIZE (1024U * OTG_AUDIO_PCM_BYTES_PER_FRAME)
 #define SCRCPY_CODEC_RAW UINT32_C(0x00726177)
 #define SCRCPY_CODEC_DISABLED 0U
 
@@ -29,6 +29,7 @@ struct audio_player {
     int socket_fd;
     pthread_t thread;
     atomic_bool ready;
+    struct audio_gain gain;
 };
 
 static uint32_t read_be32(const unsigned char *p)
@@ -69,7 +70,7 @@ static int open_output(snd_pcm_t **pcm)
 
 static int play_pcm(snd_pcm_t *pcm, const unsigned char *data, size_t size)
 {
-    size_t frames = size / (AUDIO_CHANNELS * AUDIO_BYTES_PER_SAMPLE);
+    size_t frames = size / OTG_AUDIO_PCM_BYTES_PER_FRAME;
     const int16_t *samples = (const int16_t *)data;
     while (frames) {
         snd_pcm_sframes_t written = snd_pcm_writei(pcm, samples, frames);
@@ -116,7 +117,7 @@ static void *audio_thread_main(void *userdata)
     while (read_full(player->socket_fd, header, sizeof(header)) == 1) {
         /* PTS/flags are consumed with the header; RAW playback uses no clock. */
         uint32_t size = read_be32(header + 8);
-        if (!size || size > AUDIO_MAX_FRAME_SIZE) {
+        if (!size || size > AUDIO_MAX_FRAME_SIZE || size % OTG_AUDIO_PCM_BYTES_PER_FRAME) {
             LOG_ERR("invalid scrcpy audio frame size: %u\n", size);
             break;
         }
@@ -124,6 +125,7 @@ static void *audio_thread_main(void *userdata)
         if (!new_payload) break;
         payload = new_payload;
         if (read_full(player->socket_fd, payload, size) != 1) break;
+        audio_gain_apply(&player->gain, payload, size);
         if (play_pcm(pcm, payload, size) < 0) break;
     }
 done:
@@ -136,11 +138,12 @@ done:
     return NULL;
 }
 
-struct audio_player *audio_player_start(intptr_t socket_fd)
+struct audio_player *audio_player_start(intptr_t socket_fd, int gain_db)
 {
     struct audio_player *player = malloc(sizeof(*player));
     if (!player) return NULL;
     player->socket_fd = (int)socket_fd;
+    audio_gain_init(&player->gain, gain_db);
     atomic_init(&player->ready, false);
     if (pthread_create(&player->thread, NULL, audio_thread_main, player) != 0) {
         free(player);

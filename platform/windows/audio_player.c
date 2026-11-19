@@ -1,6 +1,7 @@
 /* Windows playback for the scrcpy raw audio stream.
  * Protocol reference: scrcpy demuxer/audio raw stream; WASAPI replaces SDL.
  * SPDX-License-Identifier: Apache-2.0 */
+#include "audio_gain.h"
 #include "audio_player.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -24,7 +25,7 @@ static const GUID OTG_IID_IAudioRenderClient =
     {0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
 
 #define HEADER_SIZE 12U
-#define MAX_FRAME (1024U * 2U * 2U)
+#define MAX_FRAME (1024U * OTG_AUDIO_PCM_BYTES_PER_FRAME)
 #define CODEC_RAW UINT32_C(0x00726177)
 #define LOG_ERR(...) fprintf(stderr, "ERROR: " __VA_ARGS__)
 #define LOG_HR(operation, hr) \
@@ -35,6 +36,7 @@ struct audio_player {
     SOCKET socket_fd;
     HANDLE thread;
     volatile LONG ready;
+    struct audio_gain gain;
 };
 
 static uint32_t be32(const unsigned char *p) {
@@ -89,7 +91,7 @@ static int open_wasapi(IAudioClient **client, IAudioRenderClient **render,
 
 static int play_pcm(IAudioClient *client, IAudioRenderClient *render,
                     UINT32 buffer_size, const unsigned char *data, size_t size) {
-    size_t frames = size / 4;
+    size_t frames = size / OTG_AUDIO_PCM_BYTES_PER_FRAME;
     while (frames) {
         UINT32 available = 0;
         BYTE *buffer = NULL;
@@ -99,10 +101,10 @@ static int play_pcm(IAudioClient *client, IAudioRenderClient *render,
         UINT32 count = (UINT32)(frames < capacity ? frames : capacity);
         HRESULT hr = render->lpVtbl->GetBuffer(render, count, &buffer);
         if (FAILED(hr)) { LOG_HR("IAudioRenderClient::GetBuffer", hr); return -1; }
-        memcpy(buffer, data, (size_t)count * 4);
+        memcpy(buffer, data, (size_t)count * OTG_AUDIO_PCM_BYTES_PER_FRAME);
         hr = render->lpVtbl->ReleaseBuffer(render, count, 0);
         if (FAILED(hr)) { LOG_HR("IAudioRenderClient::ReleaseBuffer", hr); return -1; }
-        data += (size_t)count * 4; frames -= count;
+        data += (size_t)count * OTG_AUDIO_PCM_BYTES_PER_FRAME; frames -= count;
     }
     return 0;
 }
@@ -124,10 +126,14 @@ static DWORD WINAPI audio_thread(void *arg) {
     InterlockedExchange(&player->ready, 1);
     while (read_full(player->socket_fd, h, sizeof(h)) == 1) {
         uint32_t n = be32(h + 8);
-        if (!n || n > MAX_FRAME) break;
+        if (!n || n > MAX_FRAME || n % OTG_AUDIO_PCM_BYTES_PER_FRAME) {
+            LOG_ERR("invalid scrcpy audio frame size: %u\n", n);
+            break;
+        }
         unsigned char *p = realloc(payload, n); if (!p) break; payload = p;
-        if (read_full(player->socket_fd, payload, n) != 1 ||
-            play_pcm(client, render, buffer_size, payload, n) != 0) break;
+        if (read_full(player->socket_fd, payload, n) != 1) break;
+        audio_gain_apply(&player->gain, payload, n);
+        if (play_pcm(client, render, buffer_size, payload, n) != 0) break;
     }
 done:
     InterlockedExchange(&player->ready, 0);
@@ -138,10 +144,11 @@ done:
     return 0;
 }
 
-struct audio_player *audio_player_start(intptr_t socket_fd) {
+struct audio_player *audio_player_start(intptr_t socket_fd, int gain_db) {
     struct audio_player *player = malloc(sizeof(*player));
     if (!player) return NULL;
     player->socket_fd = (SOCKET)socket_fd;
+    audio_gain_init(&player->gain, gain_db);
     player->ready = 0;
     player->thread = CreateThread(NULL, 0, audio_thread, player, 0, NULL);
     if (!player->thread) { free(player); return NULL; }

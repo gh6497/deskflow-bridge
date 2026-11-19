@@ -196,6 +196,9 @@
    <message id="otg.error.adb_disabled"><source>ADB-dependent features are disabled for this device.</source><translation>此设备已禁用依赖 ADB 的功能。</translation></message>
   <message id="otg.path.adb_hint"><source>Use bundled ADB by default, or select an external executable</source><translation>优先使用随包提供的 ADB，也可指定外部程序</translation></message>
    <message id="otg.audio.enabled"><source>Forward audio</source><translation>转发音频</translation></message>
+   <message id="otg.audio.gain"><source>Forwarded audio gain</source><translation>转发音量增益</translation></message>
+   <message id="otg.audio.gain_tooltip"><source>Boost phone audio on this computer only. 0 dB leaves the sound unchanged. Reconnect after changing the gain.</source><translation>只放大在电脑播放的手机音频，不改变手机媒体音量。0 dB 不放大；重新连接后生效。</translation></message>
+   <message id="otg.error.audio_gain_range"><source>Forwarded audio gain is out of range.</source><translation>转发音量增益超出允许范围。</translation></message>
    <message id="otg.clipboard.enabled"><source>Share text clipboard</source><translation>共享文本剪贴板</translation></message>
    <message id="otg.display.auto_rotate"><source>Follow screen rotation</source><translation>跟随屏幕旋转</translation></message>
   <message id="otg.display.auto_rotate.tooltip"><source>Requires ADB with audio or clipboard enabled; updates the Deskflow screen size after rotation. Disabled by default.</source><translation>需要启用音频或剪贴板并使用 ADB；旋转后动态更新 Deskflow 屏幕尺寸，默认关闭。</translation></message>
