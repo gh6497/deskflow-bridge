@@ -13,7 +13,7 @@ Control an Android phone with the keyboard and mouse you already use on your com
 - Shares one desktop keyboard and mouse with one or more Android phones.
 - Makes each phone appear as a normal secondary screen in Deskflow.
 - Supports clicking, dragging, scrolling, typing, Android Home/Back mouse mappings, and optional side-button gestures.
-- Offers optional text clipboard sharing, audio forwarding, screenshots, and file sharing through ADB.
+- Offers manual clipboard transfer and optional automatic text sharing, plus audio forwarding, screenshots, and file sharing through ADB.
 - Provides a Qt GUI for Windows, macOS, and Linux, plus a command-line client.
 
 ## Download
@@ -51,7 +51,7 @@ ADB is only required for ADB + UHID and for optional features such as audio, cli
 These features are separate from the basic keyboard and mouse path:
 
 - [Audio forwarding](docs/AUDIO.md)
-- [Text clipboard sharing](docs/CLIPBOARD.md)
+- [Manual and automatic text clipboard transfer](docs/CLIPBOARD.md)
 - [Phone screenshot and file sharing](docs/FILE_SHARING.md)
 - [Android companion app](docs/ANDROID_COMPANION.md)
 

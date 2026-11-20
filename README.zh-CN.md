@@ -13,7 +13,7 @@
 - 让一套电脑键盘鼠标控制一台或多台安卓手机。
 - 让每台手机在 Deskflow 中表现为一块普通的附加屏幕。
 - 支持点击、拖动、滚轮、打字，以及中键 Home、右键 Back 和可选侧键手势。
-- 可选支持文本剪贴板、音频转发、手机截图和文件分享等 ADB 功能。
+- 通过 ADB 支持手动传输剪贴板文本、可选的自动同步、音频转发、手机截图和文件分享。
 - 提供 Windows、macOS、Linux 的 Qt 图形界面，也提供命令行客户端。
 
 ## 下载
@@ -51,7 +51,7 @@ ADB 只在 ADB＋UHID 以及音频、剪贴板、旋转跟随、文件分享等�
 这些功能与基础键鼠通道相互独立：
 
 - [音频转发](docs/AUDIO.md)
-- [文本剪贴板共享](docs/CLIPBOARD.md)
+- [手动和自动传输剪贴板文本](docs/CLIPBOARD.md)
 - [手机截图和文件分享](docs/FILE_SHARING.md)
 - [Android 伴侣应用](docs/ANDROID_COMPANION.md)
 

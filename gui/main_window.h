@@ -6,6 +6,7 @@
 #include "connection_manager.h"
 #include "usb_auto_connect.h"
 #include "companion_app.h"
+#include "phone_clipboard.h"
 #include "phone_screenshot.h"
 #include <QMainWindow>
 #include <QPointer>
@@ -55,6 +56,8 @@ private:
     void updateTray();
     void copyScreenshot(const QString &id);
     void updateScreenshotActions();
+    void transferClipboard(PhoneClipboard::Direction direction);
+    void updateClipboardAction();
     void refreshDevices();
     void readDevice();
     void readDisplayFromAdb();
@@ -117,6 +120,9 @@ private:
     QLabel *m_companionStatus;
     QPushButton *m_companionInstall, *m_companionOpen, *m_companionCheck;
     QPushButton *m_transferFiles;
+    QPushButton *m_manualClipboardButton = nullptr;
+    PhoneClipboard m_manualClipboard;
+    QString m_clipboardDeviceId, m_clipboardDeviceName;
     QPushButton *m_copyScreenshot;
     PhoneScreenshot m_screenshot;
     QString m_screenshotDeviceId, m_screenshotDeviceName;

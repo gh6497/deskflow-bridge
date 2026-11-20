@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.h"
+#include "clipboard.h"
 #include "i18n.h"
 #include "build_version.h"
 #include "system_theme.h"
@@ -37,6 +38,7 @@
 #include <QTabWidget>
 #include <QWheelEvent>
 #include <QTcpServer>
+#include <QtEndian>
 #include <QtTest>
 #include <memory>
 
@@ -73,6 +75,23 @@ protected:
         return testPeerPath();
     }
 };
+
+#ifdef OTG_GUI_HAVE_SCRCPY
+static QByteArray clipboardReply(const QByteArray &text)
+{
+    QByteArray packet(5, '\0');
+    qToBigEndian(quint32(text.size()), packet.data() + 1);
+    return packet + text;
+}
+
+static QByteArray clipboardAck()
+{
+    QByteArray ack(9, '\0');
+    ack[0] = 1;
+    qToBigEndian(quint64(1), ack.data() + 1);
+    return ack;
+}
+#endif
 
 class WindowTest : public QObject {
     Q_OBJECT
@@ -379,6 +398,208 @@ private slots:
         QTRY_COMPARE(quit.size(), 1);
         QCOMPARE(QGuiApplication::clipboard()->text(), "keep on exit");
     }
+
+#ifdef OTG_GUI_HAVE_SCRCPY
+    void manualClipboardWindow()
+    {
+        if (QGuiApplication::platformName() != "offscreen") QSKIP("Use the isolated offscreen clipboard");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("adb", testPeerPath());
+        settings.setValue("transport", "usb");
+        settings.setValue("language", "en");
+        settings.setValue("manageServer", false);
+        settings.beginWriteArray("devices", 2);
+        settings.setArrayIndex(0); settings.setValue("id", "initial");
+        settings.setValue("profile", QVariantMap{{"phone", "one"}, {"serial", "TEST123"}, {"adbSerial", "USB-ID"}});
+        settings.setArrayIndex(1); settings.setValue("id", "second");
+        settings.setValue("profile", QVariantMap{{"phone", "two"}, {"adbEnabled", true}, {"adbSerial", "[::1]:5555"}});
+        settings.endArray();
+
+        QTcpServer tunnel;
+        QVERIFY(tunnel.listen(QHostAddress::LocalHost));
+        const auto logPath = dir.filePath("commands.jsonl");
+        qputenv("OTG_TEST_CLIPBOARD_PORT", QByteArray::number(tunnel.serverPort()));
+        qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        const auto cleanup = qScopeGuard([] {
+            qunsetenv("OTG_TEST_CLIPBOARD_PORT");
+            qunsetenv("OTG_TEST_UHID_LOG");
+        });
+
+        AutoConnectTestWindow window;
+        window.show();
+        auto *button = window.findChild<QPushButton *>("manualClipboard");
+        auto *receive = window.findChild<QAction *>("clipboardFromPhone");
+        auto *send = window.findChild<QAction *>("clipboardToPhone");
+        auto *sharing = window.findChild<QCheckBox *>("clipboardEnabled");
+        auto *devices = window.findChild<QListWidget *>("deviceSidebar");
+        auto *manager = window.findChild<ConnectionManager *>();
+        QVERIFY(button && receive && send && sharing && devices && manager);
+        QVERIFY(!button->isEnabled() && !sharing->isChecked());
+
+        auto *clipboard = QGuiApplication::clipboard();
+        clipboard->setText("original");
+        // Receive while Deskflow is idle. Change selection while the request is
+        // running to confirm the operation stays bound to the clicked phone.
+        devices->setCurrentRow(1);
+        QVERIFY(button->isEnabled() && !sharing->isChecked());
+        receive->trigger();
+        QVERIFY(!button->isEnabled());
+        devices->setCurrentRow(0);
+        QTRY_VERIFY(tunnel.hasPendingConnections());
+        auto *reader = tunnel.nextPendingConnection();
+        reader->write(QByteArray(1, '\0'));
+        QTRY_COMPARE(reader->bytesAvailable(), 2);
+        QCOMPARE(reader->readAll(), QByteArray::fromHex("0800"));
+        const auto phoneText = QStringLiteral("\uFEFF手机📋\r\n下一行 \n");
+        const auto packet = clipboardReply(phoneText.toUtf8());
+        reader->write(packet.left(3));
+        QTRY_COMPARE(reader->bytesToWrite(), 0);
+        QCOMPARE(clipboard->text(), "original");
+        reader->write(packet.mid(3));
+        QTRY_COMPARE(clipboard->text(), phoneText);
+        QVERIFY(window.statusBar()->currentMessage().startsWith("two · Copied"));
+        QVERIFY(!button->isEnabled()); // The first device still has ADB enhancements off.
+
+        // Send while a keyboard/mouse session is active. Changing the local
+        // clipboard during startup must not change what was selected to send.
+        window.findChild<QCheckBox *>("adbEnabled")->setChecked(true);
+        auto *connectButton = window.findChild<QPushButton *>("connectButton");
+        QTRY_VERIFY(connectButton->isEnabled());
+        connectButton->click();
+        QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
+        QVERIFY(button->isEnabled() && !sharing->isChecked());
+        const auto hostText = QStringLiteral("电脑 😀\n'$(text)'\r\n") + QString(128 * 1024, QChar('A'));
+        const auto bytes = hostText.toUtf8();
+        clipboard->setText(hostText);
+        send->trigger();
+        clipboard->setText("newer local text");
+        QTRY_VERIFY(tunnel.hasPendingConnections());
+        auto *writer = tunnel.nextPendingConnection();
+        writer->write(QByteArray(1, '\0'));
+        QTRY_COMPARE(writer->bytesAvailable(), bytes.size() + 14);
+        const auto request = writer->readAll();
+        QCOMPARE(request.left(10), QByteArray::fromHex("09000000000000000100"));
+        QCOMPARE(qFromBigEndian<quint32>(request.constData() + 10), quint32(bytes.size()));
+        QVERIFY(request.mid(14) == bytes);
+        writer->write(clipboardAck());
+        QTRY_COMPARE(writer->bytesAvailable(), 2);
+        QCOMPARE(writer->readAll(), QByteArray::fromHex("0800"));
+        writer->write(clipboardReply(bytes));
+        QTRY_VERIFY(button->isEnabled());
+        QVERIFY(window.statusBar()->currentMessage().startsWith("one · Sent"));
+        QCOMPARE(clipboard->text(), "newer local text");
+        QCOMPARE(manager->state("initial"), Session::State::Connected);
+        QVERIFY(!sharing->isChecked());
+
+        // Quit with a read outstanding. Wait for owned ADB work to finish and
+        // keep the local clipboard even if the phone tries to respond afterward.
+        receive->trigger();
+        QTRY_VERIFY(tunnel.hasPendingConnections());
+        auto *cancelled = tunnel.nextPendingConnection();
+        cancelled->write(QByteArray(1, '\0'));
+        QTRY_COMPARE(cancelled->bytesAvailable(), 2);
+        QSignalSpy quit(&window, &MainWindow::exitReady);
+        window.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_COMPARE(quit.size(), 1);
+        QCOMPARE(cancelled->state(), QAbstractSocket::UnconnectedState);
+        QCOMPARE(clipboard->text(), "newer local text");
+        const auto runtimeLog = window.findChild<QPlainTextEdit *>("runtimeLog")->toPlainText();
+        QVERIFY(!runtimeLog.contains("手机📋") && !runtimeLog.contains("电脑 😀"));
+
+        QFile log(logPath);
+        QVERIFY(log.open(QIODevice::ReadOnly));
+        QStringList jars, removedJars, pushTargets, forwarded, launched, removedPorts;
+        for (const auto &line : log.readAll().split('\n')) {
+            const auto args = QJsonDocument::fromJson(line).array();
+            QVERIFY(!args.contains("--clipboard") && !args.contains("clipboard_autosync=true"));
+            QVERIFY(!args.contains("pair") && !args.contains("connect") && !args.contains("kill-server"));
+            if (args.at(2) == "push") {
+                QCOMPARE(args.size(), 5);
+                pushTargets << args.at(1).toString();
+                jars << args.at(4).toString();
+            } else if (args.at(2) == "forward" && args.at(3) == "tcp:0") {
+                forwarded << args.at(4).toString();
+            } else if (args.at(2) == "forward" && args.at(3) == "--remove") {
+                removedPorts << args.at(4).toString();
+            } else if (args.at(2) == "shell" && args.at(5) == "rm") {
+                removedJars << args.at(7).toString();
+            } else if (args.contains("com.genymobile.scrcpy.Server")) {
+                QVERIFY(args.contains("clipboard_autosync=false") && args.contains("audio=false") &&
+                        args.contains("video=false") && args.contains("power_on=false"));
+                launched << (QStringLiteral("localabstract:scrcpy_") + args.last().toString().section('=', 1));
+            }
+        }
+        QCOMPARE(pushTargets, (QStringList{"[::1]:5555", "USB-ID", "USB-ID"}));
+        QCOMPARE(removedJars, jars);
+        QCOMPARE(launched, forwarded);
+        QCOMPARE(removedPorts.size(), 3);
+        QVERIFY(jars[0] != jars[1] && jars[1] != jars[2] && jars[0] != jars[2]);
+    }
+
+    void manualClipboardFailure_data()
+    {
+        QTest::addColumn<QByteArray>("mode");
+        QTest::addColumn<QString>("error");
+        QTest::newRow("offline") << QByteArray("offline") << QString("adb_unavailable");
+        QTest::newRow("push-failed") << QByteArray("push-failed") << QString("failed");
+        QTest::newRow("empty") << QByteArray("empty") << QString("read_unavailable");
+        QTest::newRow("no-reply") << QByteArray("no-reply") << QString("read_unavailable");
+        QTest::newRow("malformed") << QByteArray("malformed") << QString("invalid_text");
+        QTest::newRow("oversized") << QByteArray("oversized") << QString("limit");
+        QTest::newRow("mismatched-readback") << QByteArray("mismatched-readback") << QString("write_unconfirmed");
+        QTest::newRow("image-only") << QByteArray("image-only") << QString("no_local_text");
+    }
+
+    void manualClipboardFailure()
+    {
+        if (QGuiApplication::platformName() != "offscreen") QSKIP("Use the isolated offscreen clipboard");
+        QFETCH(QByteArray, mode);
+        QFETCH(QString, error);
+        QTcpServer tunnel;
+        QVERIFY(tunnel.listen(QHostAddress::LocalHost));
+        qputenv("OTG_TEST_CLIPBOARD_PORT", QByteArray::number(tunnel.serverPort()));
+        qputenv("OTG_TEST_CLIPBOARD_ADB", mode);
+        const auto cleanup = qScopeGuard([] {
+            qunsetenv("OTG_TEST_CLIPBOARD_PORT");
+            qunsetenv("OTG_TEST_CLIPBOARD_ADB");
+        });
+        auto *clipboard = QGuiApplication::clipboard();
+        clipboard->setText("preserve me");
+        const bool write = mode == "mismatched-readback" || mode == "image-only";
+        if (mode == "image-only") clipboard->setImage(QImage(10, 10, QImage::Format_RGB32));
+        PhoneClipboard transfer;
+        QSignalSpy done(&transfer, &PhoneClipboard::completed);
+        transfer.start(testPeerPath(), "[::1]:5555", findScrcpyServer(), findScrcpyVersion(),
+                       write ? PhoneClipboard::Direction::ToPhone : PhoneClipboard::Direction::FromPhone);
+        if (mode != "offline" && mode != "push-failed" && mode != "image-only") {
+            QTRY_VERIFY(tunnel.hasPendingConnections());
+            auto *client = tunnel.nextPendingConnection();
+            client->write(QByteArray(1, '\0'));
+            if (write) {
+                QTRY_COMPARE(client->bytesAvailable(), 25);
+                client->readAll();
+                client->write(clipboardAck());
+                QTRY_COMPARE(client->bytesAvailable(), 2);
+                QCOMPARE(client->readAll(), QByteArray::fromHex("0800"));
+                client->write(clipboardReply("different text"));
+            } else {
+                QTRY_COMPARE(client->bytesAvailable(), 2);
+                if (mode == "empty") client->write(clipboardReply({}));
+                if (mode == "malformed") client->write(clipboardReply(QByteArray::fromHex("e4b8")));
+                if (mode == "oversized") client->write(clipboardReply(QByteArray(OTG_CLIPBOARD_TEXT_MAX + 1, 'X')).left(5));
+            }
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 8000);
+        QCOMPARE(done.takeFirst().first().toString(), "otg.manual_clipboard." + error);
+        QVERIFY(!transfer.busy());
+        if (mode == "image-only") QVERIFY(clipboard->mimeData()->hasImage());
+        else QCOMPARE(clipboard->text(), "preserve me");
+    }
+#endif
 
     void fileSharingWindow()
     {

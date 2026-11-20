@@ -30,6 +30,17 @@ Deskflow 主端 ⇄ Deskflow 协议 ⇄ deskflow-bridge ⇄ ADB / scrcpy 控制�
 本项目 Deskflow TCP 支持原生 TLS；启用 TLS 时剪贴板数据与键鼠事件共同走 TLS。请配置服务端
 SHA-256 指纹，避免接受未知的自签名证书。
 
+## GUI 手动剪贴板
+
+选中手机后，打开窗口底部的 **「手动剪贴板」**，选择 **「从手机复制到电脑」**或
+**「从电脑发送到手机」**。操作直接使用运行 GUI 的电脑的系统剪贴板，即使 Deskflow 服务在另一台电脑上也一样。
+关闭「共享文本剪贴板」或断开 Deskflow 后仍可使用。手机需已在 ADB 中上线并授权，AOA/BLE
+需开启「ADB 增强功能」，BLE 需填写该手机的无线 ADB 地址。带 scrcpy 服务端的 GUI 构建提供此入口。
+
+每次点击建立一个临时的 scrcpy 控制通道，关闭 `clipboard_autosync`，对点击时选中的 ADB 目标请求
+当时的剪贴板文本。发送使用 `SET_CLIPBOARD(paste=false)`，收到 ACK 后回读确认。以 UTF-8 计最多
+262130 字节。接收完整、有效的非空文本后才写入电脑剪贴板。传输过程不记录正文。
+
 ## 构建与 GUI
 
 ```bash

@@ -33,6 +33,28 @@ int main(int argc, char **argv)
         if (log.open(QIODevice::WriteOnly | QIODevice::Append))
             log.write(QJsonDocument(QJsonArray::fromStringList(args.mid(1))).toJson(QJsonDocument::Compact) + '\n');
     }
+    // The window test owns the loopback TCP peer that simulates scrcpy.
+    const auto clipboardPort = qgetenv("OTG_TEST_CLIPBOARD_PORT");
+    if (!clipboardPort.isEmpty() && args.value(1) == "-s" && !args.value(2).isEmpty()) {
+        const auto mode = qgetenv("OTG_TEST_CLIPBOARD_ADB");
+        if (args.value(3) == "get-state") {
+            output(mode == "offline" ? "unauthorized\n" : "device\n");
+            return mode == "offline" ? 1 : 0;
+        }
+        if (args.value(3) == "push") return args.size() == 6 && mode != "push-failed" ? 0 : 1;
+        if (args.value(3) == "forward") {
+            if (args.value(4) == "tcp:0" && args.value(5).startsWith("localabstract:scrcpy_")) {
+                output((clipboardPort + '\n').constData());
+                return 0;
+            }
+            return args.mid(4) == QStringList{"--remove", QStringLiteral("tcp:") + QString::fromLatin1(clipboardPort)} ? 0 : 1;
+        }
+        if (args.mid(3, 3) == QStringList{"shell", "-T", "-n"}) {
+            if (args.value(6).startsWith("CLASSPATH="))
+                return args.contains("clipboard_autosync=false") && !args.contains("control=false") ? app.exec() : 1;
+            if (args.mid(6, 2) == QStringList{"rm", "-f"}) return 0;
+        }
+    }
     if (args.contains("exec-out")) {
         if (args.size() != 6 || args[1] != "-s" || args[2].isEmpty() ||
             args.mid(3) != QStringList{"exec-out", "screencap", "-p"}) return 2;

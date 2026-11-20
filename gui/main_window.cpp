@@ -114,7 +114,7 @@ QString deviceAdbTarget(const QString &transport, const QString &explicitTarget,
     return {};
 }
 
-QString screenshotTarget(const QVariantMap &profile)
+QString adbActionTarget(const QVariantMap &profile)
 {
     const auto transport = profile.value("transport", "usb").toString();
     if (transport != "uhid" && !profile.value("adbEnabled").toBool()) return {};
@@ -124,7 +124,7 @@ QString screenshotTarget(const QVariantMap &profile)
     return target;
 }
 
-QString screenshotDeviceName(const QVariantMap &profile)
+QString actionDeviceName(const QVariantMap &profile)
 {
     const auto screen = profile.value("phone").toString();
     const auto alias = profile.value("alias").toString();
@@ -285,7 +285,7 @@ void MainWindow::updateScreenshotActions()
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
         const auto id = it.key();
         const auto profile = id == m_selectedId ? deviceProfile() : it.value();
-        const bool enabled = available && !screenshotTarget(profile).isEmpty();
+        const bool enabled = available && !adbActionTarget(profile).isEmpty();
         if (id == m_selectedId) m_copyScreenshot->setEnabled(enabled);
         auto *&action = m_screenshotActions[id];
         if (!action) {
@@ -293,7 +293,7 @@ void MainWindow::updateScreenshotActions()
             action->setData(id);
             connect(action, &QAction::triggered, this, [this, id] { copyScreenshot(id); });
         }
-        action->setText(screenshotDeviceName(profile).replace('&', "&&"));
+        action->setText(actionDeviceName(profile).replace('&', "&&"));
         action->setEnabled(enabled);
         any |= enabled;
     }
@@ -313,11 +313,31 @@ void MainWindow::copyScreenshot(const QString &id)
     // Snapshot identity at click time. A later selection (or tray capture of
     // another phone) must not switch either the ADB target or the result label.
     m_screenshotDeviceId = id;
-    m_screenshotDeviceName = screenshotDeviceName(profile);
-    if (m_screenshot.start(m_adb->text().trimmed(), screenshotTarget(profile))) {
+    m_screenshotDeviceName = actionDeviceName(profile);
+    if (m_screenshot.start(m_adb->text().trimmed(), adbActionTarget(profile))) {
         if (m_screenshot.busy()) statusBar()->showMessage(qtTrId("otg.screenshot.working").arg(m_screenshotDeviceName));
         updateScreenshotActions();
     }
+}
+
+void MainWindow::updateClipboardAction()
+{
+    if (m_manualClipboardButton)
+        m_manualClipboardButton->setEnabled(!m_closing && !m_manualClipboard.busy() &&
+            !m_adb->text().trimmed().isEmpty() && !adbActionTarget(deviceProfile()).isEmpty());
+}
+
+void MainWindow::transferClipboard(PhoneClipboard::Direction direction)
+{
+    if (m_closing || m_manualClipboard.busy()) return;
+    const auto profile = deviceProfile();
+    m_clipboardDeviceId = m_selectedId;
+    m_clipboardDeviceName = actionDeviceName(profile);
+    m_manualClipboard.start(m_adb->text().trimmed(), adbActionTarget(profile),
+                            findScrcpyServer(), findScrcpyVersion(), direction);
+    if (m_manualClipboard.busy())
+        statusBar()->showMessage(qtTrId("otg.manual_clipboard.working").arg(m_clipboardDeviceName));
+    updateClipboardAction();
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -870,6 +890,28 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_connect->setDefault(true);
     m_disconnect = translated(new QPushButton, "text", "otg.action.disconnect");
     buttons->addWidget(m_status, 1);
+#ifdef OTG_GUI_HAVE_SCRCPY
+    m_manualClipboardButton = translated(new QPushButton, "text", "otg.manual_clipboard.title");
+    m_manualClipboardButton->setObjectName("manualClipboard");
+    setTranslatedProperty(m_manualClipboardButton, "toolTip", "otg.manual_clipboard.hint");
+    auto *clipboardMenu = new QMenu(m_manualClipboardButton);
+    m_manualClipboardButton->setMenu(clipboardMenu);
+    auto *fromPhone = translated(clipboardMenu->addAction(QString()), "text", "otg.manual_clipboard.from_phone");
+    fromPhone->setObjectName("clipboardFromPhone");
+    connect(fromPhone, &QAction::triggered, this, [this] { transferClipboard(PhoneClipboard::Direction::FromPhone); });
+    auto *toPhone = translated(clipboardMenu->addAction(QString()), "text", "otg.manual_clipboard.to_phone");
+    toPhone->setObjectName("clipboardToPhone");
+    connect(toPhone, &QAction::triggered, this, [this] { transferClipboard(PhoneClipboard::Direction::ToPhone); });
+    connect(&m_manualClipboard, &PhoneClipboard::completed, this, [this](const QString &messageId) {
+        if (m_closing) { QTimer::singleShot(0, this, &QWidget::close); return; }
+        updateClipboardAction();
+        if (messageId.isEmpty()) return;
+        const auto message = qtTrId(messageId.toLatin1().constData()).arg(m_clipboardDeviceName);
+        appendLog(message, m_clipboardDeviceId);
+        statusBar()->showMessage(message, 6000);
+    });
+    buttons->addWidget(m_manualClipboardButton);
+#endif
     m_copyScreenshot = translated(new QPushButton, "text", "otg.screenshot.copy");
     m_copyScreenshot->setObjectName("copyScreenshot");
     setTranslatedProperty(m_copyScreenshot, "toolTip", "otg.screenshot.hint");
@@ -1626,6 +1668,7 @@ void MainWindow::updateEnabled()
     m_companionOpen->setEnabled(companionTarget);
     m_companionCheck->setEnabled(companionTarget);
     updateCompanionStatus();
+    updateClipboardAction();
     updateTray();
 }
 
@@ -2257,8 +2300,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     m_closing = true;
     m_screenshot.cancel();
+    m_manualClipboard.cancel();
     if (m_transferDialog) m_transferDialog->reject();
-    if (m_connections.settled() && !m_companion.busy() && !m_transferDialog && !m_screenshot.busy()) {
+    if (m_connections.settled() && !m_companion.busy() && !m_transferDialog && !m_screenshot.busy() && !m_manualClipboard.busy()) {
         m_autoConnect.setEnabled(false);
         m_adbAutoConnect.setEnabled(false);
         m_tray->hide();

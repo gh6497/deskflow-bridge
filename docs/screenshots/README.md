@@ -8,6 +8,7 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
   based on `83a620b` (base version `0.1.10`), using the same harness and demo profile. The device page shows the new opt-in unchecked.
 - Refreshed all main-window views in both languages on 2026-11-18 for **Copy phone screenshot**, from the worktree based on `94a8fd1` (base version `0.1.10`). The new action is enabled for the authorized demo and disabled in the AOA view without ADB. The separate Files window is unchanged.
 - Refreshed both `multiple-devices` views on 2026-11-18 from the worktree based on `03df239` (base version `0.1.10`) to show the new default screen name `android2`, using the same capture harness and demo profile.
+- Refreshed both languages of all main-window views for **Manual clipboard**, from the worktree based on `f473676` (base version `0.1.10`). The UHID demo shows the button available with automatic sharing off, and the AOA demo shows it disabled with ADB enhancements off.
 - Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
 - Main window: 1100 × 880; file window: 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
@@ -34,4 +35,5 @@ update both guides when controls move or change.
 2026-11-18 已用相同演示配置更新中英文设备页及输入页；设备页显示默认关闭的有线 UHID 插线自动连接开关。
 同日按上述基线更新了两种语言的所有主窗口截图，以反映「复制手机截图」按钮的位置和状态；采集未读取真实手机屏幕或桌面剪贴板。
 同日使用相同采集工具和演示配置更新中英文多设备布局截图，展示新的默认屏幕名称 `android2`。
+本次基于 `f473676` 更新中英文主窗口截图。UHID 示例关闭了自动共享，仍可点击「手动剪贴板」。未启用 ADB 增强的 AOA 示例中，该按钮不可用。
 更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。

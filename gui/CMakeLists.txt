@@ -4,6 +4,7 @@ qt_standard_project_setup()
 add_library(otg_gui_support STATIC
   device_info.cpp device_info.h
   process_utils.cpp process_utils.h
+  phone_clipboard.cpp phone_clipboard.h
   phone_screenshot.cpp phone_screenshot.h
   session.cpp session.h
   deskflow_server.cpp deskflow_server.h
@@ -112,6 +113,7 @@ else()
   set(OTG_GUI_BUILD_DATA_DIR "$<TARGET_FILE_DIR:deskflow-bridge-gui>/share/deskflow-bridge")
 endif()
 if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
+  target_compile_definitions(otg_gui_support PUBLIC OTG_GUI_HAVE_SCRCPY=1)
   add_custom_target(otg_gui_scrcpy_runtime ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${OTG_GUI_BUILD_DATA_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SCRCPY_SERVER}"
@@ -201,7 +203,7 @@ if(BUILD_TESTING)
   # Copy reference inputs as text: adding .cpp directly to a resource would mark
   # those shared sources HEADER_FILE_ONLY and remove them from other targets.
   set(i18n_test_sources)
-  foreach(name main_window.cpp session.cpp process_utils.cpp deskflow_server.cpp connection_manager.cpp companion_app.cpp companion_transfer.cpp wireless_adb_dialog.cpp transfer_dialog.cpp phone_screenshot.cpp)
+  foreach(name main_window.cpp session.cpp process_utils.cpp deskflow_server.cpp connection_manager.cpp companion_app.cpp companion_transfer.cpp wireless_adb_dialog.cpp transfer_dialog.cpp phone_clipboard.cpp phone_screenshot.cpp)
     set(input "${CMAKE_CURRENT_BINARY_DIR}/i18n-test/${name}.txt")
     configure_file("${name}" "${input}" COPYONLY)
     list(APPEND i18n_test_sources "${input}")
@@ -212,7 +214,7 @@ if(BUILD_TESTING)
     FILES ${i18n_test_sources}
   )
   qt_add_executable(test_window ../tests/test_window.cpp main_window.cpp main_window.h)
-  if(BUILD_UHID)
+  if(BUILD_AUDIO OR BUILD_CLIPBOARD OR BUILD_UHID)
     # Multi-config and app-bundle layouts need the runtime pair next to the
     # window fixture too, so it can exercise the real GUI session start path.
     set(test_window_data "$<TARGET_FILE_DIR:test_window>/share/deskflow-bridge")
