@@ -21,15 +21,15 @@ jobs:
     if: ${{ !startsWith(github.ref_name, 'doc/') && !startsWith(github.head_ref, 'doc/') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           # The legacy SDK "tools" package was removed from current
           # repositories. setup-android defaults to installing it, so request
@@ -79,8 +79,8 @@ jobs:
             asset: windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       - name: Download signed companion APK
@@ -210,19 +210,58 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          python scripts/package_dmg.py --stage stage --output "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
-          hdiutil verify "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
-          mount_dir="$(mktemp -d)"
-          trap 'hdiutil detach "$mount_dir" || true; rmdir "$mount_dir"' EXIT
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
-          test -L "$mount_dir/Applications"
-          test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge"
-          test -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/platform-tools/adb"
-          if [ -n "$COMPANION_APK" ]; then
-            cmp "$COMPANION_APK" "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge-companion.apk"
-          fi
-          test -f "$mount_dir/deskflow-bridge-gui.app/Contents/Resources/deskflow-bridge/licenses/libusb-LGPL-2.1.txt"
+          dmg="dist/deskflow-bridge-gui-${PACKAGE_VERSION}-${{ matrix.asset }}.dmg"
+          mount_dir=""
+          mounted=false
+
+          cleanup_mount() {
+            if [ "$mounted" = true ]; then
+              hdiutil detach "$mount_dir" -force || true
+              mounted=false
+            fi
+            if [ -n "$mount_dir" ]; then
+              rmdir "$mount_dir" 2>/dev/null || true
+              mount_dir=""
+            fi
+          }
+          trap cleanup_mount EXIT
+
+          for attempt in 1 2 3; do
+            cleanup_mount
+            rm -f "$dmg"
+            mount_dir="$(mktemp -d)"
+            if ! python scripts/package_dmg.py --stage stage --output "$dmg"; then
+              echo "DMG creation failed on attempt $attempt" >&2
+              cleanup_mount
+            elif ! hdiutil verify "$dmg"; then
+              echo "DMG verification failed on attempt $attempt" >&2
+              cleanup_mount
+            elif mounted=true && ! hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "$dmg"; then
+              echo "DMG attach failed on attempt $attempt" >&2
+              cleanup_mount
+            else
+              if [ -L "$mount_dir/Applications" \
+                   ] && [ -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge" \
+                   ] && [ -x "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/platform-tools/adb" \
+                   ] && [ -f "$mount_dir/deskflow-bridge-gui.app/Contents/Resources/deskflow-bridge/licenses/libusb-LGPL-2.1.txt" \
+                   ] && { [ -z "$COMPANION_APK" ] || cmp "$COMPANION_APK" "$mount_dir/deskflow-bridge-gui.app/Contents/MacOS/deskflow-bridge-companion.apk"; }; then
+                cleanup_mount
+                trap - EXIT
+                exit 0
+              fi
+              echo "DMG contents failed validation on attempt $attempt" >&2
+              cleanup_mount
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 5))
+            fi
+          done
+
+          echo "DMG packaging failed after 3 attempts" >&2
+          exit 1
       - name: Package Debian (Linux)
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Linux'
         shell: bash
