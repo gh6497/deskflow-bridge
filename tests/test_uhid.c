@@ -175,7 +175,9 @@ static void bridge_wire(bool absolute)
             if (report[2] == 4) ++key_down;
             if (key_down && !memcmp(report, "\0\0\0\0\0\0\0\0", 8)) ++key_release;
         } else {
-            if (report[2] == 0xff && report[3] == 0x7f && report[4] == 0xff && report[5] == 0x7f) ++corner;
+            const uint16_t corner_x = (uint16_t)((uint32_t)1079 * 32767 / 2339);
+            if (report[2] == (uint8_t)corner_x && report[3] == (uint8_t)(corner_x >> 8) &&
+                report[4] == 0xff && report[5] == 0x7f) ++corner;
             if (report[0] == 3 && report[1] == 1) ++drag;
             if (report[6] == 1) ++wheel;
             if (!report[0] && !report[1]) ++out;
