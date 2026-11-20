@@ -253,7 +253,9 @@ for mode in cases:
                         digits = [k[2] for k in keys if k[2] in (0x1e, 0x1f, 0x20, 0x21)]
                         assert digits == ([0x1e, 0x1f, 0x20, 0x21] if mode == 'unlock-locked' else []), digits
                     pointers = [bytes.fromhex(r[2]) for r in reports if r[:2] == ['input', 2]]
-                    assert any(p[2:6] == b'\xff\x7f\xff\x7f' for p in pointers), pointers
+                    corner_x = 1079 * 32767 // 1919
+                    corner = bytes((corner_x & 0xff, corner_x >> 8, 0xff, 0x7f))
+                    assert any(p[2:6] == corner for p in pointers), pointers
                     assert pointers[-1][:2] == b'\0\0', pointers
             else:
                 assert 'uhid-ready' not in events

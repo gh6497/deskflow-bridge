@@ -237,13 +237,13 @@ static int32_t clamp_position(int32_t value, int32_t size)
     return value;
 }
 
-static uint16_t absolute_axis(int32_t value, int32_t size)
+static uint16_t absolute_axis(int32_t value, int32_t extent)
 {
-    if (size <= 1) {
+    if (extent <= 1) {
         return 0;
     }
-    return (uint16_t)((int64_t)clamp_position(value, size) * HID_ABSOLUTE_MAX /
-                      (size - 1));
+    return (uint16_t)((int64_t)clamp_position(value, extent) * HID_ABSOLUTE_MAX /
+                      (extent - 1));
 }
 
 static int32_t rescale_position(int32_t value, int32_t old_size, int32_t new_size)
@@ -426,8 +426,14 @@ static void send_mouse_state(struct otg_bridge *b, int8_t vs, int8_t hs)
         return;
     }
 
-    uint16_t x = absolute_axis(b->mouse_x, b->screen_w);
-    uint16_t y = absolute_axis(b->mouse_y, b->screen_h);
+    /* Android classifies this descriptor as a POINTER. Its TouchInputMapper
+     * deliberately uses one scale for both raw axes, based on the display's
+     * long edge, so equal physical motion does not stretch gestures. Mapping
+     * each logical axis to the full HID range would make the short axis too
+     * fast, especially after a portrait-to-landscape rotation. */
+    const int32_t pointer_extent = b->screen_w > b->screen_h ? b->screen_w : b->screen_h;
+    uint16_t x = absolute_axis(b->mouse_x, pointer_extent);
+    uint16_t y = absolute_axis(b->mouse_y, pointer_extent);
     uint8_t buttons = b->active ? b->mouse_buttons : 0;
     /* Like Android's mouse, left/right/middle count as pointer down. */
     uint8_t flags = b->active ? (uint8_t)(0x02 | !!(buttons & 0x07)) : 0;
