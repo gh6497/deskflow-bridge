@@ -95,7 +95,7 @@ struct otg_bridge {
      */
     bool active;
     /* Virtual screen size reported to the server.  Absolute mode maps this
-     * rectangle to the tablet's full logical range, independent of Android's
+     * rectangle to the tablet's common logical range, independent of Android's
      * display resolution and mouse speed. */
     int32_t screen_w, screen_h;
     float residual_hscroll;

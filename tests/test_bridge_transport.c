@@ -332,8 +332,9 @@ static void check_pointer_position(int32_t x, int32_t y, int32_t w, int32_t h)
     CHECK(report[0] == 2 && !report[1] && !report[6] && !report[7]);
     uint16_t hx = (uint16_t)(report[2] | (uint16_t)report[3] << 8);
     uint16_t hy = (uint16_t)(report[4] | (uint16_t)report[5] << 8);
-    CHECK(hx == (w > 1 ? x * 32767 / (w - 1) : 0));
-    CHECK(hy == (h > 1 ? y * 32767 / (h - 1) : 0));
+    const int32_t extent = w > h ? w : h;
+    CHECK(hx == (extent > 1 ? (int32_t)((int64_t)x * 32767 / (extent - 1)) : 0));
+    CHECK(hy == (extent > 1 ? (int32_t)((int64_t)y * 32767 / (extent - 1)) : 0));
 }
 
 static void test_sensitivity(void)
@@ -468,8 +469,7 @@ int main(void)
     CHECK(registrations==2 && reports==0 && otg_bridge_ready(&b));
     otg_bridge_enter(&b,0,0,0);CHECK(reports==2 && last_id==1 && last_size==8);
     otg_bridge_mouse_move(&b,1079,2339);
-    CHECK(last_id==2 && last_size==8 && report[0]==2 && report[1]==0);
-    CHECK(report[2]==255 && report[3]==127 && report[4]==255 && report[5]==127);
+    check_pointer_position(1079,2339,1080,2340);
     otg_bridge_mouse_button(&b,1,true);CHECK(report[0]==3 && report[1]==1);
     otg_bridge_mouse_button(&b,3,true);CHECK(report[1]==3);
     otg_bridge_mouse_wheel(&b,120,120);CHECK(report[6]==1 && report[7]==1);
@@ -479,9 +479,9 @@ int main(void)
     CHECK(otg_bridge_resize(&b,2340,1080));
     CHECK(b.active && b.keys[4] && !b.mouse_buttons && registrations==2 && closes==0);
     CHECK(b.mouse_x==2339 && b.mouse_y==1079 && b.screen_w==2340 && b.screen_h==1080);
-    CHECK(last_id==2 && report[0]==2 && report[1]==0 && report[2]==255 && report[3]==127);
+    check_pointer_position(2339,1079,2340,1080);
     otg_bridge_mouse_move(&b,0,0);CHECK(report[2]==0 && report[4]==0);
-    otg_bridge_mouse_move(&b,2339,1079);CHECK(report[2]==255 && report[4]==255);
+    otg_bridge_mouse_move(&b,2339,1079);check_pointer_position(2339,1079,2340,1080);
     int unchanged=reports;CHECK(otg_bridge_resize(&b,2340,1080) && reports==unchanged);
     CHECK(!otg_bridge_resize(&b,0,1080) && !otg_bridge_resize(&b,1080,32768) && reports==unchanged);
     CHECK(otg_bridge_resize(&b,1,1) && b.mouse_x==0 && b.mouse_y==0);

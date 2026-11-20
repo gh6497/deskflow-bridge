@@ -48,6 +48,7 @@ static void close(void *ctx) { ++static_cast<Fake *>(ctx)->closed; }
 int main()
 {
     Fake f;
+    const uint16_t cornerX = static_cast<uint16_t>(1079U * 32767U / 2339U);
     otg_bridge bridge;
     const otg_hid_transport_ops ops = {register_report, send, poll, ready, close};
     CHECK(otg_bridge_open_transport(&bridge, &ops, &f, 1080, 2340, OTG_MOUSE_ABSOLUTE) == 0);
@@ -74,10 +75,12 @@ int main()
     otg_bridge_mouse_wheel(&bridge, 0, 120);
     otg_bridge_leave(&bridge);
     auto move = f.queue.pop();
-    CHECK(move.bytes[2] == 0xff && move.bytes[3] == 0x7f &&
+    CHECK(move.bytes[2] == static_cast<uint8_t>(cornerX) &&
+        move.bytes[3] == static_cast<uint8_t>(cornerX >> 8) &&
         move.bytes[4] == 0xff && move.bytes[5] == 0x7f);
     auto down = f.queue.pop();
-    CHECK(down.bytes[0] == 3 && down.bytes[1] == 1 && down.bytes[2] == 0xff);
+    CHECK(down.bytes[0] == 3 && down.bytes[1] == 1 &&
+        down.bytes[2] == static_cast<uint8_t>(cornerX));
     CHECK(f.queue.pop().bytes[2] == 4); // a down remains before a up
     CHECK(f.queue.pop().bytes[2] == 0);
     CHECK(f.queue.pop().bytes[6] == 1);
