@@ -98,7 +98,7 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 - **Device settings**: select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach dimensions, mouse buttons and the companion app.
 - **Screen layout**: choose which side of the computer the phone occupies and therefore which edge you cross to reach it.
 - **Shared server**: select Deskflow and choose automatic startup or an existing server.
-- **Bottom-right buttons**: Connect, Disconnect and Copy phone screenshot apply to the selected device. Files & sharing opens the transfer window.
+- The **Connect**, **Disconnect**, **Copy phone screenshot** and **Manual clipboard** buttons at the bottom right apply to the selected device. **Files & sharing** opens the file transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
 - **Language at the top right**: switch between English and Chinese at any time. Appearance follows the system theme.
 
@@ -225,6 +225,17 @@ Disconnect the device you want to change, update **Device settings → ADB enhan
 Enable **Share text clipboard**, connect, copy text on the computer, move to the phone and paste into a text field. Copying on the phone can synchronize text back to the computer. No companion app is needed.
 
 This shares text; use **Files & sharing** below for pictures and files. Copying on a phone in the background may also update the shared clipboard.
+
+### Transfer clipboard text manually
+
+Select the phone on the left, then open **Manual clipboard** at the bottom of the window.
+
+- **Copy from phone to computer** copies the latest text from the phone to the system clipboard of the computer running the GUI.
+- **Send from computer to phone** copies the current text from this computer to the phone's clipboard. Paste it on the phone where you need it.
+
+Each action transfers text once. Both work with **Share text clipboard** turned off and while Deskflow is disconnected. The selected phone must already be online and authorized in ADB. For AOA/BLE, enable **ADB enhancements**. For BLE, enter that phone's wireless ADB address.
+
+Plain text up to 262,130 UTF-8 bytes is supported. The computer's clipboard is replaced only after a successful read. If the phone clipboard cannot be read, unlock the phone, copy some text and try again.
 
 ### Copy a phone screenshot
 
