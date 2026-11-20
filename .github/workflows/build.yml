@@ -322,7 +322,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path dist -Force
           New-Item -ItemType Directory -Path build/cli-package -Force
-          Copy-Item build/Release/deskflow-bridge.exe build/cli-package/
+          Copy-Item build/deskflow-bridge.exe build/cli-package/
           Copy-Item third_party/scrcpy/scrcpy-server-v5.0.1 build/cli-package/scrcpy-server
           Copy-Item build/SCRCPY_VERSION.txt build/cli-package/
           Compress-Archive -Path build/cli-package/* -DestinationPath "dist/deskflow-bridge-${env:PACKAGE_VERSION}-${{ matrix.asset }}.zip"
