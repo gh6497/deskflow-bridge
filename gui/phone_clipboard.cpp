@@ -36,6 +36,7 @@ PhoneClipboard::PhoneClipboard(QObject *parent) : QObject(parent)
         if (error == QProcess::FailedToStart) commandFinished(false);
     }, Qt::QueuedConnection);
     const auto serverStopped = [this] {
+        m_serverActive = false;
         if (m_stage == Stage::Exchange) {
             cleanup(m_reply == Reply::Dummy || m_direction == Direction::FromPhone
                 ? "otg.manual_clipboard.failed" : "otg.manual_clipboard.write_unconfirmed");
@@ -127,6 +128,7 @@ void PhoneClipboard::start(const QString &adb, const QString &target, const QStr
 void PhoneClipboard::command(Stage stage, const QStringList &args)
 {
     m_stage = stage;
+    m_commandActive = true;
     m_commandOutput.clear();
     m_deadline.start(CommandTimeoutMs);
     m_command.start(m_adb, QStringList{QStringLiteral("-s"), m_target} + args, QIODevice::ReadOnly);
@@ -147,6 +149,7 @@ void PhoneClipboard::readCommandOutput()
 
 void PhoneClipboard::commandFinished(bool ok)
 {
+    m_commandActive = false;
     m_deadline.stop();
     readCommandOutput();
     switch (m_stage) {
@@ -203,6 +206,7 @@ void PhoneClipboard::startServer()
     m_stage = Stage::Exchange;
     m_reply = Reply::Dummy;
     m_deadline.start(CommandTimeoutMs);
+    m_serverActive = true;
     // cleanup=false avoids scrcpy's device settings cleanup. We remove our
     // uniquely named file even when the server could not start.
     m_server.start(m_adb, {"-s", m_target, "shell", "-T", "-n", "CLASSPATH=" + m_remoteJar,
@@ -335,7 +339,7 @@ void PhoneClipboard::removeJar()
 
 void PhoneClipboard::finishIfStopped()
 {
-    if (m_stage != Stage::Finishing || m_command.state() != QProcess::NotRunning || m_server.state() != QProcess::NotRunning)
+    if (m_stage != Stage::Finishing || m_commandActive || m_serverActive)
         return;
     const auto id = QString::fromLatin1(m_cancelled ? "" : m_result);
     if (!m_cancelled && !m_receivedText.isEmpty())

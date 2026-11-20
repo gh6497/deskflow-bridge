@@ -44,6 +44,8 @@ private:
     Reply m_reply = Reply::Dummy;
     Direction m_direction = Direction::FromPhone;
     bool m_cancelled = false;
+    bool m_commandActive = false;
+    bool m_serverActive = false;
     QString m_adb, m_target, m_serverFile, m_version, m_remoteJar, m_scid, m_remoteSocket;
     quint16 m_port = 0;
     QByteArray m_commandOutput, m_sendText;
