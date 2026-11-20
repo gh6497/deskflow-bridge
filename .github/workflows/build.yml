@@ -111,7 +111,9 @@ jobs:
             vcpkg-${{ runner.os }}-
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
-        run: vcpkg install libusb:x64-windows-static openssl:x64-windows-static openssl:x64-windows-static-md
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          vcpkg install libusb:x64-windows-static openssl:x64-windows-static openssl:x64-windows-static-md
       - name: Download verified ADB distribution
         run: python scripts/fetch_adb.py --output adb-bundle
       - name: Configure
