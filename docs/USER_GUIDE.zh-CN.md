@@ -53,7 +53,7 @@
 | 电脑系统 | 选择的文件 | 如何启动 |
 | --- | --- | --- |
 | Windows x64 | `…-windows-x86_64-setup.exe` | 运行安装程序，完成后从开始菜单打开 Deskflow Bridge |
-| Windows 便携版 | `…-windows-x86_64.zip`（名称含 `gui`） | 完整解压，运行 `bin/deskflow-bridge-gui.exe`；保留旁边的文件 |
+| Windows 便携版 | `…-windows-x86_64.zip`（名称含 `gui`） | 完整解压，运行 `bin/deskflow-bridge-gui.exe`；在同一目录运行 `Uninstall.exe` 可删除本程序 |
 | Ubuntu / Debian / Linux Mint x86_64 | `…-linux-amd64.deb` | 用系统软件安装器安装，再从应用菜单打开 |
 | 其他 Linux x86_64 桌面 | `…-linux-x86_64.AppImage` | 在文件属性中允许作为程序执行，再双击；系统需要 FUSE |
 | Apple 芯片 Mac | `…-macos-arm64.dmg` | 打开后把应用拖到「应用程序」 |

@@ -53,7 +53,7 @@ Desktop packages contain the bridge, GUI runtime and ADB, but **do not include D
 | Computer | File to choose | How to start |
 | --- | --- | --- |
 | Windows x64 | `…-windows-x86_64-setup.exe` | Run the installer, then open Deskflow Bridge from the Start menu |
-| Windows portable | `…-windows-x86_64.zip` (with `gui` in the name) | Extract everything and run `bin/deskflow-bridge-gui.exe`; keep the accompanying files |
+| Windows portable | `…-windows-x86_64.zip` (with `gui` in the name) | Extract everything and run `bin/deskflow-bridge-gui.exe`; run `Uninstall.exe` in the same folder to remove it |
 | Ubuntu / Debian / Linux Mint x86_64 | `…-linux-amd64.deb` | Install with the system package installer, then open from the application menu |
 | Other Linux x86_64 desktops | `…-linux-x86_64.AppImage` | Allow execution in file properties and double-click; the system needs FUSE |
 | Apple Silicon Mac | `…-macos-arm64.dmg` | Open and drag the app into Applications |
