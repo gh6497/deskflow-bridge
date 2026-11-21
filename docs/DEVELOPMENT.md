@@ -107,7 +107,7 @@ When reporting a hardware result, record the host OS, phone model, Android versi
 
 1. Update the root `VERSION` file.
 2. Keep the version change in its own reviewed commit or include it clearly in the release change.
-3. Create a matching tag such as `v0.1.10`.
+3. Create a matching tag such as `v0.1.11`.
 4. Push the tag and wait for the GitHub Actions build, test, and packaging jobs.
 5. Check the generated release assets on Linux, Windows, and both macOS architectures before announcing the release.
 
