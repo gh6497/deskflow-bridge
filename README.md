@@ -8,6 +8,12 @@ Control an Android phone with the keyboard and mouse you already use on your com
 
 > This project is a Deskflow client bridge for Android. It does not provide screen mirroring or turn the phone into a video display.
 
+
+
+https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
+
+
+
 ## What it does
 
 - Shares one desktop keyboard and mouse with one or more Android phones.
