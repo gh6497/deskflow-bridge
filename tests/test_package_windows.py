@@ -4,7 +4,7 @@ import pathlib
 import tempfile
 import unittest
 
-from scripts.package_windows import make_script
+from scripts.package_windows import make_portable_uninstaller_script, make_script
 
 
 class WindowsPackageTests(unittest.TestCase):
@@ -46,6 +46,15 @@ class WindowsPackageTests(unittest.TestCase):
         (self.stage / 'bin/bad$name.dll').write_bytes(b'test')
         with self.assertRaisesRegex(ValueError, 'NSIS-unsafe'):
             make_script(self.stage, pathlib.Path(self.temp.name) / 'setup.exe', '0.1.0')
+
+    def test_portable_uninstaller_removes_staged_files(self):
+        script = make_portable_uninstaller_script(
+            self.stage, pathlib.Path(self.temp.name) / 'Uninstall.exe', '0.1.0')
+        self.assertIn('SilentInstall silent', script)
+        self.assertIn('Delete "$EXEDIR\\bin\\deskflow-bridge-gui.exe"', script)
+        self.assertIn('Delete "$EXEDIR\\share\\deskflow-bridge\\LICENSE"', script)
+        self.assertIn('Delete "$EXEDIR\\Uninstall.exe"', script)
+        self.assertNotIn('WriteRegStr', script)
 
 
 if __name__ == '__main__':

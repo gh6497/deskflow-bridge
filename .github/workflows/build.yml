@@ -199,9 +199,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe"
+          python scripts/package_windows.py --stage stage --output "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe" --portable-uninstaller stage/Uninstall.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "dist/deskflow-bridge-gui-$env:PACKAGE_VERSION-windows-x86_64-setup.exe")) { throw 'Installer missing' }
+          if (-not (Test-Path 'stage/Uninstall.exe')) { throw 'Portable uninstaller missing' }
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -220,6 +221,12 @@ jobs:
           $process = Start-Process -FilePath (Join-Path $installDir 'Uninstall.exe') -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Uninstaller failed: $($process.ExitCode)" }
           if (Test-Path (Join-Path $installDir 'bin/deskflow-bridge-gui.exe')) { throw 'Uninstaller left GUI behind' }
+          $portableDir = Join-Path $env:RUNNER_TEMP 'deskflow-bridge-portable-smoke'
+          New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
+          Copy-Item -Path 'stage/*' -Destination $portableDir -Recurse -Force
+          $process = Start-Process -FilePath (Join-Path $portableDir 'Uninstall.exe') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Portable uninstaller failed: $($process.ExitCode)" }
+          if (Test-Path (Join-Path $portableDir 'bin/deskflow-bridge-gui.exe')) { throw 'Portable uninstaller left GUI behind' }
       - name: Package DMG (macOS)
         if: runner.os == 'macOS'
         shell: bash

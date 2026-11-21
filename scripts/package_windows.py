@@ -87,11 +87,50 @@ def make_script(stage, output, version):
     return '\n'.join(lines)
 
 
+def make_portable_uninstaller_script(stage, output, version):
+    files = [path for path in validate_stage(stage)
+             if path.relative_to(stage) != pathlib.Path('Uninstall.exe')]
+    directories = sorted({path.relative_to(stage).parent for path in files},
+                         key=lambda path: (len(path.parts), path.as_posix()))
+    lines = [
+        'Unicode true',
+        f'Name "Deskflow Bridge {version} Portable Uninstaller"',
+        f'OutFile "{output}"',
+        'SilentInstall silent',
+        'RequestExecutionLevel user',
+        'Section "Uninstall"',
+    ]
+    for path in files:
+        relative = str(path.relative_to(stage)).replace('/', '\\')
+        lines.append(f'  Delete "$EXEDIR\\{relative}"')
+    for directory in reversed(directories):
+        relative = str(directory).replace('/', '\\')
+        lines.append(f'  RMDir "$EXEDIR\\{relative}"')
+    lines += [
+        '  Delete "$EXEDIR\\Uninstall.exe"',
+        '  RMDir "$EXEDIR"',
+        'SectionEnd',
+        '',
+    ]
+    return '\n'.join(lines)
+
+
+def compile_script(script, output, prefix):
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=prefix) as temp:
+        path = pathlib.Path(temp) / 'package.nsi'
+        path.write_text(script, encoding='utf-8-sig')
+        subprocess.run(['makensis', '/V2', str(path)], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stage', type=pathlib.Path, required=True)
     parser.add_argument('--output', type=pathlib.Path, required=True)
     parser.add_argument('--version', help='Optional check against the staged build version')
+    parser.add_argument('--portable-uninstaller', type=pathlib.Path,
+                        help='Also create an uninstaller for a portable stage directory')
     args = parser.parse_args()
     if sys.platform != 'win32':
         parser.error('NSIS packaging requires Windows')
@@ -107,11 +146,14 @@ def main():
         script = make_script(stage, output, version)
     except ValueError as exc:
         parser.error(str(exc))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='deskflow-bridge-nsis-') as temp:
-        path = pathlib.Path(temp) / 'package.nsi'
-        path.write_text(script, encoding='utf-8-sig')
-        subprocess.run(['makensis', '/V2', str(path)], check=True)
+    compile_script(script, output, 'deskflow-bridge-nsis-')
+    if args.portable_uninstaller:
+        uninstaller = args.portable_uninstaller.resolve()
+        try:
+            script = make_portable_uninstaller_script(stage, uninstaller, version)
+        except ValueError as exc:
+            parser.error(str(exc))
+        compile_script(script, uninstaller, 'deskflow-bridge-portable-nsis-')
     print(output)
 
 
