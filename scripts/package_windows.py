@@ -98,7 +98,7 @@ def make_portable_uninstaller_script(stage, output, version):
         f'OutFile "{output}"',
         'SilentInstall silent',
         'RequestExecutionLevel user',
-        'Section "Uninstall"',
+        'Section "Remove portable files"',
     ]
     for path in files:
         relative = str(path.relative_to(stage)).replace('/', '\\')
