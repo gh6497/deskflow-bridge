@@ -4,15 +4,13 @@ Control an Android phone with the keyboard and mouse you already use on your com
 
 [简体中文](README.zh-CN.md) · [User guide](docs/USER_GUIDE.md) · [Latest release](https://github.com/gh6497/deskflow-bridge/releases/latest)
 
-![Deskflow Bridge desktop GUI](docs/screenshots/device-en.png)
-
-> This project is a Deskflow client bridge for Android. It does not provide screen mirroring or turn the phone into a video display.
-
-
+## Demo
 
 https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 
+*The phone screen was captured with scrcpy. Deskflow Bridge forwards keyboard and mouse input.*
 
+> This project is a Deskflow client bridge for Android. It does not provide screen mirroring or turn the phone into a video display.
 
 ## What it does
 
@@ -33,6 +31,8 @@ Download a desktop package from the [latest release](https://github.com/gh6497/d
 You must install [Deskflow](https://github.com/deskflow/deskflow) separately. The Deskflow Bridge package includes its own GUI runtime and, where applicable, ADB; it does not include Deskflow.
 
 ## Quick start
+
+![Deskflow Bridge desktop GUI](docs/screenshots/device-en.png)
 
 1. Install and start Deskflow on the computer that owns the keyboard and mouse.
 2. Add the phone as a screen in Deskflow and place it next to the computer screen.

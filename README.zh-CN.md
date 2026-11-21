@@ -4,7 +4,11 @@
 
 [English](README.md) · [中文用户指南](docs/USER_GUIDE.zh-CN.md) · [最新版本](https://github.com/gh6497/deskflow-bridge/releases/latest)
 
-![Deskflow Bridge 桌面 GUI](docs/screenshots/device-zh-CN.png)
+## 操作演示
+
+https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
+
+*手机画面通过 scrcpy 投屏录制，键鼠输入由 Deskflow Bridge 转发。*
 
 > 本项目是连接 Deskflow 与 Android 的客户端桥接程序，不提供手机画面投屏，也不会把手机变成视频显示器。
 
@@ -27,6 +31,8 @@
 需要另外安装 [Deskflow](https://github.com/deskflow/deskflow)。Deskflow Bridge 安装包包含自己的 GUI 运行库，以及适用时的 ADB；**不包含 Deskflow 本身**。
 
 ## 快速开始
+
+![Deskflow Bridge 桌面 GUI](docs/screenshots/device-zh-CN.png)
 
 1. 在持有键盘鼠标的电脑上安装并启动 Deskflow。
 2. 在 Deskflow 中添加手机屏幕，并把它放在电脑屏幕旁边。
