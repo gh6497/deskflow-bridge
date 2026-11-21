@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLockFile>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -23,16 +24,26 @@ static void output(const char *text)
     std::fflush(stdout);
 }
 
+static void appendLog(const QString &path, const QByteArray &line)
+{
+    QLockFile lock(path + QStringLiteral(".lock"));
+    lock.setStaleLockTime(10000);
+    if (!lock.tryLock(5000)) return;
+    QFile log(path);
+    if (log.open(QIODevice::WriteOnly | QIODevice::Append)) log.write(line);
+}
+
+static void appendArgumentsLog(const QString &path, const QStringList &args)
+{
+    appendLog(path, QJsonDocument(QJsonArray::fromStringList(args)).toJson(QJsonDocument::Compact) + '\n');
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     const auto args = app.arguments();
     const auto uhidLog = qEnvironmentVariable("OTG_TEST_UHID_LOG");
-    if (!uhidLog.isEmpty()) {
-        QFile log(uhidLog);
-        if (log.open(QIODevice::WriteOnly | QIODevice::Append))
-            log.write(QJsonDocument(QJsonArray::fromStringList(args.mid(1))).toJson(QJsonDocument::Compact) + '\n');
-    }
+    if (!uhidLog.isEmpty()) appendArgumentsLog(uhidLog, args.mid(1));
     // The window test owns the loopback TCP peer that simulates scrcpy.
     const auto clipboardPort = qgetenv("OTG_TEST_CLIPBOARD_PORT");
     if (!clipboardPort.isEmpty() && args.value(1) == "-s" && !args.value(2).isEmpty()) {
@@ -97,11 +108,7 @@ int main(int argc, char **argv)
         args.contains("com.github.gh6497.deskflowotg/.MainActivity") ||
         args.contains("com.github.gh6497.deskflowotg/.ConnectionStatusReceiver")) {
         const auto logPath = qEnvironmentVariable("OTG_TEST_COMPANION_LOG");
-        if (!logPath.isEmpty()) {
-            QFile log(logPath);
-            if (log.open(QIODevice::WriteOnly | QIODevice::Append))
-                log.write(QJsonDocument(QJsonArray::fromStringList(args.mid(1))).toJson(QJsonDocument::Compact) + '\n');
-        }
+        if (!logPath.isEmpty()) appendArgumentsLog(logPath, args.mid(1));
         const auto mode = qEnvironmentVariable("OTG_TEST_COMPANION");
         if (mode == "command-failure") return 1;
         if (mode == "pm-failure" && args.contains("pm")) return 1;
@@ -172,11 +179,7 @@ int main(int argc, char **argv)
     }
     if (args.contains("--usb-scan")) {
         const auto logPath = qEnvironmentVariable("OTG_TEST_USB_SCAN_LOG");
-        if (!logPath.isEmpty()) {
-            QFile log(logPath);
-            if (log.open(QIODevice::WriteOnly | QIODevice::Append))
-                log.write("scan\n");
-        }
+        if (!logPath.isEmpty()) appendLog(logPath, "scan\n");
         const auto path = qEnvironmentVariable("OTG_TEST_USB_SNAPSHOT");
         QByteArray data;
         if (!path.isEmpty()) {
@@ -229,10 +232,7 @@ int main(int argc, char **argv)
     QTcpServer server;
     if (args.value(1) == "server" || args.contains("--no-daemon")) {
         const auto logPath = qEnvironmentVariable("OTG_TEST_SERVER_START_LOG");
-        if (!logPath.isEmpty()) {
-            QFile log(logPath);
-            if (log.open(QIODevice::WriteOnly | QIODevice::Append)) log.write("server\n");
-        }
+        if (!logPath.isEmpty()) appendLog(logPath, "server\n");
         const int exitDelay = qEnvironmentVariableIntValue("OTG_TEST_SERVER_EXIT_MS");
         if (exitDelay > 0) QTimer::singleShot(exitDelay, &app, [] { QCoreApplication::exit(11); });
         QString layoutPath;
