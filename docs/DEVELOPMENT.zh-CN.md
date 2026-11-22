@@ -107,7 +107,7 @@ done
 
 1. 修改根目录的 `VERSION` 文件。
 2. 将版本修改放在独立的审查提交中，或在发布变更中明确标注。
-3. 创建匹配的 tag，例如 `v0.1.11`。
+3. 创建匹配的 tag，例如 `v0.1.12`。
 4. 推送 tag，等待 GitHub Actions 完成构建、测试和打包。
 5. 发布前检查 Linux、Windows 和两种 macOS 架构的 Release 产物。
 
