@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 1. 在持有键盘鼠标的电脑上安装并启动 Deskflow。
 2. 在 Deskflow 中添加手机屏幕，并把它放在电脑屏幕旁边。
 3. 启动 `deskflow-bridge-gui`，选择连接方式。
-4. 配置手机尺寸和 Deskflow 屏幕位置，点击**连接**。
+4. 在「设备配置 → 屏幕与显示」设置手机尺寸，然后点击**连接**。
 5. 将鼠标滑过设置好的屏幕边缘进入手机；滑回来即可返回电脑。
 
 [图文用户指南](docs/USER_GUIDE.zh-CN.md)介绍下载安装、首次连接、权限、故障排查、附加功能和多设备配置；也可以阅读[英文用户指南](docs/USER_GUIDE.md)。

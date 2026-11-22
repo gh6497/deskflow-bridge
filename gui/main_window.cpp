@@ -5,7 +5,6 @@
 #include "process_utils.h"
 #include "i18n.h"
 #include "build_version.h"
-#include "screen_layout_preview.h"
 #include "tls_certificate.h"
 #include "wireless_adb_dialog.h"
 
@@ -204,10 +203,9 @@ void MainWindow::retranslateUi()
     updateConnectionStatus();
     if (m_tabs) {
         m_tabs->setTabText(0, qtTrId("otg.multi.device_tab"));
-        m_tabs->setTabText(1, qtTrId("otg.multi.layout_tab"));
-        m_tabs->setTabText(2, qtTrId("otg.multi.server_tab"));
+        m_tabs->setTabText(1, qtTrId("otg.multi.server_tab"));
         updateDeviceList();
-        updateLayoutPreview();
+        updateScreenNeighbors();
     }
     updateVirtualSize();
     if (m_session) m_clipboardStatus->setText(m_session->clipboardStatusMessage());
@@ -681,6 +679,22 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_phone->setObjectName("screenName");
     addTranslatedRow(displayForm, "otg.label.phone_name", m_phone);
 
+    m_neighbor = new NoWheelWidget<QComboBox>;
+    m_neighbor->setObjectName("screenNeighbor");
+    addTranslatedRow(displayForm, "otg.multi.neighbor", m_neighbor);
+    m_direction = new NoWheelWidget<QComboBox>;
+    m_direction->setObjectName("screenPosition");
+    m_direction->addItem(qtTrId("otg.position.right"), "right");
+    m_direction->addItem(qtTrId("otg.position.left"), "left");
+    m_direction->addItem(qtTrId("otg.position.up"), "up");
+    m_direction->addItem(qtTrId("otg.position.down"), "down");
+    addTranslatedRow(displayForm, "otg.label.position", m_direction);
+    m_layoutWarning = translated(new QLabel, "text", "otg.multi.invalid_layout");
+    m_layoutWarning->setObjectName("layoutWarning");
+    m_layoutWarning->setWordWrap(true);
+    m_layoutWarning->hide();
+    displayForm->addRow(m_layoutWarning);
+
     formLayout->addWidget(displayBox);
 
     auto *featuresBox = translated(new QGroupBox, "title", "otg.section.features");
@@ -784,30 +798,8 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     auto *serverBox = translated(new QGroupBox, "title", "otg.section.connection");
     auto *serverForm = new QFormLayout(serverBox);
     m_manage = translated(new QCheckBox, "text", "otg.server.manage");
+    m_manage->setObjectName("manageServer");
     serverForm->addRow(m_manage);
-    m_direction = new NoWheelWidget<QComboBox>;
-    m_direction->setObjectName("screenPosition");
-    m_direction->addItem(qtTrId("otg.position.right"), "right");
-    m_direction->addItem(qtTrId("otg.position.left"), "left");
-    m_direction->addItem(qtTrId("otg.position.up"), "up");
-    m_direction->addItem(qtTrId("otg.position.down"), "down");
-    m_layoutBox = new QWidget;
-    auto *layoutForm = new QFormLayout(m_layoutBox);
-    m_layoutCanvas = new ScreenLayoutPreview;
-    m_layoutCanvas->setObjectName("screenLayoutCanvas");
-    layoutForm->addRow(m_layoutCanvas);
-    m_neighbor = new NoWheelWidget<QComboBox>;
-    m_neighbor->setObjectName("screenNeighbor");
-    addTranslatedRow(layoutForm, "otg.multi.neighbor", m_neighbor);
-    addTranslatedRow(layoutForm, "otg.label.position", m_direction);
-    m_layoutPreview = new QLabel;
-    m_layoutPreview->setObjectName("layoutPreview");
-    m_layoutPreview->setWordWrap(true);
-    m_layoutPreview->setTextFormat(Qt::PlainText);
-    layoutForm->addRow(m_layoutPreview);
-    auto *layoutHint = translated(new QLabel, "text", "otg.multi.layout_hint");
-    layoutHint->setWordWrap(true);
-    layoutForm->addRow(layoutHint);
     m_computer = new QLineEdit;
     m_host = new QLineEdit;
     m_port = new NoWheelWidget<QSpinBox>;
@@ -879,7 +871,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setWidget(m_form);
     m_tabs->addTab(scroll, QString());
-    m_tabs->addTab(m_layoutBox, QString());
     m_tabs->addTab(m_sharedBox, QString());
 
     auto *buttons = new QHBoxLayout;
@@ -1088,6 +1079,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     connect(m_mouseMode, &QComboBox::currentIndexChanged, this, &MainWindow::updateVirtualSize);
     updateVirtualSize();
     connect(m_manage, &QCheckBox::toggled, this, &MainWindow::updateEnabled);
+    connect(m_manage, &QCheckBox::toggled, this, &MainWindow::updateLayoutWarning);
     connect(m_refresh, &QPushButton::clicked, this, &MainWindow::refreshDevices);
     connect(m_devices, &QComboBox::currentIndexChanged, this, &MainWindow::readDevice);
     connect(m_serial, &QLineEdit::textChanged, this, [this] {
@@ -1191,14 +1183,19 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     });
     connect(m_connectAll, &QPushButton::clicked, this, &MainWindow::connectAll);
     connect(m_disconnectAll, &QPushButton::clicked, &m_connections, &ConnectionManager::stopAll);
-    connect(m_neighbor, &QComboBox::currentIndexChanged, this, [this] {
-        if (!m_loadingDevice) { storeDevice(); updateLayoutPreview(); }
+    const auto screenPlacementChanged = [this] {
+        if (m_loadingDevice) return;
+        storeDevice();
+        updateLayoutWarning();
+    };
+    connect(m_neighbor, &QComboBox::currentIndexChanged, this, screenPlacementChanged);
+    connect(m_direction, &QComboBox::currentIndexChanged, this, screenPlacementChanged);
+    connect(m_phone, &QLineEdit::editingFinished, this, [this] {
+        storeDevice();
+        updateDeviceList();
+        updateScreenNeighbors();
     });
-    connect(m_direction, &QComboBox::currentIndexChanged, this, [this] {
-        if (!m_loadingDevice) { storeDevice(); updateLayoutPreview(); }
-    });
-    connect(m_phone, &QLineEdit::editingFinished, this, [this] { storeDevice(); updateDeviceList(); updateLayoutPreview(); });
-    connect(m_computer, &QLineEdit::editingFinished, this, &MainWindow::updateLayoutPreview);
+    connect(m_computer, &QLineEdit::editingFinished, this, &MainWindow::updateScreenNeighbors);
     connect(m_language, &QComboBox::currentIndexChanged, this, [this] {
         const QString language = m_language->currentData().toString();
         if (LanguageManager::instance().setLanguage(language)) {
@@ -1392,7 +1389,7 @@ void MainWindow::selectDevice(const QString &id)
     m_status->setText(m_connections.status(id));
     updateConnectionStatus();
     updateDeviceList();
-    updateLayoutPreview();
+    updateScreenNeighbors();
     updateEnabled();
 }
 
@@ -1433,28 +1430,25 @@ void MainWindow::updateDeviceList()
     updateTray();
 }
 
-void MainWindow::updateLayoutPreview()
+void MainWindow::updateScreenNeighbors()
 {
     const auto selectedNeighbor = m_records.value(m_selectedId).value("neighbor", m_computer->text()).toString();
     QSignalBlocker blocker(m_neighbor);
     m_neighbor->clear();
     m_neighbor->addItem(m_computer->text(), m_computer->text());
-    QStringList lines;
-    QList<ScreenLink> screens;
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
+        if (it.key() == m_selectedId) continue;
         const auto name = it->value("phone").toString();
-        if (it.key() != m_selectedId) m_neighbor->addItem(name, name);
-        const auto direction = it->value("direction", "right").toString();
-        const auto neighbor = it->value("neighbor", m_computer->text()).toString();
-        screens.append({name, neighbor, direction});
-        const auto index = m_direction->findData(direction);
-        lines.append(qtTrId("otg.multi.layout_edge").arg(name, neighbor, index < 0 ? direction : m_direction->itemText(index)));
+        m_neighbor->addItem(name, name);
     }
     if (m_neighbor->findData(selectedNeighbor) < 0) m_neighbor->addItem(selectedNeighbor, selectedNeighbor);
     m_neighbor->setCurrentIndex(m_neighbor->findData(selectedNeighbor));
-    if (layoutConfiguration().isEmpty()) lines.append(qtTrId("otg.multi.invalid_layout"));
-    m_layoutPreview->setText(lines.join("\n\n"));
-    m_layoutCanvas->setScreens(m_computer->text(), screens, m_phone->text());
+    updateLayoutWarning();
+}
+
+void MainWindow::updateLayoutWarning()
+{
+    m_layoutWarning->setVisible(m_manage->isChecked() && layoutConfiguration().isEmpty());
 }
 
 QString MainWindow::layoutConfiguration() const
@@ -1606,7 +1600,6 @@ void MainWindow::updateEnabled()
     updateAutoConnect();
     m_form->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy());
     m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
-    m_layoutBox->setEnabled(!m_closing);
     m_neighbor->setEnabled(sharedIdle && m_manage->isChecked());
     m_addDevice->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
     m_removeDevice->setEnabled(sharedIdle && m_records.size() > 1 && !m_session->hasBleProvider() && !m_closing && !m_companion.busy());
