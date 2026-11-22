@@ -1074,7 +1074,7 @@ private slots:
 
             const auto capture = qEnvironmentVariable("OTG_TEST_TLS_SCREENSHOT");
             if (!capture.isEmpty()) {
-                window.findChild<QTabWidget *>("deviceTabs")->setCurrentIndex(2);
+                window.findChild<QTabWidget *>("deviceTabs")->setCurrentIndex(1);
                 window.show();
                 QTest::qWait(50);
                 QVERIFY(window.grab().save(capture));
@@ -1236,7 +1236,7 @@ private slots:
         QCOMPARE(audio->text(), "转发音频");
         QVERIFY(tabs->widget(0)->isAncestorOf(audio));
         QCOMPARE(audio->parentWidget(), clipboard->parentWidget());
-        QVERIFY(!tabs->widget(2)->isAncestorOf(audio));
+        QVERIFY(!tabs->widget(1)->isAncestorOf(audio));
 #ifdef OTG_GUI_HAVE_AUDIO
         QVERIFY(!audio->isHidden());
 #else
@@ -1291,8 +1291,21 @@ private slots:
             auto *alias = window.findChild<QLineEdit *>("deviceAlias");
             auto *width = window.findChild<QSpinBox *>("screenWidth");
             auto *audio = window.findChild<QCheckBox *>("audioEnabled");
+            auto *manageServer = window.findChild<QCheckBox *>("manageServer");
+            auto *neighbor = window.findChild<QComboBox *>("screenNeighbor");
+            auto *direction = window.findChild<QComboBox *>("screenPosition");
+            auto *layoutWarning = window.findChild<QLabel *>("layoutWarning");
             auto *connectButton = window.findChild<QPushButton *>("connectButton");
             QVERIFY(manager && list && tabs && serial && screenName && alias && width && audio);
+            QVERIFY(manageServer && neighbor && direction && layoutWarning);
+            QCOMPARE(tabs->count(), 2);
+            QCOMPARE(tabs->tabText(0), QStringLiteral("设备配置"));
+            QCOMPARE(tabs->tabText(1), QStringLiteral("共享服务"));
+            QVERIFY(tabs->widget(1)->isAncestorOf(manageServer));
+            QCOMPARE(neighbor->parentWidget(), screenName->parentWidget());
+            QCOMPARE(direction->parentWidget(), screenName->parentWidget());
+            QVERIFY(!window.findChild<QWidget *>("screenLayoutCanvas"));
+            QVERIFY(layoutWarning->isHidden());
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(true);
             QCOMPARE(list->count(), 1);
             serial->setText("A"); alias->setText("Redmi K20 Pro"); width->setValue(1234);
@@ -1300,6 +1313,18 @@ private slots:
             QCOMPARE(list->count(), 2);
             QCOMPARE(screenName->text(), "android2");
             QCOMPARE(alias->text(), "android2");
+            QCOMPARE(neighbor->currentData().toString(), "android");
+            neighbor->setCurrentIndex(neighbor->findData("computer"));
+            QVERIFY(!layoutWarning->isHidden()); // Both devices would use the computer's right edge.
+            manageServer->setChecked(false);
+            QVERIFY(!neighbor->isEnabled() && !direction->isEnabled());
+            QVERIFY(layoutWarning->isHidden());
+            manageServer->setChecked(true);
+            QVERIFY(neighbor->isEnabled() && direction->isEnabled());
+            QVERIFY(!layoutWarning->isHidden());
+            neighbor->setCurrentIndex(neighbor->findData("android"));
+            direction->setCurrentIndex(direction->findData("down"));
+            QVERIFY(layoutWarning->isHidden());
             const auto secondId = list->currentItem()->data(Qt::UserRole).toString();
             QVERIFY(secondId != "initial");
             auto *transport = window.findChild<QComboBox *>("transportSelector");
@@ -1309,7 +1334,7 @@ private slots:
             connectButton->click();
             QTRY_COMPARE(manager->state(secondId), Session::State::Connected);
             QVERIFY(list->isEnabled());
-            QVERIFY(!tabs->widget(2)->isEnabled());
+            QVERIFY(!tabs->widget(1)->isEnabled());
             QVERIFY(!audio->isEnabled());
             QVERIFY(!window.findChild<QPushButton *>("addDeviceButton")->isEnabled());
             for (int i = 0; i < list->count(); ++i)
@@ -1318,6 +1343,7 @@ private slots:
             QCOMPARE(width->value(), 1234);
             QVERIFY(serial->isEnabled());
             QVERIFY(audio->isEnabled()); // Another device's connection must not lock this option.
+            QVERIFY(!neighbor->isEnabled() && !direction->isEnabled());
             connectButton->click();
             QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
             QVERIFY(!audio->isEnabled());
@@ -1325,6 +1351,7 @@ private slots:
             QVERIFY(window.findChild<QLabel *>("connectionSummary")->text().contains("2 / 2"));
             auto *logFilter = window.findChild<QComboBox *>("logFilter");
             auto *log = window.findChild<QPlainTextEdit *>("runtimeLog");
+            QVERIFY(log->toPlainText().contains("    down = android2\n"));
             manager->session("initial")->log("ONLY_A");
             manager->session(secondId)->log("ONLY_B");
             logFilter->setCurrentIndex(logFilter->findData(secondId));
@@ -1333,13 +1360,8 @@ private slots:
             logFilter->setCurrentIndex(logFilter->findData("*"));
             QVERIFY(log->toPlainText().contains("ONLY_A"));
             const auto screenshot = qEnvironmentVariable("OTG_TEST_MULTI_SCREENSHOT");
-            if (!screenshot.isEmpty()) {
+            if (!screenshot.isEmpty())
                 QVERIFY(window.grab().save(screenshot));
-                tabs->setCurrentIndex(1);
-                QCoreApplication::processEvents();
-                QVERIFY(window.grab().save(screenshot + ".layout.png"));
-                tabs->setCurrentIndex(0);
-            }
             window.findChild<QPushButton *>("disconnectAllButton")->click();
             QTRY_VERIFY(!manager->busy());
             QTRY_COMPARE(manager->serverState(), DeskflowServer::State::Idle);
@@ -1358,6 +1380,8 @@ private slots:
         QCOMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 1234);
         auto *list = restored.findChild<QListWidget *>("deviceSidebar");
         list->setCurrentRow(1);
+        QCOMPARE(restored.findChild<QComboBox *>("screenNeighbor")->currentData().toString(), "android");
+        QCOMPARE(restored.findChild<QComboBox *>("screenPosition")->currentData().toString(), "down");
         restored.findChild<QPushButton *>("removeDeviceButton")->click();
         QCOMPARE(list->count(), 1);
         restored.findChild<QAction *>("trayQuit")->trigger();

@@ -432,9 +432,9 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   单设备断开/失败不得停止其他桥接。最后一个会话完成释放后停止自建服务；退出等待全部会话
   和 Windows provider 结束。共享服务失败终止其所有会话；绝不接管外部 Deskflow。
   单设备 `Session` 仍支持独立管理 server，以复用相同生命周期测试。
-  GUI 左侧设备列表、右侧设备/布局/共享服务页签，输入参数按设备隔离，日志可筛选。
+  GUI 左侧设备列表，右侧设备配置和共享服务页签。相邻屏幕和方向在设备配置的「屏幕与显示」下，输入参数按设备隔离，日志可筛选。
   活动会话期间禁止新增/移除设备或改共享布局/屏幕名，但允许编辑其他空闲设备的尺寸和连接身份。
-  `serverConfiguration` 验证唯一名称、相邻屏幕、双向边、网格重叠和电脑连通性；预览只读。
+  `serverConfiguration` 验证唯一名称、相邻屏幕、双向边、网格重叠和电脑连通性。外部服务的布局在 Deskflow 中配置。
   当前保守限制为多 USB + 至多一台 BLE（包括空闲 Windows provider 的身份占用），不能放宽
   底层单目标门控。多设备测试全为 fake 子进程，不访问 USB/系统蓝牙，不等于真机验收。
 - `gui/session.cpp` 只管理自己创建的 Deskflow 和桥接进程。自动启动生成独立配置、监听回环地址并同步 TLS 配置；

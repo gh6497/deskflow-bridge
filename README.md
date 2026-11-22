@@ -37,7 +37,7 @@ You must install [Deskflow](https://github.com/deskflow/deskflow) separately. Th
 1. Install and start Deskflow on the computer that owns the keyboard and mouse.
 2. Add the phone as a screen in Deskflow and place it next to the computer screen.
 3. Start `deskflow-bridge-gui` and choose a connection method.
-4. Configure the phone's dimensions and the Deskflow screen position, then click **Connect**.
+4. Set the phone's dimensions in **Device settings → Screen and display**, then click **Connect**.
 5. Move the mouse across the configured edge to enter the phone. Move it back to return to the computer.
 
 The [illustrated user guide](docs/USER_GUIDE.md) covers installation, the first connection, permissions, troubleshooting, optional features, and multi-device setups. The [Chinese user guide](docs/USER_GUIDE.zh-CN.md) is also available.

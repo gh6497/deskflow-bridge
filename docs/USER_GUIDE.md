@@ -95,8 +95,7 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 ![Device settings: device list on the left, connection and ADB settings on the right, connection actions and logs below](screenshots/device-en.png)
 
 - **Device list on the left**: select the phone to view, configure or connect. Buttons below add devices, connect all or disconnect all.
-- **Device settings**: select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach dimensions, mouse buttons and the companion app.
-- **Screen layout**: choose which side of the computer the phone occupies and therefore which edge you cross to reach it.
+- **Device settings** lets you select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app. For an automatically managed Deskflow server, set the phone's adjacent screen and direction under **Screen and display**.
 - **Shared server**: select Deskflow and choose automatic startup or an existing server.
 - The **Connect**, **Disconnect**, **Copy phone screenshot** and **Manual clipboard** buttons at the bottom right apply to the selected device. **Files & sharing** opens the file transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
@@ -120,7 +119,7 @@ For “Unauthorized”, check the phone's approval prompt, then refresh. If Wind
 
 Click **Read screen size**, then scroll down to “Screen and display”.
 
-![Screen dimensions and input settings after scrolling down: example 1080×2340 with both multipliers at 1](screenshots/input-en.png)
+![Screen and display settings with dimensions of 1080×2340 and the phone to the right of computer](screenshots/input-en.png)
 
 - **Phone screen resolution**: the phone's width × height in its current orientation. `1080 × 2340` is a portrait example; your phone may differ. Enter it manually if reading fails.
 - **Swap dimensions**: use this when changing to landscape.
@@ -132,11 +131,7 @@ Leave audio, clipboard, automatic unlock and other extras off until basic contro
 
 ### Step 3: Place the phone in the layout
 
-Open **Screen layout**, set **Adjacent screen** to `computer`, and select the phone's direction relative to the computer. If the phone is on your right, choose **Right**.
-
-![Screen layout with android to the right of computer](screenshots/layout-en.png)
-
-The preview shows neighboring screens, not their actual relative resolutions. It is read-only; adjust the selectors below rather than dragging the boxes.
+If the bridge starts Deskflow automatically, use **Device settings → Screen and display**. Set **Adjacent screen** to `computer` and **Screen position** to the phone's direction relative to it. Choose **Right** to reach the phone by crossing the computer's right edge. For an existing server, set the position in Deskflow.
 
 ### Step 4: Set up Deskflow
 
@@ -151,7 +146,7 @@ Open **Shared server**:
 
 Automatic mode starts Deskflow when you click Connect. You do not need to start another server manually on the same port.
 
-**Already using Deskflow?** Turn off automatic startup and enter the existing server's address and port. Add a phone screen with the same name, such as `android`, in Deskflow's own layout. This app's preview does not change an external server's layout. If that server uses TLS, enable TLS here and enter its server fingerprint. If it also requires client authentication, generate a client certificate and trust that client fingerprint in Deskflow. See [TLS notes](../README.md#tls).
+**Already using Deskflow?** Turn off automatic startup and enter the existing server's address and port. In Deskflow, add a phone screen with the same name, such as `android`, and set its position there. If that server uses TLS, enable TLS here and enter its server fingerprint. If it also requires client authentication, generate a client certificate and trust that client fingerprint in Deskflow. See [TLS notes](../README.md#tls).
 
 ### Step 5: Connect and try it
 
@@ -173,7 +168,7 @@ This mode can provide keyboard and mouse control with a data cable, without ADB 
 1. Select **USB (AOA HID)** and turn off **Enable ADB enhancements for this device**.
 2. Plug in the phone, click **Refresh devices** and select the matching USB device. If it is not found, check the cable and USB permissions. You can also enter its correct USB serial manually.
 3. Enter the phone's width and height for its current orientation. The **USB serial** is not a Wi-Fi address or BLE address; do not copy the screenshot's example.
-4. Configure **Screen layout** and **Shared server** as above, then connect.
+4. Set the phone's position and configure **Shared server** as above, then connect.
 
 Linux needs USB access permissions; see [Linux USB permissions](../README.md#rootless-usb-access-on-linux-udev-rule). Allow accessory access if macOS requests it. Windows AOA needs a libusb-compatible driver, which may conflict with existing ADB/file-transfer drivers. Read [Windows USB guidance](WINDOWS_USB.md) before changing drivers, or use ADB + UHID instead.
 
@@ -311,11 +306,11 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 
 ## 9. Connect multiple phones
 
-![Multiple-device example: android to the right of the computer, followed by android2](screenshots/multiple-devices-en.png)
+![Screen and display settings for android2, configured to the right of android](screenshots/multiple-devices-en.png)
 
 1. Disconnect all devices, click **Add device**, and set each phone's own connection target and dimensions.
 2. New devices get unique **Phone screen names** such as `android2` and `android3`. Existing names are not changed. If you use an external Deskflow server, make sure its screen names match. **Display name** can be any name that helps you recognize the device.
-3. Select each device and set its neighbor and direction in **Screen layout**. For example, place the second phone to the right of `android` to obtain the layout shown.
+3. For automatic startup, select each device and open **Device settings → Screen and display**. For example, set `computer` as the first phone's **Adjacent screen** and `android` as the second phone's. Choose **Right** for both. For an existing server, arrange the screens in Deskflow.
 4. Configure Deskflow once under **Shared server**, then connect individually or click **Connect all**.
 
 Multiple AOA/UHID devices can connect, optionally with at most one BLE device. Input goes to the screen containing the pointer; it is not broadcast to all phones. Disconnecting one device does not deliberately stop the others.
@@ -348,7 +343,7 @@ Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its pers
 | Deskflow not found | Install Deskflow and select `deskflow-core` / `deskflow-server` under Shared server, rather than its GUI |
 | Port already in use | Check for a manually started Deskflow server. Use existing-server mode or another free port for automatic startup |
 | Unknown screen or mismatched name | The external Deskflow screen name must exactly match this app and be unique |
-| Connected, but cannot move onto the phone | Check the layout direction, Deskflow's input-capture/Accessibility permissions and any Deskflow screen-switch lock |
+| Connected, but cannot move onto the phone | Check **Screen position** in automatic mode or the layout in Deskflow for an external server. Also check Deskflow's input-capture/Accessibility permissions and any screen-switch lock |
 | No phone pointer or no response to clicks | Check logs for UHID unavailable or USB errors. Start with absolute mode; try relative mode after disconnecting for an incompatible device |
 | Wrong orientation or strange movement range | Disconnect and read current dimensions or swap width/height; reset both multipliers to 1 first |
 | Some symbols type incorrectly | Set the phone's physical keyboard to English (US). Deskflow protocol 1.8 with per-key language information can correct common symbols and digits such as `@`, `#`, and `1` from other host layouts. The bridge does not switch the phone's layout or correct accented letters and dead keys. |

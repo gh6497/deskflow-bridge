@@ -327,7 +327,7 @@
   <message id="otg.error.ble_adapter"><source>Bluetooth adapter is invalid. Use hci followed by an index from 0 to 65534, for example hci0 (at most five digits).</source><translation>Bluetooth adapter is invalid. Use hci followed by an index from 0 to 65534, for example hci0 (at most five digits).</translation></message>
   <message id="otg.error.ble_isolate_windows"><source>Bluetooth isolation is not supported on Windows. Disable Bluetooth isolation.</source><translation>Bluetooth isolation is not supported on Windows. Disable Bluetooth isolation.</translation></message>
   <message id="otg.error.ble_adapter_windows"><source>Windows Bluetooth LE only supports the default adapter. Clear the Bluetooth adapter field.</source><translation>Windows Bluetooth LE only supports the default adapter. Clear the Bluetooth adapter field.</translation></message>
-  <message id="otg.error.server_layout_required"><source>Deskflow screen layout is empty or invalid. Check screen names and connections in the layout before starting the shared server.</source><translation>Deskflow screen layout is empty or invalid. Check screen names and connections in the layout before starting the shared server.</translation></message>
+  <message id="otg.error.server_layout_required"><source>Deskflow screen layout is empty or invalid. Check the screen names, adjacent screens and positions under Device settings → Screen and display.</source><translation>Deskflow screen layout is empty or invalid. Check the screen names, adjacent screens and positions under Device settings → Screen and display.</translation></message>
   <message id="otg.error.deskflow_program_required"><source>Deskflow executable is empty. Select the installed deskflow-core or deskflow-server under Shared server.</source><translation>Deskflow executable is empty. Select the installed deskflow-core or deskflow-server under Shared server.</translation></message>
   <message id="otg.error.scrcpy_runtime"><source>Audio/clipboard runtime files are missing: scrcpy-server or SCRCPY_VERSION.txt. Rebuild or reinstall the complete GUI.</source><translation>Audio/clipboard runtime files are missing: scrcpy-server or SCRCPY_VERSION.txt. Rebuild or reinstall the complete GUI.</translation></message>
   <message id="otg.error.port_in_use"><source>Port already in use. Stop the existing Deskflow server, change the port, or connect to an existing server.</source><translation>Port already in use. Stop the existing Deskflow server, change the port, or connect to an existing server.</translation></message>
@@ -354,14 +354,12 @@
   <message id="otg.error.command_output"><source>Command output too large</source><translation>Command output too large</translation></message>
   <message id="otg.error.command_timeout"><source>Command timed out</source><translation>Command timed out</translation></message>
   <message id="otg.multi.device_tab"><source>Device settings</source><translation>Device settings</translation></message>
-  <message id="otg.multi.layout_tab"><source>Screen layout</source><translation>Screen layout</translation></message>
   <message id="otg.multi.server_tab"><source>Shared server</source><translation>Shared server</translation></message>
   <message id="otg.multi.add_device"><source>Add device</source><translation>Add device</translation></message>
   <message id="otg.multi.connect_all"><source>Connect all</source><translation>Connect all</translation></message>
   <message id="otg.multi.disconnect_all"><source>Disconnect all</source><translation>Disconnect all</translation></message>
   <message id="otg.multi.alias"><source>Display name</source><translation>Display name</translation></message>
   <message id="otg.multi.neighbor"><source>Adjacent screen</source><translation>Adjacent screen</translation></message>
-  <message id="otg.multi.layout_hint"><source>Configure each device relative to an adjacent screen. Disconnect all devices before changing the layout or shared server. External server layouts must be configured in Deskflow.</source><translation>Configure each device relative to an adjacent screen. Disconnect all devices before changing the layout or shared server. External server layouts must be configured in Deskflow.</translation></message>
   <message id="otg.multi.invalid_layout"><source>Invalid layout: check unique screen names, adjacent screens, occupied edges and connectivity to the computer.</source><translation>Invalid layout: check unique screen names, adjacent screens, occupied edges and connectivity to the computer.</translation></message>
   <message id="otg.multi.duplicate_device"><source>This USB device or screen name is already in use.</source><translation>This USB device or screen name is already in use.</translation></message>
   <message id="otg.multi.ble_limit"><source>Only one BLE phone is supported. Stop the other BLE session and its idle Windows provider first.</source><translation>Only one BLE phone is supported. Stop the other BLE session and its idle Windows provider first.</translation></message>
@@ -371,7 +369,6 @@
   <message id="otg.multi.server_running"><source>Shared Deskflow running</source><translation>Shared Deskflow running</translation></message>
   <message id="otg.multi.server_stopped"><source>Shared Deskflow stopped or starting</source><translation>Shared Deskflow stopped or starting</translation></message>
   <message id="otg.multi.external_server"><source>External Deskflow server</source><translation>External Deskflow server</translation></message>
-  <message id="otg.multi.layout_edge"><source>%1: %3 of %2</source><translation>%1: %3 of %2</translation></message>
   <message id="otg.multi.remove_device"><source>Remove device</source><translation>Remove device</translation></message>
   <message id="otg.multi.remove_dependency"><source>Other screens are linked to this device. Change their adjacent screen before removing it.</source><translation>Other screens are linked to this device. Change their adjacent screen before removing it.</translation></message>
   <message id="otg.multi.failed"><source>Connection failed — see status or logs</source><translation>Connection failed — see status or logs</translation></message>

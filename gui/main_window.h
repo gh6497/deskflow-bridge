@@ -26,7 +26,6 @@ class QPushButton;
 class QSpinBox;
 class QListWidget;
 class QTabWidget;
-class ScreenLayoutPreview;
 class TransferDialog;
 class WirelessAdbDialog;
 
@@ -76,7 +75,8 @@ private:
     void selectDevice(const QString &id);
     void storeDevice();
     void updateDeviceList();
-    void updateLayoutPreview();
+    void updateScreenNeighbors();
+    void updateLayoutWarning();
     void connectAll();
     ConnectionOptions connectionOptions(const QVariantMap &profile) const;
     QString layoutConfiguration() const;
@@ -105,11 +105,10 @@ private:
     bool m_loadingDevice = false;
     QListWidget *m_deviceSidebar;
     QTabWidget *m_tabs;
-    QWidget *m_deviceBox, *m_sharedBox, *m_layoutBox;
+    QWidget *m_deviceBox, *m_sharedBox;
     QLineEdit *m_alias;
     QComboBox *m_neighbor;
-    QLabel *m_layoutPreview, *m_summary;
-    ScreenLayoutPreview *m_layoutCanvas;
+    QLabel *m_layoutWarning, *m_summary;
     QPushButton *m_connectAll, *m_disconnectAll, *m_addDevice, *m_removeDevice;
     UsbAutoConnect m_autoConnect, m_adbAutoConnect;
     CompanionApp m_companion;
