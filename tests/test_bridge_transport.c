@@ -418,6 +418,24 @@ static void test_sensitivity(void)
     otg_bridge_close(&b);
 }
 
+static void test_absolute_per_axis(void)
+{
+    struct otg_bridge b;
+    registrations = 0;
+    CHECK(!otg_bridge_open(&b, "mock", 1080, 2340, OTG_MOUSE_ABSOLUTE));
+    otg_bridge_set_absolute_per_axis(&b, true);
+    otg_bridge_enter(&b, 0, 0, 0);
+    otg_bridge_mouse_move(&b, 1079, 0);
+    CHECK(report[2] == 0xff && report[3] == 0x7f && !report[4] && !report[5]);
+    otg_bridge_mouse_move(&b, 0, 2339);
+    CHECK(!report[2] && !report[3] && report[4] == 0xff && report[5] == 0x7f);
+    otg_bridge_mouse_move(&b, 1079, 2339);
+    CHECK(otg_bridge_resize(&b, 2340, 1080));
+    CHECK(report[2] == 0xff && report[3] == 0x7f && report[4] == 0xff && report[5] == 0x7f);
+    CHECK(registrations == 2);
+    otg_bridge_close(&b);
+}
+
 static void test_unlock_cursor_tracking(void)
 {
     struct otg_bridge b;
@@ -555,6 +573,7 @@ int main(void)
     test_unlock_cursor_resize();
     test_side_button_swipes();
     test_sensitivity();
+    test_absolute_per_axis();
     test_us_symbol_mapping();
     puts("PASS: default USB descriptors, absolute coordinates, buttons, wheel, keyboard, Home/Back shortcuts, side-button swipes, unlock mouse suppression/cursor tracking/resize and close lifecycle");
     return 0;

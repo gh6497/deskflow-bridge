@@ -164,6 +164,9 @@ private slots:
         row("relative-multiplier", "otg.error.relative_multiplier", [](auto &o) {
             o.mouseMode = "relative"; o.motionMultiplier = 2.0;
         });
+        row("relative-per-axis", "otg.error.relative_per_axis", [](auto &o) {
+            o.mouseMode = "relative"; o.absolutePerAxis = true;
+        });
         row("width-low", "otg.error.width_range", [](auto &o) { o.width = 0; });
         row("width-high", "otg.error.width_range", [](auto &o) { o.width = 32768; });
         row("height-low", "otg.error.height_range", [](auto &o) { o.height = 0; });

@@ -43,8 +43,12 @@ int main(void)
     assert(feed(&c, "resume\tlocalhost\t24800\tandroid\t1080\t1920\thome\tback\tswipe-up\tswipe-down\t25\t250\n"));
     assert(c.sensitivity_centi == 250);
     c.phase = OTG_BLE_IDLE;
+    assert(feed(&c, "resume\tlocalhost\t24800\tandroid\t1080\t1920\thome\tback\tswipe-up\tswipe-down\t25\t250\tper-axis\n"));
+    assert(c.absolute_per_axis);
+    c.phase = OTG_BLE_IDLE;
     assert(feed(&c, resume));
     assert(c.middle_button_home && !c.right_button_back); /* Legacy resume also clears an old Back setting. */
+    assert(!c.absolute_per_axis);
     const char *invalid[] = {
         "resume\tx\t0\tphone\t10\t20\tnormal\n", "resume\tx\t65536\tphone\t10\t20\tnormal\n",
         "resume\tx\t24800\tphone\t32768\t20\tnormal\n", "resume\tx\t+12\tphone\t10\t20\tnormal\n",
@@ -55,6 +59,7 @@ int main(void)
         "resume\tx\t12\tp\t10\t20\tnormal\tnormal\tswipe\tnormal\n",
         "resume\tx\t12\tp\t10\t20\tnormal\tnormal\tswipe-up\tswipe-down\t0\n",
         "resume\tx\t12\tp\t10\t20\thome\tback\textra\n",
+        "resume\tx\t12\tp\t10\t20\tnormal\tnormal\tnormal\tnormal\t17\t100\tunknown\n",
         "wat\n", "pause\r\n"
     };
     for (unsigned i = 0; i < sizeof(invalid)/sizeof(invalid[0]); ++i) {

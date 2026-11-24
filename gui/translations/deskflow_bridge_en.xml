@@ -233,6 +233,8 @@
   <message id="otg.mouse.absolute"><source>Absolute (recommended)</source><translation>Absolute (recommended)</translation></message>
   <message id="otg.mouse.relative"><source>Relative (compatibility mode)</source><translation>Relative (compatibility mode)</translation></message>
   <message id="otg.label.mouse_mode"><source>Mouse mode</source><translation>Mouse mode</translation></message>
+  <message id="otg.mouse.per_axis"><source>Pointer compatibility for older Android</source><translation>Pointer compatibility for older Android</translation></message>
+  <message id="otg.mouse.per_axis_hint"><source>Scale the two axes separately if the absolute pointer only reaches part of the screen.</source><translation>Scale the two axes separately if the absolute pointer only reaches part of the screen.</translation></message>
   <message id="otg.middle_button.normal"><source>Normal middle button</source><translation>Normal middle button</translation></message>
   <message id="otg.middle_button.home"><source>Android Home (Win+Enter)</source><translation>Android Home (Win+Enter)</translation></message>
   <message id="otg.label.middle_button_action"><source>Middle button action</source><translation>Middle button action</translation></message>
@@ -311,6 +313,7 @@
   <message id="otg.error.ble_peer"><source>Bluetooth target address is invalid. Enter the phone's paired identity address as six hexadecimal pairs, for example AA:BB:CC:DD:EE:FF.</source><translation>Bluetooth target address is invalid. Enter the phone's paired identity address as six hexadecimal pairs, for example AA:BB:CC:DD:EE:FF.</translation></message>
   <message id="otg.error.mouse_mode"><source>Mouse mode is invalid. Select absolute or relative mode.</source><translation>Mouse mode is invalid. Select absolute or relative mode.</translation></message>
   <message id="otg.error.ble_mouse_mode"><source>Bluetooth LE requires absolute mouse mode. Change the mouse mode to absolute.</source><translation>Bluetooth LE requires absolute mouse mode. Change the mouse mode to absolute.</translation></message>
+  <message id="otg.error.relative_per_axis"><source>Pointer compatibility for older Android requires absolute mouse mode.</source><translation>Pointer compatibility for older Android requires absolute mouse mode.</translation></message>
   <message id="otg.error.middle_button_action"><source>Middle mouse button action is invalid. Select normal or Home.</source><translation>Middle mouse button action is invalid. Select normal or Home.</translation></message>
   <message id="otg.error.right_button_action"><source>Right mouse button action is invalid. Select normal or Back.</source><translation>Right mouse button action is invalid. Select normal or Back.</translation></message>
   <message id="otg.error.side_button1_action"><source>Side button 1 action is invalid. Select normal, swipe up or swipe down.</source><translation>Side button 1 action is invalid. Select normal, swipe up or swipe down.</translation></message>

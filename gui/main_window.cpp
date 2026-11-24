@@ -754,6 +754,11 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     setTranslatedProperty(m_sideSwipeDistance, "toolTip", "otg.side_swipe_distance.tooltip");
     addTranslatedRow(featuresForm, "otg.label.side_swipe_distance", m_sideSwipeDistance);
 
+    m_absolutePerAxis = translated(new QCheckBox, "text", "otg.mouse.per_axis");
+    m_absolutePerAxis->setObjectName("absolutePerAxis");
+    setTranslatedProperty(m_absolutePerAxis, "toolTip", "otg.mouse.per_axis_hint");
+    featuresForm->addRow(m_absolutePerAxis);
+
     formLayout->addWidget(featuresBox);
 
     auto *companionBox = translated(new QGroupBox, "title", "otg.companion.title");
@@ -1010,6 +1015,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_tlsFingerprintFile->setText(settings.value("tlsFingerprintFile").toString());
     m_direction->setCurrentIndex(qMax(0, m_direction->findData(settings.value("direction", "right"))));
     m_mouseMode->setCurrentIndex(qMax(0, m_mouseMode->findData(settings.value("mouseMode", "absolute"))));
+    m_absolutePerAxis->setChecked(settings.value("absolutePerAxis", false).toBool());
     m_middleButtonAction->setCurrentIndex(qMax(0, m_middleButtonAction->findData(
         settings.value("middleButtonAction", "home"))));
     m_rightButtonAction->setCurrentIndex(qMax(0, m_rightButtonAction->findData(
@@ -1363,6 +1369,7 @@ void MainWindow::addDevice()
     profile["blePeer"] = "";
     profile["bleIsolate"] = false;
     profile["bleLegacyHandles"] = false;
+    profile["absolutePerAxis"] = false;
     profile["autoConnect"] = false;
     profile["uhidUsbAutoConnect"] = false;
     profile["neighbor"] = m_phone->text().trimmed();
@@ -1513,6 +1520,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
         options.adbEnabled && (options.transport == "uhid" || options.audio || options.clipboard) &&
         profile.value("autoRotate", false).toBool();
     options.mouseMode = options.transport == "ble" ? "absolute" : profile.value("mouseMode", "absolute").toString();
+    options.absolutePerAxis = options.mouseMode == "absolute" && profile.value("absolutePerAxis", false).toBool();
     options.middleButtonAction = profile.value("middleButtonAction", "home").toString();
     options.rightButtonAction = profile.value("rightButtonAction", "back").toString();
     options.sideButton1Action = profile.value("sideButton1Action", "swipe-up").toString();
@@ -1785,6 +1793,7 @@ void MainWindow::updateVirtualSize()
     const bool absolute = m_mouseMode->currentData() == "absolute";
     m_sensitivity->setEnabled(absolute);
     m_motionMultiplier->setEnabled(absolute);
+    m_absolutePerAxis->setEnabled(absolute);
     const auto size = virtualScreenSize();
     m_virtualSize->setText(QString("%1 × %2%3").arg(size.width()).arg(size.height()).arg(
         absolute ? qtTrId("otg.size.absolute_note") : qtTrId("otg.size.relative_note")));
@@ -2176,6 +2185,7 @@ QVariantMap MainWindow::deviceProfile() const
                {"tlsFingerprintFile", m_tlsFingerprintFile->text()},
                {"direction", m_direction->currentData()},
                 {"mouseMode", m_mouseMode->currentData()}, {"audio", m_audio->isChecked()},
+                {"absolutePerAxis", m_absolutePerAxis->isChecked()},
                 {"audioGainDb", m_audioGain->value()},
                   {"middleButtonAction", m_middleButtonAction->currentData()},
                   {"rightButtonAction", m_rightButtonAction->currentData()},
@@ -2224,6 +2234,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_uhidAutoConnectEnabled->setChecked(profile.value("uhidUsbAutoConnect", false).toBool());
     m_direction->setCurrentIndex(qMax(0, m_direction->findData(profile.value("direction", "right"))));
     m_mouseMode->setCurrentIndex(qMax(0, m_mouseMode->findData(profile.value("mouseMode", "absolute"))));
+    m_absolutePerAxis->setChecked(profile.value("absolutePerAxis", false).toBool());
     m_middleButtonAction->setCurrentIndex(qMax(0, m_middleButtonAction->findData(
         profile.value("middleButtonAction", "home"))));
     m_rightButtonAction->setCurrentIndex(qMax(0, m_rightButtonAction->findData(
@@ -2302,6 +2313,7 @@ void MainWindow::saveSettings()
     settings.setValue("tlsFingerprintFile", m_tlsFingerprintFile->text());
     settings.setValue("direction", m_direction->currentData());
     settings.setValue("mouseMode", m_mouseMode->currentData());
+    settings.setValue("absolutePerAxis", m_absolutePerAxis->isChecked());
     settings.setValue("middleButtonAction", m_middleButtonAction->currentData());
     settings.setValue("rightButtonAction", m_rightButtonAction->currentData());
     settings.setValue("sideButton1Action", m_sideButton1Action->currentData());

@@ -81,6 +81,7 @@ struct app_options {
     int background_stop;
 #endif
     enum otg_mouse_mode mouse_mode;
+    bool absolute_per_axis;
     enum otg_middle_button_action middle_button_action;
     enum otg_right_button_action right_button_action;
     enum otg_side_button_action side_button_1_action;
@@ -299,6 +300,7 @@ static void usage(const char *prog)
              "      --width W         Deskflow/bridge screen width, 1..32767 (default %d)\n"
              "      --height H        Deskflow/bridge screen height, 1..32767 (default %d)\n"
              "      --mouse-mode MODE absolute (default) or relative (compatibility)\n"
+             "      --absolute-per-axis  Scale each absolute axis for older Android\n"
              "      --sensitivity X   Absolute-mode motion multiplier, 1..10 (default 1)\n"
                "      --middle-button-action MODE home (default) or normal (Android Meta+Enter)\n"
                "      --right-button-action MODE back (default) or normal (Android Meta+Backspace)\n"
@@ -869,6 +871,8 @@ int main(int argc, char **argv)
                 fprintf(stderr, "invalid mouse mode: %s (use absolute or relative)\n", mode);
                 return 2;
             }
+        } else if (strcmp(a, "--absolute-per-axis") == 0) {
+            opts.absolute_per_axis = true;
         } else if (strcmp(a, "--sensitivity") == 0 && i + 1 < argc) {
             opts.sensitivity_multiplier = parse_sensitivity(argv[++i]);
         } else if (strcmp(a, "--right-button-action") == 0 && i + 1 < argc) {
@@ -971,6 +975,10 @@ int main(int argc, char **argv)
     }
     if (opts.mouse_mode == OTG_MOUSE_RELATIVE && opts.sensitivity_multiplier != 1.0) {
         fprintf(stderr, "sensitivity is supported only in absolute mouse mode\n");
+        return 2;
+    }
+    if (opts.mouse_mode == OTG_MOUSE_RELATIVE && opts.absolute_per_axis) {
+        fprintf(stderr, "--absolute-per-axis requires absolute mouse mode\n");
         return 2;
     }
     opts.unlock_pin = getenv("OTG_UNLOCK_PIN");
@@ -1148,6 +1156,7 @@ int main(int argc, char **argv)
         strcpy(g_control.host, opts.host); strcpy(g_control.name, opts.name);
         g_control.port = opts.port; g_control.width = (unsigned)opts.width; g_control.height = (unsigned)opts.height;
         g_control.sensitivity_centi = sensitivity_centi(opts.sensitivity_multiplier);
+        g_control.absolute_per_axis = opts.absolute_per_axis;
         g_control.middle_button_home = opts.middle_button_action == OTG_MIDDLE_BUTTON_HOME;
         g_control.right_button_back = opts.right_button_action == OTG_RIGHT_BUTTON_BACK;
         g_control.side_button_1_action = opts.side_button_1_action;
@@ -1303,6 +1312,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "invalid transport: %s (use usb or ble)\n", opts.transport);
         return 2;
     }
+    otg_bridge_set_absolute_per_axis(&state.bridge, opts.absolute_per_axis);
     if (!otg_bridge_set_sensitivity(&state.bridge, opts.sensitivity_multiplier)) {
         fprintf(stderr, "ERROR: invalid mouse sensitivity\n");
         otg_bridge_close(&state.bridge);
@@ -1372,8 +1382,10 @@ int main(int argc, char **argv)
             opts.host = g_control.host; opts.name = g_control.name; opts.port = g_control.port;
             opts.width = (int)g_control.width; opts.height = (int)g_control.height;
             opts.sensitivity_multiplier = (double)g_control.sensitivity_centi / 100.0;
+            opts.absolute_per_axis = g_control.absolute_per_axis;
             state.bridge.screen_w = opts.width; state.bridge.screen_h = opts.height;
             (void)otg_bridge_set_sensitivity(&state.bridge, opts.sensitivity_multiplier);
+            otg_bridge_set_absolute_per_axis(&state.bridge, opts.absolute_per_axis);
             otg_bridge_set_middle_button_action(&state.bridge,
                 g_control.middle_button_home ? OTG_MIDDLE_BUTTON_HOME : OTG_MIDDLE_BUTTON_NORMAL);
             otg_bridge_set_right_button_action(&state.bridge,
