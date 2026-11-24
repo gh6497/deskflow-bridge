@@ -144,13 +144,13 @@ static void fail(const std::shared_ptr<State>& s, const std::string& reason)
     log("ERROR", reason);
 }
 
-static Windows::Foundation::IAsyncOperation<bool> authorized(GattSession session,
-    std::shared_ptr<State> s)
+static Windows::Foundation::IAsyncOperation<uint64_t> paired_address(GattSession session)
 {
     auto device = co_await BluetoothLEDevice::FromIdAsync(session.DeviceId().Id());
-    co_return device && device.BluetoothAddress() == s->peer_address &&
-        device.DeviceInformation().Pairing().IsPaired() &&
-        device.ConnectionStatus() == BluetoothConnectionStatus::Connected;
+    if (device && device.DeviceInformation().Pairing().IsPaired() &&
+        device.ConnectionStatus() == BluetoothConnectionStatus::Connected)
+        co_return device.BluetoothAddress();
+    co_return 0;
 }
 
 static fire_and_forget read_report(GattReadRequestedEventArgs args,
@@ -160,18 +160,20 @@ static fire_and_forget read_report(GattReadRequestedEventArgs args,
     try {
         auto request = co_await args.GetRequestAsync();
         if (request) {
-            if (!(co_await authorized(args.Session(), s))) {
+            const auto address = co_await paired_address(args.Session());
+            IBuffer value{nullptr};
+            {
+                std::lock_guard<std::mutex> lock(s->mutex);
+                if (address && (!s->peer_address || address == s->peer_address))
+                    value = kind == 0 ? buffer(s->keyboard) : kind == 1 ? buffer(s->pointer) :
+                        buffer(std::array<uint8_t, 1>{s->leds});
+            }
+            if (!value) {
                 log("WARN", "report read rejected by identity/pairing gate: kind=" + std::to_string(kind) +
                     " DeviceId=" + to_string(args.Session().DeviceId().Id()));
                 request.RespondWithProtocolError(0x08); // insufficient authorization
                 deferral.Complete();
                 co_return;
-            }
-            IBuffer value{nullptr};
-            {
-                std::lock_guard<std::mutex> lock(s->mutex);
-                value = kind == 0 ? buffer(s->keyboard) : kind == 1 ? buffer(s->pointer) :
-                    buffer(std::array<uint8_t, 1>{s->leds});
             }
             request.RespondWithValue(value);
         }
@@ -187,7 +189,13 @@ static fire_and_forget write_value(GattWriteRequestedEventArgs args,
         auto request = co_await args.GetRequestAsync();
         if (request) {
             uint8_t error = 0;
-            if (!(co_await authorized(args.Session(), s))) {
+            const auto address = co_await paired_address(args.Session());
+            bool allowed;
+            {
+                std::lock_guard<std::mutex> lock(s->mutex);
+                allowed = address && address == s->peer_address;
+            }
+            if (!allowed) {
                 log("WARN", std::string(control ? "control" : "LED") +
                     " write rejected by identity/pairing gate: DeviceId=" + to_string(args.Session().DeviceId().Id()));
                 error = 0x08;
@@ -221,18 +229,15 @@ static fire_and_forget write_protocol_mode(GattWriteRequestedEventArgs args,
     try {
         auto request = co_await args.GetRequestAsync();
         if (request) {
+            const auto address = co_await paired_address(args.Session());
             uint8_t error = 0;
-            if (!(co_await authorized(args.Session(), s))) error = 0x08;
-            else if (request.Offset() || request.Value().Length() != 1) error = 0x0d;
-            else {
-                auto value = DataReader::FromBuffer(request.Value()).ReadByte();
-                // The bridge only has Report Protocol reports. Do not accept
-                // Boot Protocol and then silently send the wrong packet shape.
-                if (value != 1) error = 0x03; // write not permitted
-                else {
-                    std::lock_guard<std::mutex> lock(s->mutex);
-                    s->protocol_mode = value;
-                }
+            {
+                std::lock_guard<std::mutex> lock(s->mutex);
+                if (!address || (s->peer_address && address != s->peer_address)) error = 0x08;
+                else if (request.Offset() || request.Value().Length() != 1) error = 0x0d;
+                // The bridge only supports Report Protocol.
+                else if (DataReader::FromBuffer(request.Value()).ReadByte() != 1) error = 0x03;
+                else s->protocol_mode = 1;
             }
             if (request.Option() == GattWriteOption::WriteWithResponse) {
                 if (error) request.RespondWithProtocolError(error);
@@ -416,7 +421,7 @@ public:
         advertising.IsConnectable(true);
         advertising.IsDiscoverable(true);
         provider.StartAdvertising(advertising);
-        log("INFO", "HID service started; pair/connect the specified phone from Android Bluetooth settings");
+        log("INFO", "HID service started; pair/connect a phone from Android Bluetooth settings");
     }
 
     void refresh()
@@ -515,9 +520,15 @@ public:
             invalidate(s, reason.c_str());
             return;
         }
-        if (peer.BluetoothAddress() != s->peer_address) {
-            const auto reason = "subscriber address mismatch: expected=" + address_text(s->peer_address) +
-                " actual=" + address_text(peer.BluetoothAddress()) + " DeviceId=" + to_string(id) +
+        const auto address = peer.BluetoothAddress();
+        uint64_t expected_address;
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            expected_address = s->peer_address;
+        }
+        if (!address || (expected_address && address != expected_address)) {
+            const auto reason = "subscriber address mismatch: expected=" + address_text(expected_address) +
+                " actual=" + address_text(address) + " DeviceId=" + to_string(id) +
                 " paired=" + std::to_string(peer.DeviceInformation().Pairing().IsPaired()) +
                 " connected=" + std::to_string(peer.ConnectionStatus() == BluetoothConnectionStatus::Connected);
             invalidate(s, reason.c_str());
@@ -542,12 +553,20 @@ public:
             invalidate(s, "target phone is not paired");
             return;
         }
+        if (peer.ConnectionStatus() != BluetoothConnectionStatus::Connected) {
+            invalidate(s, "phone disconnected during pairing check");
+            return;
+        }
         if (key.MaxNotificationSize() < 8 || mouse.MaxNotificationSize() < 8)
             throw std::runtime_error("negotiated notification size is less than 8 bytes");
-        bool became_ready = false;
+        bool became_ready = false, selected = false;
         {
             std::lock_guard<std::mutex> lock(s->mutex);
             if (epoch != s->epoch || s->failed || s->closing || s->suspended) return;
+            if (!s->peer_address) {
+                s->peer_address = address;
+                selected = true;
+            }
             key_client = key;
             pointer_client = mouse;
             if (!s->ready) {
@@ -560,6 +579,7 @@ public:
                 became_ready = true;
             }
         }
+        if (selected) log("INFO", "auto-selected paired phone " + address_text(address));
         if (became_ready) log("INFO", "target paired, connected and subscribed; input ready");
     }
 
@@ -577,7 +597,7 @@ public:
         }
         {
             std::lock_guard<std::mutex> lock(s->mutex);
-            if (!s->ready || report.epoch != s->epoch) return;
+            if (!s->ready || report.epoch != s->epoch || peer.BluetoothAddress() != s->peer_address) return;
         }
         if (notification) throw std::runtime_error("attempt to overlap notifications");
         notification = c.NotifyValueAsync(buffer(report.bytes), selected);
@@ -616,7 +636,12 @@ public:
     // notification, and never broadcasts. Link loss can still prevent release.
     void release()
     {
-        if (s->stopping || !peer || peer.BluetoothAddress() != s->peer_address ||
+        uint64_t address;
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            address = s->peer_address;
+        }
+        if (s->stopping || !address || !peer || peer.BluetoothAddress() != address ||
             peer.ConnectionStatus() != BluetoothConnectionStatus::Connected || !paired) return;
         if (notification && notification.Status() == Windows::Foundation::AsyncStatus::Started) {
             log("WARN", "final release skipped: previous notification is still in flight");
@@ -859,17 +884,19 @@ extern "C" bool otg_ble_win_input_idle(otg_ble_win *b)
 extern "C" otg_ble_win *otg_ble_win_create(const char *peer)
 {
     try {
-        if (!peer || std::strlen(peer) != 17) return nullptr;
+        if (peer && *peer && std::strlen(peer) != 17) return nullptr;
         uint64_t address = 0;
-        for (unsigned i = 0; i < 17; ++i) {
-            if (i % 3 == 2) { if (peer[i] != ':') return nullptr; continue; }
-            char c = peer[i];
-            int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 :
-                c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
-            if (digit < 0) return nullptr;
-            address = (address << 4) | static_cast<unsigned>(digit);
+        if (peer && *peer) {
+            for (unsigned i = 0; i < 17; ++i) {
+                if (i % 3 == 2) { if (peer[i] != ':') return nullptr; continue; }
+                char c = peer[i];
+                int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 :
+                    c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+                if (digit < 0) return nullptr;
+                address = (address << 4) | static_cast<unsigned>(digit);
+            }
+            if (!address) return nullptr;
         }
-        if (!address) return nullptr;
         auto b = std::make_unique<otg_ble_win>();
         b->state->peer_address = address;
         return b.release();

@@ -92,16 +92,21 @@ static gpointer manager_thread(gpointer data)
     return NULL;
 }
 static gboolean stop_manager(gpointer data){g_main_loop_quit(data);return G_SOURCE_REMOVE;}
-static GVariant *invoke(struct otg_ble_hid *b,const char *path,const char *iface,
-                         const char *method_name,GVariant *args,bool success)
+static GVariant *invoke_from(struct otg_ble_hid *b,GDBusConnection *caller,const char *path,const char *iface,
+                              const char *method_name,GVariant *args,bool success)
 {
     struct pending_call call={0};
-    g_dbus_connection_call(b->bus,g_dbus_connection_get_unique_name(b->bus),path,
+    g_dbus_connection_call(caller,g_dbus_connection_get_unique_name(b->bus),path,
         iface,method_name,args,NULL,0,1000,NULL,call_finished,&call);
     while(!call.done)g_main_context_iteration(NULL,TRUE);
     CHECK(success ? call.result!=NULL : call.error!=NULL);
     g_clear_error(&call.error);
     return call.result;
+}
+static GVariant *invoke(struct otg_ble_hid *b,const char *path,const char *iface,
+                         const char *method_name,GVariant *args,bool success)
+{
+    return invoke_from(b,b->bus,path,iface,method_name,args,success);
 }
 static GVariant *read_at(struct otg_ble_hid *b,const char *path,guint16 offset,bool ok)
 {
@@ -115,6 +120,126 @@ static void write_byte(struct otg_ble_hid *b,const char *path,uint8_t value,bool
     GVariant *result=invoke(b,path,"org.bluez.GattCharacteristic1","WriteValue",
         g_variant_new("(@ay@a{sv})",bytes(&value,1),g_variant_new_array(G_VARIANT_TYPE("{sv}"),NULL,0)),ok);
     if(result)g_variant_unref(result);
+}
+static void observe_devices(struct otg_ble_hid *b, struct mock_bluez *mock,
+                            int connected, int unpaired, bool privacy)
+{
+    g_atomic_int_set(&mock->connected_mask,connected);
+    g_atomic_int_set(&mock->unpaired_mask,unpaired);
+    g_atomic_int_set(&mock->private_path,privacy);
+    g_clear_object(&b->devices);
+    b->devices=g_dbus_object_manager_client_new_sync(b->bus,
+        G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_DO_NOT_AUTO_START,BLUEZ,"/",NULL,NULL,NULL,NULL,NULL);
+    CHECK(b->devices);
+    refresh_peer(b);
+    update_channel_state(b);
+}
+
+static void test_automatic_peer(GDBusConnection *bus, struct mock_bluez *mock)
+{
+    struct otg_ble_hid b={.bus=bus,.adapter_path="/org/bluez/hci0",.latency_fd=-1,
+                          .app_registered=true};
+    observe_devices(&b,mock,3,0,false);
+    start_notify(&b,0);
+    start_notify(&b,1);
+    observe_devices(&b,mock,1,0,false);
+    CHECK(!b.channel_ready && !b.peer_address[0]);
+    start_notify(&b,0);
+    observe_devices(&b,mock,2,0,false);
+    start_notify(&b,1);
+    CHECK(!b.channel_ready && !b.peer_address[0]);
+
+    observe_devices(&b,mock,1,1,true);
+    start_notify(&b,0);
+    start_notify(&b,1);
+    CHECK(!b.channel_ready && !b.peer_address[0]);
+    observe_devices(&b,mock,1,0,true);
+    CHECK(b.channel_ready && !strcmp(b.peer_address,"AA:BB:CC:DD:EE:FF"));
+    CHECK(!otg_ble_hid_set_peer(&b,"11:22:33:44:55:66"));
+    observe_devices(&b,mock,2,0,false);
+    start_notify(&b,0);
+    start_notify(&b,1);
+    CHECK(!b.channel_ready && !strcmp(b.peer_address,"AA:BB:CC:DD:EE:FF"));
+    observe_devices(&b,mock,1,0,false);
+    CHECK(b.channel_ready); /* Same identity reconnects on a different object path. */
+    g_clear_object(&b.devices);
+    g_free(b.peer_path);
+    g_atomic_int_set(&mock->connected_mask,0);
+}
+
+static bool links_available=true;
+static struct link_snapshot fake_links;
+
+static bool read_fake_links(struct otg_ble_hid *b, struct link_snapshot *links)
+{
+    (void)b;
+    *links=fake_links;
+    return links_available;
+}
+
+static void acquire_and_start(struct otg_ble_hid *b,struct mock_bluez *mock,
+                              const char *report,const char *device,const char *link)
+{
+    GVariantBuilder options;
+    g_variant_builder_init(&options,G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&options,"{sv}","device",g_variant_new_object_path(device));
+    g_variant_builder_add(&options,"{sv}","link",g_variant_new_string(link));
+    CHECK(!invoke_from(b,mock->bus,report,"org.bluez.GattCharacteristic1","AcquireNotify",
+                       g_variant_new("(a{sv})",&options),false));
+    GVariant *result=invoke_from(b,mock->bus,report,"org.bluez.GattCharacteristic1","StartNotify",NULL,true);
+    g_variant_unref(result);
+}
+
+static void test_mixed_links(GDBusConnection *bus,struct mock_bluez *mock)
+{
+    struct otg_ble_hid b={.bus=bus,.adapter="hci0",.adapter_path="/org/bluez/hci0",.latency_fd=-1,
+                          .resident=true,.read_links=read_fake_links};
+    const char *phone="/org/bluez/hci0/dev_52_00_00_00_00_01";
+    CHECK(register_objects(&b));
+    CHECK(register_blueZ(&b));
+    CHECK(otg_ble_hid_set_session(&b,true));
+
+    fake_links=(struct link_snapshot){.le_count=1,.peripheral=true,.classic=true,.address="52:00:00:00:00:01"};
+    observe_devices(&b,mock,3,1,true);
+    CHECK(b.peer_path && !b.peer_connected && !b.channel_ready);
+    start_notify(&b,0); // An unattributed subscription only is insufficient with classic links.
+    start_notify(&b,1);
+    CHECK(!b.peer_address[0]);
+    acquire_and_start(&b,mock,ROOT "/hid/keys",phone,"LE");
+    CHECK(!b.peer_address[0]);
+    acquire_and_start(&b,mock,ROOT "/hid/pointer",phone,"LE");
+    update_channel_state(&b);
+    CHECK(!b.channel_ready && !b.peer_address[0]);
+    observe_devices(&b,mock,3,0,true);
+    CHECK(b.channel_ready && !strcmp(b.peer_address,"AA:BB:CC:DD:EE:FF"));
+
+    CHECK(otg_ble_hid_set_session(&b,false));
+    fake_links.le_count=0;
+    observe_devices(&b,mock,3,0,true); // Device1 still shows connected over classic.
+    CHECK(otg_ble_hid_set_session(&b,true));
+    CHECK(!b.peer_connected && !b.channel_ready);
+    fake_links.le_count=1;
+    strcpy(fake_links.address,"AA:BB:CC:DD:EE:FF");
+    observe_devices(&b,mock,3,0,false);
+    CHECK(b.channel_ready); // Same phone, preserved CCCs, no new acquisition.
+    fake_links.le_count=2;
+    observe_devices(&b,mock,3,0,false);
+    CHECK(!b.channel_ready);
+    fake_links.le_count=1;
+    links_available=false;
+    observe_devices(&b,mock,3,0,false);
+    CHECK(!b.channel_ready);
+    links_available=true;
+    observe_devices(&b,mock,3,0,false);
+    CHECK(b.channel_ready);
+
+    acquire_and_start(&b,mock,ROOT "/hid/keys","/org/bluez/hci0/dev_11_22_33_44_55_66","BR/EDR");
+    update_channel_state(&b);
+    CHECK(!b.channel_ready);
+    CHECK(otg_ble_hid_set_session(&b,false));
+    close_ble(&b);
+    g_clear_object(&b.devices);
+    g_free(b.peer_path);
 }
 int main(void)
 {
@@ -130,6 +255,7 @@ int main(void)
         G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT|G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
         NULL,NULL,NULL);
     CHECK(b.bus);
+    test_automatic_peer(b.bus,&mock);
     node_info=g_dbus_node_info_new_for_xml(xml,NULL);CHECK(node_info);
     CHECK(register_objects(&b));
     uint8_t map[]={1,2,3,4,5,6,7,8};b.report_map=map;b.report_map_size=sizeof(map);
@@ -211,7 +337,7 @@ int main(void)
     b.devices=g_dbus_object_manager_client_new_sync(b.bus,
         G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_DO_NOT_AUTO_START,BLUEZ,"/",NULL,NULL,NULL,NULL,NULL);
     CHECK(b.devices);refresh_peer(&b);update_channel_state(&b);
-    CHECK(!b.peer_connected && !b.peer_path && !b.channel_ready);
+    CHECK(!b.peer_connected && !b.channel_ready);
     CHECK(strstr(b.wait_reason,"not paired"));
     CHECK(!read_at(&b,ROOT "/hid/keys",0,false)); // Non-BlueZ D-Bus caller rejected.
     result=invoke(&b,ROOT "/hid/keys","org.bluez.GattCharacteristic1","StartNotify",NULL,false);
@@ -220,6 +346,7 @@ int main(void)
     CHECK(g_atomic_int_get(&mock.unregistered)==1);
     g_free(b.original_alias);
     g_clear_object(&b.devices);g_free(b.peer_path);
+    test_mixed_links(b.bus,&mock);
     g_dbus_node_info_unref(node_info);node_info=NULL;
     g_dbus_connection_close_sync(b.bus,NULL,NULL);g_object_unref(b.bus);
     g_main_context_invoke(mock.context,stop_manager,mock.loop);g_thread_join(thread);

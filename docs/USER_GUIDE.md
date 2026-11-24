@@ -325,11 +325,11 @@ Before adding/removing devices or changing screen names, layout or the shared se
 
 BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB debugging for basic input. Adapter and phone compatibility matter, so try wired control first to learn the basics.
 
-- **Linux**: select Bluetooth Low Energy and enter the adapter (often `hci0`), the target phone's identity address in BlueZ and its dimensions. Click Connect, then pair/connect to **Deskflow Bridge** in the phone's Bluetooth settings. Bluetooth isolation affects other devices on that adapter; leave it off initially. The target must be paired and be the adapter's only connection.
-- **Windows**: the option appears only in builds containing experimental BLE. Enter the target phone's BLE address as reported by Windows. Pairing and control still have compatibility limitations.
+- On **Linux**, select Bluetooth Low Energy, set the adapter (usually `hci0`) and screen dimensions, and click **Connect**. Open the phone's Bluetooth settings and pair or connect to **Deskflow Bridge**. Keep the phone as the adapter's only LE connection. Classic Bluetooth connections can coexist when Linux can verify that both input subscriptions belong to the phone's LE link. Leave Bluetooth isolation off initially because it can disconnect other devices on that adapter.
+- On **Windows**, select Bluetooth Low Energy in a build with experimental BLE, set the screen dimensions and click **Connect**. Pair or connect to the PC from the phone's Bluetooth settings. Pairing and control depend on the adapter and phone.
 - **macOS**: no BLE backend currently; consider wireless ADB + UHID for wireless control.
 
-The target address belongs to the **phone**, not the computer adapter or an arbitrary rotating advertisement. For help identifying it, follow the [Linux Bluetooth instructions](../README.md#3-control-the-phone-through-linux-ble) or [Windows Bluetooth guide](WINDOWS_BLE.md).
+Leave **Phone address (optional)** blank to use the first paired phone that connects and subscribes to both keyboard and pointer reports. The service remembers that phone until it stops. To change phones, disconnect the session and click **Stop idle Bluetooth service**, then connect from the new phone. To restrict selection in advance, enter the phone's stable address as reported by the desktop Bluetooth stack. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
 
 Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its persistent service after the GUI exits. Windows keeps an idle service while the GUI is running and stops it on Quit. Stopping the service or deleting pairings is not a routine reconnect step; pairing-cache behavior after restarts can still vary by device.
 

@@ -2,9 +2,23 @@
 
 ## 接手摘要
 
-**续接更新：CLI/GUI 与 DEB 接入已落地，新增要求及验证范围见第 8 节。旧命令中的 BLE 桥接
-现需添加 `--ble-peer`；IPC 已升至 v2，不能直接复用本文件第 7 节仍运行的旧版服务。不得擅自
-停止用户连接。以下历史记录保留当时的原始事实，不作为新版 GUI 已完成真机验收的证据。**
+**当前版支持从手机发起配对和连接，`--ble-peer` 选填。第 1～8 节保留历史记录，
+当前用法见下文。不要擅自停止仍在使用的蓝牙会话。**
+
+```bash
+deskflow-bridge --ble-service --adapter hci0
+# 在另一个终端启动桥接，再从手机蓝牙设置连接 Deskflow Bridge
+deskflow-bridge --transport ble --ble-session --adapter hci0 --name android --width 1080 --height 2400
+```
+
+服务通过 Linux 只读 `HCIGETCONNLIST` 核对唯一的 LE 链路、本机的 peripheral 角色及匹配的
+BlueZ `Device1`。经典蓝牙同时在线时，两路订阅必须来自该手机的 LE 链路。BlueZ 通过
+`AcquireNotify` 提供对端和链路信息，再回退到 `StartNotify` 发送通知，保留常驻服务内的订阅
+连续性。设备已配对后，自动模式记住其 `Device1.Address`。常驻服务保留期间，原手机的 LE
+链路重连可复用原订阅。若手机只使用缓存而未重新订阅新服务，请从手机端重新连接蓝牙。
+
+常驻服务保留选定的身份。要更换手机或在自动和指定地址之间切换，先停止空闲服务。自动模式
+需要新版服务。IPC 仍是 v2，旧版服务可通过 `--ble-stop-service` 显式停止，仍可用指定地址模式接入。
 
 分支：`feat/linux-ble-hid`。基于 `d11c432`（`main`）。实验功能包含本地实现及本轮续测记录，
 未推送、未开 PR、未发布安装包；不要将其当作完成真机验收的正式版本。
@@ -17,7 +31,7 @@
 首次迁移卡在 Android HID 连接中，保留配对切手机蓝牙开关一次后才恢复，不得隐去此边界。
 常驻服务/BlueZ/主机重启、长时间与完整输入验收仍未完成，详见第 6、7 节。**
 
-建议阅读顺序：本文件 → `README.md` 的 Linux BLE 章节 → `AGENTS.md` → 对应源码和测试。
+建议阅读顺序：本文件 → `docs/USER_GUIDE.zh-CN.md` 的蓝牙连接章节 → `AGENTS.md` → 对应源码和测试。
 项目计划“Linux BLE HID 功能接入与真机验证”仍未完成，不能把编译/mock 通过当作完成验收。
 
 ## Steps

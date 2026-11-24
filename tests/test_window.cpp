@@ -1604,7 +1604,13 @@ private slots:
         QVERIFY(window.findChild<QLineEdit *>("blePeer")->toolTip().contains("Windows"));
 #endif
         auto *session = window.findChild<Session *>();
-        window.findChild<QPushButton *>("connectButton")->click();
+        auto *peer = window.findChild<QLineEdit *>("blePeer");
+        QCOMPARE(peer->text(), "AA:BB:CC:DD:EE:FF");
+        peer->clear();
+        auto *button = window.findChild<QPushButton *>("connectButton");
+        QVERIFY(button->isEnabled());
+        QVERIFY(window.findChild<QPushButton *>("connectAllButton")->isEnabled());
+        button->click();
         QTRY_COMPARE(session->state(), Session::State::Connected);
         QVERIFY(serial->text().isEmpty()); // No startup ADB scan in BLE mode.
         session->stop();
@@ -1614,9 +1620,9 @@ private slots:
         window.findChild<QAction *>("trayQuit")->trigger();
         QTRY_VERIFY(!session->hasBleProvider());
         QCOMPARE(settings.value("transport").toString(), "ble");
-        QCOMPARE(settings.value("blePeer").toString(), "AA:BB:CC:DD:EE:FF");
+        QVERIFY(settings.value("blePeer").toString().isEmpty());
         AutoConnectTestWindow restored;
-        QCOMPARE(restored.findChild<QLineEdit *>("blePeer")->text(), "AA:BB:CC:DD:EE:FF");
+        QVERIFY(restored.findChild<QLineEdit *>("blePeer")->text().isEmpty());
         restored.findChild<QComboBox *>("transportSelector")->setCurrentIndex(0);
         QVERIFY(restored.findChild<QLineEdit *>("usbSerial")->isEnabled());
         restored.findChild<QAction *>("trayQuit")->trigger();

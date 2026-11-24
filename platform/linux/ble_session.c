@@ -176,7 +176,11 @@ static bool handle_session(struct service *s,const struct message *m)
 {
     switch(m->operation) {
     case SELECT_PEER:
-        if(s->active || s->registered || m->id || m->size!=17)return false;
+        if(s->active || s->registered || m->id)return false;
+        /* Empty selection explicitly opts in to automatic binding. Older v2
+         * services reject it, preventing use of their legacy peer selection. */
+        if(!m->size)return !s->peer[0];
+        if(m->size!=17 || (s->hid && !s->peer[0]))return false;
         for(unsigned i=0;i<17;i++) {
             if(i%3==2 ? m->data[i]!=':' : !g_ascii_isxdigit(m->data[i]))return false;
         }
@@ -392,7 +396,8 @@ static bool session_rpc(struct otg_ble_session *s,uint16_t op,uint16_t id,
 }
 bool otg_ble_session_set_peer(struct otg_ble_session *s,const char *address)
 {
-    return address && strlen(address)==17 && session_rpc(s,SELECT_PEER,0,address,17);
+    if(!address)return session_rpc(s,SELECT_PEER,0,NULL,0);
+    return strlen(address)==17 && session_rpc(s,SELECT_PEER,0,address,17);
 }
 static bool session_register(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
 {return session_rpc(ctx,REGISTER,id,data,size);}

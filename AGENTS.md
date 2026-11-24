@@ -195,8 +195,9 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   `BUILD_BLE`；同时开启 `BUILD_GUI` 时提供 Windows GUI 连接选项。`platform/windows/ble_win.cpp` 使用 C++20/WinRT；
   `platform/windows/ble_win.h` 暴露 C ABI，桥接核心保持 C11。专用线程管理 GATT/身份核对和单条
   在途通知，64 条有界队列仅合并相邻纯移动，按钮/范围/滚轮/键盘保持屏障。
-  必须 `--transport ble --ble-peer MAC`、默认适配器和 absolute；不支持 Linux 服务、
-  隔离选项。GUI 以 `--gui --gui-ble-control --transport ble --ble-peer MAC` 管理前台桥接，不传 Linux
+  使用 `--transport ble`、默认适配器和 absolute。`--ble-peer MAC` 选填，省略时由同一已配对在线
+  设备的两路唯一订阅确定目标，目标在 provider 生命周期内固定。不支持 Linux 服务、隔离选项。
+  GUI 以 `--gui --gui-ble-control --transport ble` 管理前台桥接，不传 Linux
   `--adapter/--ble-session`，不与 `--background` 合用；隐藏托盘保留进程，退出停止
   自己的 GATT。断开使用有界 stdin `pause`，停止 TCP、丢弃待发动作，等待在途通知与释放报告
   处理完才回 `ble-idle`；空闲保留原 provider/订阅，下次 `resume` 更新 host/port/name/尺寸。
@@ -395,11 +396,15 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   不访问硬件，不代表 Android ROM、Windows/macOS 真机兼容性已验收。详见 `docs/CLIPBOARD.md`。
 
 - Linux BLE 正式接入在同一 `deskflow-bridge` 中分为 `--ble-service` 常驻进程与
-  `--transport ble --ble-session --ble-peer MAC` 桥接会话；BLE 桥接必须指定 BlueZ 身份地址。
-  本地 IPC 协议现为 v2，服务生命周期内固定目标，不兼容旧实验常驻进程；迁移必须显式停止
+  `--transport ble --ble-session` 桥接会话。`--ble-peer MAC` 选填，省略时仅当两路订阅都可
+  关联到同一个唯一在线、已配对的设备才记录其身份。Linux 用只读 HCI 链路快照区分 LE 和
+  BR/EDR，并核对本机的 peripheral 角色。经典蓝牙共存时须由 BlueZ `AcquireNotify` 核对
+  两路订阅的设备和 bearer。用 `NotSupported` 回退到 `StartNotify` 保持已有订阅连续性。
+  本地 IPC 仍为 v2，空 `SELECT_PEER` 由新版服务支持，服务生命周期内固定目标。迁移必须显式停止
   旧服务，不得擅自杀掉正在使用的连接。`--ble-status` 只读，`--ble-stop-service` 仅同 UID
   且空闲/清理成功时停止（会注销 GATT，丢失 CCC 连续性）。GATT 方法仅允许 BlueZ 调用，
-  键鼠 Value 信号定向发送给 BlueZ；目标需已配对且适配器仅这一个连接，多连接关闭输入。
+  键鼠 Value 信号定向发送给 BlueZ。多条 LE 链路、链路不可核对，或经典蓝牙在线但订阅无法
+  归属时关闭输入。
   GUI 蓝牙模式不扫描 ADB/USB，不使用 USB 自动连接；后台启动/复用普通用户服务，退出保留服务。
   仅 BLE 隔离默认关闭，须确认全适配器断连影响，再用 `/usr/bin/pkexec` 认证；监督器识别
   PKEXEC_UID/SUDO_UID，继承桥接 stdin，实现取消/EOF 优雅恢复；GUI 不强杀特权恢复进程。

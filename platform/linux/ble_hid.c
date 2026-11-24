@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -21,6 +22,31 @@
 #define REF_UUID "00002908-0000-1000-8000-00805f9b34fb"
 #define BLE_POINTER_INTERVAL_NS UINT64_C(15000000)
 
+/* Linux HCIGETCONNLIST ABI, also used by hcitool con. This socket is unbound
+ * and only used for the read-only ioctl. No libbluetooth dependency. */
+struct hci_connection {
+    uint16_t handle;
+    uint8_t address[6], type, outgoing;
+    uint16_t state;
+    uint32_t mode;
+};
+struct hci_connections {
+    uint16_t adapter, count;
+    struct hci_connection entries[64];
+};
+_Static_assert(sizeof(struct hci_connection) == 16, "Linux HCI connection ABI");
+#define HCI_GET_CONNECTIONS _IOR('H', 212, int)
+#define HCI_ACL_LINK 0x01
+#define HCI_LE_LINK 0x80
+#define HCI_LINK_CENTRAL 0x0001
+#define HCI_LINK_CONNECTED 0x01
+
+struct link_snapshot {
+    unsigned le_count;
+    bool classic, peripheral;
+    char address[18];
+};
+
 struct otg_ble_hid;
 enum ble_kind { BLE_ROOT, BLE_SERVICE, BLE_REPORT, BLE_MAP, BLE_INFO,
                 BLE_REF, BLE_ADV, BLE_LEDS, BLE_CONTROL };
@@ -31,6 +57,8 @@ struct otg_ble_hid {
     GDBusConnection *bus;
     GDBusObjectManager *devices;
     char *peer_path;
+    char *subscription_path[2];
+    bool verified_subscription[2], foreign_subscription[2], classic_connected;
     char peer_address[18];
     const char *peer_wait_reason, *wait_reason;
     bool peer_connected, channel_ready;
@@ -47,6 +75,9 @@ struct otg_ble_hid {
     uint64_t pointer_last_sent_ns;
     bool pointer_pending;
     int latency_fd;
+    int hci_fd;
+    uint16_t hci_index;
+    bool (*read_links)(struct otg_ble_hid *, struct link_snapshot *);
     uint64_t pointer_interval_ns;
     uint8_t *report_map;
     size_t report_map_size;
@@ -61,7 +92,7 @@ static const gchar *xml =
 "<interface name='org.freedesktop.DBus.ObjectManager'><method name='GetManagedObjects'><arg type='a{oa{sa{sv}}}' direction='out'/></method></interface>"
 "<interface name='org.freedesktop.DBus.Properties'><method name='GetAll'><arg type='s' direction='in'/><arg type='a{sv}' direction='out'/></method><signal name='PropertiesChanged'><arg type='s'/><arg type='a{sv}'/><arg type='as'/></signal></interface>"
 "<interface name='org.bluez.GattService1'><property name='UUID' type='s' access='read'/><property name='Primary' type='b' access='read'/><property name='Handle' type='q' access='read'/></interface>"
-"<interface name='org.bluez.GattCharacteristic1'><method name='ReadValue'><arg type='a{sv}' direction='in'/><arg type='ay' direction='out'/></method><method name='StartNotify'/><method name='StopNotify'/><method name='WriteValue'><arg type='ay' direction='in'/><arg type='a{sv}' direction='in'/></method><property name='UUID' type='s' access='read'/><property name='Service' type='o' access='read'/><property name='Flags' type='as' access='read'/><property name='Notifying' type='b' access='read'/><property name='Handle' type='q' access='read'/></interface>"
+"<interface name='org.bluez.GattCharacteristic1'><method name='ReadValue'><arg type='a{sv}' direction='in'/><arg type='ay' direction='out'/></method><method name='StartNotify'/><method name='StopNotify'/><method name='AcquireNotify'><arg type='a{sv}' direction='in'/><arg type='h' direction='out'/><arg type='q' direction='out'/></method><method name='WriteValue'><arg type='ay' direction='in'/><arg type='a{sv}' direction='in'/></method><property name='UUID' type='s' access='read'/><property name='Service' type='o' access='read'/><property name='Flags' type='as' access='read'/><property name='Notifying' type='b' access='read'/><property name='NotifyAcquired' type='b' access='read'/><property name='Handle' type='q' access='read'/></interface>"
 "<interface name='org.bluez.GattDescriptor1'><method name='ReadValue'><arg type='a{sv}' direction='in'/><arg type='ay' direction='out'/></method><property name='UUID' type='s' access='read'/><property name='Characteristic' type='o' access='read'/><property name='Flags' type='as' access='read'/><property name='Handle' type='q' access='read'/></interface>"
 "<interface name='org.bluez.LEAdvertisement1'><method name='Release'/><property name='Type' type='s' access='read'/><property name='ServiceUUIDs' type='as' access='read'/><property name='LocalName' type='s' access='read'/><property name='Appearance' type='q' access='read'/></interface>"
 "</node>";
@@ -245,7 +276,6 @@ bool otg_ble_hid_set_peer(struct otg_ble_hid *b, const char *address)
     }
     identity[17] = 0;
     if (b->peer_address[0]) return !strcmp(b->peer_address, identity);
-    if (b->peer_path) return false; /* Don't silently retarget a legacy binding. */
     memcpy(b->peer_address, identity, sizeof(identity));
     return true;
 }
@@ -253,13 +283,51 @@ bool otg_ble_hid_set_peer(struct otg_ble_hid *b, const char *address)
 /* BlueZ may resolve Address to the identity address while retaining the D-Bus
  * path created for the original private address. The path is an opaque key,
  * not an authentication identifier, and can change across reconnections. */
-static bool matches_identity(struct otg_ble_hid *b, GDBusProxy *device)
+static char *device_address(GDBusProxy *device)
 {
     GVariant *value=g_dbus_proxy_get_cached_property(device,"Address");
-    bool same=value && g_variant_is_of_type(value,G_VARIANT_TYPE_STRING) &&
-              !g_ascii_strcasecmp(g_variant_get_string(value,NULL),b->peer_address);
+    char *address=value && g_variant_is_of_type(value,G_VARIANT_TYPE_STRING) ?
+                  g_variant_dup_string(value,NULL) : NULL;
     if(value)g_variant_unref(value);
-    return same;
+    return address;
+}
+
+static bool read_kernel_links(struct otg_ble_hid *b, struct link_snapshot *links)
+{
+    struct hci_connections list = {.adapter=b->hci_index, .count=G_N_ELEMENTS(list.entries)};
+    if (b->hci_fd < 0 || ioctl(b->hci_fd, HCI_GET_CONNECTIONS, &list) < 0 ||
+        list.count >= G_N_ELEMENTS(list.entries)) return false;
+
+    for (unsigned i=0;i<list.count;i++) {
+        const struct hci_connection *entry=&list.entries[i];
+        if (entry->type==HCI_ACL_LINK) links->classic=true;
+        if (entry->type!=HCI_LE_LINK) continue;
+        links->le_count++;
+        links->peripheral=entry->state==HCI_LINK_CONNECTED && !(entry->mode & HCI_LINK_CENTRAL);
+        const uint8_t *a=entry->address;
+        snprintf(links->address,sizeof(links->address),"%02X:%02X:%02X:%02X:%02X:%02X",
+                 a[5],a[4],a[3],a[2],a[1],a[0]);
+    }
+    return true;
+}
+
+static bool matches_link(const struct link_snapshot *links, const char *address, const char *path)
+{
+    if (address && !g_ascii_strcasecmp(address,links->address)) return true;
+    /* The kernel can still report the on-air address of a resolved peer. */
+    char object_id[18];
+    memcpy(object_id,links->address,sizeof(object_id));
+    for (unsigned i=2;i<17;i+=3) object_id[i]='_';
+    const char *name=strrchr(path,'/');
+    return name && g_str_has_prefix(name,"/dev_") && !g_ascii_strcasecmp(name+5,object_id);
+}
+
+static bool subscriptions_safe(const struct otg_ble_hid *b)
+{
+    /* BlueZ's Value signal can reach all subscribed bearers. For coexistence
+     * require two LE-attributed subscriptions and no untrusted CCC writers. */
+    return !b->classic_connected || (b->verified_subscription[0] && b->verified_subscription[1] &&
+           !b->foreign_subscription[0] && !b->foreign_subscription[1]);
 }
 
 /* BlueZ 5.72 retains CCC subscriptions for bonded peers across disconnects;
@@ -272,12 +340,21 @@ static void refresh_peer(struct otg_ble_hid *b)
     if (!owner) {
         b->app_registered=false;b->peer_connected=false;
         b->peer_wait_reason="BlueZ unavailable";
-        if(b->peer_address[0])g_clear_pointer(&b->peer_path,g_free);
+        g_clear_pointer(&b->peer_path,g_free);
+        for (unsigned i=0;i<2;i++) {
+            g_clear_pointer(&b->subscription_path[i],g_free);
+            b->verified_subscription[i]=false;
+        }
         return;
     }
     g_free(owner);
+    struct link_snapshot links={0};
+    const bool have_links=b->read_links && b->read_links(b,&links);
+    b->classic_connected=have_links && links.classic;
     GList *objects=g_dbus_object_manager_get_objects(b->devices);
-    unsigned connected=0;char *candidate=NULL;bool paired=false,identity=false;
+    unsigned connected=0;
+    char *candidate=NULL, *address=NULL;
+    bool paired=false;
     for(GList *it=objects;it;it=it->next) {
         GDBusObject *object=it->data;
         const char *path=g_dbus_object_get_object_path(object);
@@ -287,31 +364,57 @@ static void refresh_peer(struct otg_ble_hid *b)
         if(!interface) continue;
         GVariant *value=g_dbus_proxy_get_cached_property(G_DBUS_PROXY(interface),"Connected");
         if(value && g_variant_get_boolean(value)) {
-            connected++;g_free(candidate);candidate=g_strdup(path);
-            identity=b->peer_address[0] && matches_identity(b,G_DBUS_PROXY(interface));
-            GVariant *bond=g_dbus_proxy_get_cached_property(G_DBUS_PROXY(interface),"Paired");
-            paired=bond && g_variant_get_boolean(bond);
-            if(bond)g_variant_unref(bond);
+            char *current_address=device_address(G_DBUS_PROXY(interface));
+            if (!have_links || (links.le_count==1 && links.peripheral && matches_link(&links,current_address,path))) {
+                connected++;g_free(candidate);candidate=g_strdup(path);
+                g_free(address);address=g_steal_pointer(&current_address);
+                GVariant *bond=g_dbus_proxy_get_cached_property(G_DBUS_PROXY(interface),"Paired");
+                paired=bond && g_variant_get_boolean(bond);
+                if(bond)g_variant_unref(bond);
+            }
+            g_free(current_address);
         }
         if(value)g_variant_unref(value);
         g_object_unref(interface);
     }
     g_list_free_full(objects,g_object_unref);
-    bool same=b->peer_address[0] ? identity :
-              (!b->peer_path || (candidate && !strcmp(candidate,b->peer_path)));
-    b->peer_connected=connected==1 && paired && same;
-    b->peer_wait_reason=!connected ? "target not connected" :
-        connected!=1 ? "multiple connected devices; input blocked" :
+    const bool ambiguous=b->read_links && (!have_links || links.le_count>1 || connected>1);
+    const bool unique=connected==1 && !ambiguous;
+    const bool same=!b->peer_address[0] || (address && !g_ascii_strcasecmp(address,b->peer_address));
+    b->peer_connected=unique && paired && same;
+    b->peer_wait_reason=b->read_links && !have_links ? "cannot verify adapter LE links; input blocked" :
+        ambiguous || connected>1 ? "multiple LE links or ambiguous device identity; input blocked" :
+        !connected ? "target LE peripheral link not connected" :
         !same ? "connected device identity does not match target" :
         !paired ? "connected LE object is not paired; another object's saved bond is not sufficient" : NULL;
-    if(!b->peer_connected) b->suspended=false;
-    if(b->peer_address[0]) {
-        if(b->peer_connected && g_strcmp0(candidate,b->peer_path)) {
-            g_free(b->peer_path);b->peer_path=g_strdup(candidate);
-        } else if(!b->peer_connected)g_clear_pointer(&b->peer_path,g_free);
-    } else if(b->peer_connected && !b->peer_path && b->notifying[0] && b->notifying[1])
-        b->peer_path=g_strdup(candidate);
+    /* The CCC callback can precede the Paired property update. Keep the
+     * candidate path for attribution and require peer_connected for input. */
+    const char *path=unique && same ? candidate : NULL;
+    if (!b->peer_connected) b->suspended=false;
+    if(g_strcmp0(path,b->peer_path)) {
+        b->suspended=false;
+        g_free(b->peer_path);
+        b->peer_path=g_strdup(path);
+    }
+    if(!b->peer_address[0]) {
+        /* Both notifications must belong to the same candidate before pinning
+         * its paired identity. Drop incomplete evidence after it leaves. */
+        for(unsigned i=0;i<2;i++) {
+            if(g_strcmp0(b->subscription_path[i],path)) {
+                g_clear_pointer(&b->subscription_path[i],g_free);
+                b->verified_subscription[i]=false;
+            }
+        }
+        if(b->peer_connected && b->app_registered && (!b->resident || b->session_enabled) &&
+           b->notifying[0] && b->notifying[1] && b->subscription_path[0] && b->subscription_path[1] &&
+           subscriptions_safe(b) && !b->suspended &&
+           otg_ble_hid_set_peer(b,address)) {
+            fprintf(stderr,"INFO: BLE selected paired phone %s\n",b->peer_address);
+            for(unsigned i=0;i<2;i++)g_clear_pointer(&b->subscription_path[i],g_free);
+        }
+    }
     g_free(candidate);
+    g_free(address);
 }
 
 static void update_channel_state(struct otg_ble_hid *b)
@@ -319,7 +422,9 @@ static void update_channel_state(struct otg_ble_hid *b)
     const char *reason=b->resident && !b->session_enabled ? "session idle" :
         !b->app_registered ? "GATT not registered" :
         !b->peer_connected ? (b->peer_wait_reason ? b->peer_wait_reason : "waiting for target connection") :
-        !b->notifying[0] || !b->notifying[1] ? "waiting for both HID subscriptions" :
+        !b->notifying[0] || !b->notifying[1] || (b->devices && !b->peer_address[0]) ?
+            "waiting for both HID subscriptions from the same device" :
+        !subscriptions_safe(b) ? "cannot associate both BLE HID subscriptions while classic Bluetooth is connected" :
         b->suspended ? "phone suspended HID input" : NULL;
     if(g_strcmp0(reason,b->wait_reason)) {
         if(reason)fprintf(stderr,"INFO: BLE waiting: %s\n",reason);
@@ -327,7 +432,8 @@ static void update_channel_state(struct otg_ble_hid *b)
     }
     bool ready=(!b->resident || b->session_enabled) &&
                b->app_registered && b->peer_connected && b->notifying[0] &&
-               b->notifying[1] && !b->suspended;
+               b->notifying[1] && (!b->devices || b->peer_address[0]) &&
+               subscriptions_safe(b) && !b->suspended;
     if(ready==b->channel_ready) return;
     b->channel_ready=ready;
     if(!ready) reset_reports(b);
@@ -413,7 +519,7 @@ static GVariant *props(const struct ble_object *o, const char *interface)
     if (o->kind==BLE_SERVICE) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(HID_UUID)); g_variant_builder_add(&d,"{sv}","Primary",g_variant_new_boolean(TRUE)); }
     else if (o->kind==BLE_MAP) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(MAP_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read","encrypt-read",NULL})); }
     else if (o->kind==BLE_INFO) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(INFO_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read",NULL})); }
-    else if (o->kind==BLE_REPORT) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(CHAR_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); const char *f[] = {"read","encrypt-read","notify","encrypt-notify",NULL}; g_variant_builder_add(&d,"{sv}","Flags",strv(f)); g_variant_builder_add(&d,"{sv}","Notifying",g_variant_new_boolean(b->notifying[o->report])); }
+    else if (o->kind==BLE_REPORT) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(CHAR_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); const char *f[] = {"read","encrypt-read","notify","encrypt-notify",NULL}; g_variant_builder_add(&d,"{sv}","Flags",strv(f)); g_variant_builder_add(&d,"{sv}","Notifying",g_variant_new_boolean(b->notifying[o->report])); g_variant_builder_add(&d,"{sv}","NotifyAcquired",g_variant_new_boolean(FALSE)); }
     else if (o->kind==BLE_REF) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(REF_UUID)); g_variant_builder_add(&d,"{sv}","Characteristic",g_variant_new_object_path(path_for(&(struct ble_object){b,o->report == 2 ? BLE_LEDS : BLE_REPORT,o->report}))); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read",NULL})); }
     else if (o->kind==BLE_LEDS || o->kind==BLE_CONTROL) {
         g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(o->kind==BLE_LEDS ? CHAR_UUID : "00002a4c-0000-1000-8000-00805f9b34fb"));
@@ -430,7 +536,7 @@ static void changed(struct otg_ble_hid *b, int report)
     char *owner = NULL;
     if (b->devices) {
         refresh_peer(b);
-        if (!b->peer_connected) return;
+        if (!b->peer_connected || !b->peer_address[0] || !subscriptions_safe(b)) return;
         owner = g_dbus_object_manager_client_get_name_owner(G_DBUS_OBJECT_MANAGER_CLIENT(b->devices));
         if (!owner) return;
     }
@@ -446,13 +552,42 @@ static void changed(struct otg_ble_hid *b, int report)
 
 static bool target_options(struct otg_ble_hid *b, GVariant *options)
 {
-    if(b->peer_address[0]) {
-        refresh_peer(b);
-        if(!b->peer_connected || !b->peer_path)return false;
-    }
-    if (!b->peer_path) return true;
-    const char *device = NULL;
+    if (b->devices) refresh_peer(b);
+    if (!b->devices && !b->peer_address[0] && !b->peer_path) return true;
+    if (!b->peer_connected || !b->peer_path) return false;
+    const char *device = NULL, *link = NULL;
+    if (g_variant_lookup(options,"link","&s",&link) && strcmp(link,"LE")) return false;
     return g_variant_lookup(options,"device","&o",&device) && !strcmp(device,b->peer_path);
+}
+
+static void observe_subscription(struct otg_ble_hid *b, unsigned report, GVariant *options)
+{
+    const char *device = NULL, *link = NULL;
+    refresh_peer(b);
+    if (!g_variant_lookup(options,"link","&s",&link) || strcmp(link,"LE") ||
+        !g_variant_lookup(options,"device","&o",&device) || g_strcmp0(device,b->peer_path)) {
+        /* A foreign CCC may survive disconnect. Only StopNotify (last CCC
+         * removed) clears this evidence while the GATT service is alive. */
+        b->foreign_subscription[report]=true;
+        return;
+    }
+    b->verified_subscription[report]=true;
+    if (!b->peer_address[0]) {
+        g_free(b->subscription_path[report]);
+        b->subscription_path[report]=g_strdup(device);
+    }
+}
+
+static void start_notify(struct otg_ble_hid *b, unsigned report)
+{
+    if (b->devices && !b->peer_address[0] && !b->verified_subscription[report]) {
+        refresh_peer(b);
+        g_free(b->subscription_path[report]);
+        b->subscription_path[report] = b->classic_connected ? NULL : g_strdup(b->peer_path);
+    }
+    b->notifying[report] = true;
+    fprintf(stderr, "INFO: BLE %s report subscribed\n", report ? "pointer" : "keyboard");
+    changed(b, report);
 }
 
 static void method(GDBusConnection *c,const gchar *sender,const gchar *path,const gchar *iface,const gchar *name,GVariant *p,GDBusMethodInvocation *inv,gpointer user)
@@ -485,8 +620,29 @@ static void method(GDBusConnection *c,const gchar *sender,const gchar *path,cons
         if(offset>size){g_dbus_method_invocation_return_dbus_error(inv,"org.bluez.Error.InvalidOffset","offset exceeds value");return;}
         g_dbus_method_invocation_return_value(inv,g_variant_new("(@ay)",bytes(value ? value+offset : NULL,size-offset))); return;
     }
-    if (o->kind==BLE_REPORT && !strcmp(name,"StartNotify")) { b->notifying[o->report]=true; fprintf(stderr,"INFO: BLE %s report subscribed\n",o->report?"pointer":"keyboard"); changed(b,o->report); g_dbus_method_invocation_return_value(inv,NULL); return; }
-    if (o->kind==BLE_REPORT && !strcmp(name,"StopNotify")) { b->notifying[o->report]=false; latency_state(b, false); reset_reports(b); fprintf(stderr,"INFO: BLE %s report unsubscribed\n",o->report?"pointer":"keyboard"); g_dbus_method_invocation_return_value(inv,NULL); return; }
+    if (o->kind==BLE_REPORT && !strcmp(name,"AcquireNotify")) {
+        GVariant *options=g_variant_get_child_value(p,0);
+        observe_subscription(b,o->report,options);
+        g_variant_unref(options);
+        /* On BlueZ the local AcquireNotify callback has the device and bearer,
+         * unlike StartNotify. Keep CCC handling on the normal notification
+         * path so a bonded phone can reconnect without acquiring a new FD. */
+        g_dbus_method_invocation_return_dbus_error(inv,"org.bluez.Error.NotSupported","Use StartNotify");
+        return;
+    }
+    if (o->kind==BLE_REPORT && !strcmp(name,"StartNotify")) {
+        start_notify(b,o->report);
+        g_dbus_method_invocation_return_value(inv,NULL);return;
+    }
+    if (o->kind==BLE_REPORT && !strcmp(name,"StopNotify")) {
+        b->notifying[o->report]=false;
+        b->verified_subscription[o->report]=false;
+        b->foreign_subscription[o->report]=false;
+        g_clear_pointer(&b->subscription_path[o->report],g_free);
+        latency_state(b,false);reset_reports(b);
+        fprintf(stderr,"INFO: BLE %s report unsubscribed\n",o->report?"pointer":"keyboard");
+        g_dbus_method_invocation_return_value(inv,NULL);return;
+    }
     if ((o->kind==BLE_LEDS || o->kind==BLE_CONTROL) && !strcmp(name,"WriteValue")) {
         GVariant *v,*options; g_variant_get(p,"(@ay@a{sv})",&v,&options);
         gsize size; const uint8_t *value=g_variant_get_fixed_array(v,&size,1);
@@ -660,9 +816,17 @@ const struct otg_hid_transport_ops*otg_ble_hid_ops(void){return &OPS;}
 static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident)
 {
     memset(b,0,sizeof(*b));b->resident=resident;
+    b->hci_fd=-1;
     if(resident)b->latency_fd=-1;else latency_init(b);
     b->adapter=g_strdup(adapter ? adapter : "hci0");
     if(!b->adapter)return false;
+    if (!g_str_has_prefix(b->adapter,"hci") || !g_ascii_isdigit(b->adapter[3])) return false;
+    char *end;
+    const unsigned long index=strtoul(b->adapter+3,&end,10);
+    if (*end || index>=UINT16_MAX) return false;
+    b->hci_index=(uint16_t)index;
+    b->hci_fd=socket(AF_BLUETOOTH,SOCK_RAW|SOCK_CLOEXEC,1);
+    b->read_links=read_kernel_links;
     b->adapter_path=g_strdup_printf("/org/bluez/%s",b->adapter);
     GError *error=NULL;
     b->bus=g_bus_get_sync(G_BUS_TYPE_SYSTEM,NULL,&error);
@@ -678,6 +842,25 @@ static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident)
 bool otg_ble_hid_init(struct otg_ble_hid *b,const char *adapter){return init_mode(b,adapter,false);}
 struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter){struct otg_ble_hid*b=calloc(1,sizeof(*b));if(b&&!init_mode(b,adapter,true)){otg_ble_hid_destroy(b);return NULL;}return b;}
 struct otg_ble_hid *otg_ble_hid_create(const char *adapter){struct otg_ble_hid*b=calloc(1,sizeof(*b));if(b&&!otg_ble_hid_init(b,adapter)){otg_ble_hid_destroy(b);return NULL;}return b;}
-void otg_ble_hid_destroy(struct otg_ble_hid*b){if(!b)return;close_ble(b);restore_adapter_alias(b);if(b->latency_fd>=0)close(b->latency_fd);for(int i=0;i<2;i++)free(b->pending_desc[i]);free(b->report_map);if(b->devices)g_object_unref(b->devices);if(b->bus)g_object_unref(b->bus);g_free(b->adapter_path);g_free(b->adapter);g_free(b->peer_path);g_free(b->original_alias);free(b);}
+void otg_ble_hid_destroy(struct otg_ble_hid *b)
+{
+    if (!b) return;
+    close_ble(b);
+    restore_adapter_alias(b);
+    if (b->latency_fd>=0) close(b->latency_fd);
+    if (b->hci_fd>=0) close(b->hci_fd);
+    for (unsigned i=0;i<2;i++) {
+        free(b->pending_desc[i]);
+        g_free(b->subscription_path[i]);
+    }
+    free(b->report_map);
+    g_clear_object(&b->devices);
+    g_clear_object(&b->bus);
+    g_free(b->adapter_path);
+    g_free(b->adapter);
+    g_free(b->peer_path);
+    g_free(b->original_alias);
+    free(b);
+}
 const char*otg_ble_hid_adapter(const struct otg_ble_hid*b){return b?b->adapter:NULL;}
 #endif

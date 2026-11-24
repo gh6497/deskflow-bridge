@@ -92,6 +92,8 @@ static void test_sessions(void)
     struct message peer={.operation=SELECT_PEER,.size=17,.data="aa:bb:cc:dd:ee:ff"};
     CHECK(handle_session(&s,&peer));
     CHECK(!strcmp(s.peer,"AA:BB:CC:DD:EE:FF"));
+    const struct message automatic={.operation=SELECT_PEER};
+    CHECK(!handle_session(&s,&automatic));
     peer.data[0]='Z';CHECK(!handle_session(&s,&peer));peer.data[0]='a';
     CHECK(handle_session(&s,&keys));CHECK(!s.hid && !s.active);
     CHECK(handle_session(&s,&pointer));
@@ -314,6 +316,7 @@ static void test_service_process(void)
     CHECK(listening);
     for(int session=0;session<2;session++) {
         struct otg_ble_session *client=otg_ble_session_open("hci0");CHECK(client);
+        CHECK(otg_ble_session_set_peer(client,NULL));
         struct message keys=descriptor(1),pointer=descriptor(2);
         CHECK(session_register(client,1,keys.data,keys.size));
         CHECK(session_register(client,2,pointer.data,pointer.size));

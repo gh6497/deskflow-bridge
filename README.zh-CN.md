@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 |---|---|---|---|
 | **ADB＋UHID** | Windows 和已经使用 ADB 的用户 | 开启并授权 USB 或无线调试 | 使用普通 ADB 驱动，不需要替换为 WinUSB。Windows 新配置推荐使用。 |
 | **USB AOA HID** | 只需要键鼠控制 | 不需要 ADB 或 USB 调试 | 类似 scrcpy OTG。Linux 需要 USB 权限；Windows 需要 libusb 可用的驱动。 |
-| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 将手机与电脑配对 | 不需要 USB 线，但配置和兼容性限制更多；macOS 暂无 BLE 后端。 |
+| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 在手机蓝牙设置中配对或连接电脑 | 手机地址选填，无需 USB 线。macOS 暂无 BLE 后端。 |
 
 ADB 只在 ADB＋UHID 以及音频、剪贴板、旋转跟随、文件分享等附加功能中需要。AOA HID 可以完全不开 USB 调试使用。
 

@@ -482,7 +482,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     addTranslatedRow(deviceForm, "otg.ble.adapter", m_adapter);
     m_blePeer = new QLineEdit;
     m_blePeer->setObjectName("blePeer");
-    m_blePeer->setPlaceholderText("AA:BB:CC:DD:EE:FF");
+    setTranslatedProperty(m_blePeer, "placeholderText", "otg.ble.peer_placeholder");
     setTranslatedProperty(m_blePeer, "toolTip", "otg.ble.peer_hint");
 #ifdef Q_OS_WIN
     setTranslatedProperty(m_blePeer, "toolTip", "otg.ble.windows_peer_hint");
@@ -1621,14 +1621,14 @@ void MainWindow::updateEnabled()
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
         const auto profile = it.key() == m_selectedId ? deviceProfile() : it.value();
         const auto mode = profile.value("transport", "usb").toString();
-        const auto identity = profile.value(mode == "ble" ? "blePeer" : mode == "uhid" ? "adbSerial" : "serial").toString();
-        connectable |= m_connections.state(it.key()) == Session::State::Idle && !identity.isEmpty();
+        const auto identity = profile.value(mode == "uhid" ? "adbSerial" : "serial").toString();
+        connectable |= m_connections.state(it.key()) == Session::State::Idle && (mode == "ble" || !identity.isEmpty());
     }
     m_connectAll->setEnabled(connectable && !m_closing && !m_scanning && !m_companion.busy() && m_connections.serverState() != DeskflowServer::State::Stopping);
     m_disconnectAll->setEnabled(m_connections.busy() && !m_closing);
     m_connect->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy() &&
                           m_connections.serverState() != DeskflowServer::State::Stopping &&
-                          !(ble ? m_blePeer : uhid ? m_adbSerial : m_serial)->text().trimmed().isEmpty());
+                          (ble || !(uhid ? m_adbSerial : m_serial)->text().trimmed().isEmpty()));
     m_disconnect->setEnabled(!idle && m_connections.state(m_selectedId) != Session::State::Stopping);
     m_host->setEnabled(!m_manage->isChecked());
     m_tlsCert->parentWidget()->setEnabled(m_tls->isChecked());

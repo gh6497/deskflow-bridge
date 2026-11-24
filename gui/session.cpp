@@ -229,7 +229,7 @@ static const char *connectionOptionsError(const ConnectionOptions &options)
         (adbRequired(options) && adbTarget(options).isEmpty()))
         return "otg.error.adb_target_required";
     static const QRegularExpression peerPattern("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$");
-    if (ble && !peerPattern.match(options.blePeer).hasMatch())
+    if (ble && !options.blePeer.isEmpty() && !peerPattern.match(options.blePeer).hasMatch())
         return "otg.error.ble_peer";
     if (options.mouseMode != "absolute" && options.mouseMode != "relative")
         return "otg.error.mouse_mode";
@@ -561,7 +561,8 @@ void Session::launchBridge()
     }
     if (ble) {
         m_deadline.stop(); // Pairing and desktop authentication are user paced.
-        args << "--transport" << "ble" << "--ble-peer" << m_options.blePeer;
+        args << "--transport" << "ble";
+        if (!m_options.blePeer.isEmpty()) args << "--ble-peer" << m_options.blePeer;
         setState(State::Starting, "otg.ble.waiting");
 #ifdef Q_OS_LINUX
         args << "--ble-session" << "--adapter" << m_options.adapter;
