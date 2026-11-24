@@ -32,6 +32,10 @@ reject(--ble-status --adapter hci0/../../x)
 reject(--ble-status --adapter hci65535)
 reject(--ble-status --ble-stop-service)
 reject(--ble-service --gui)
+reject(--ble-legacy-handles)
+reject(--ble-status --ble-legacy-handles)
+reject(--ble-stop-service --ble-legacy-handles)
+reject(--ble-restore --ble-legacy-handles)
 reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --ble-session --mouse-mode relative)
 # EOF cancels startup after validation and before opening any BLE adapter.
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt" "")
@@ -40,6 +44,14 @@ execute_process(COMMAND "${CLI}" --transport ble --gui
   RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 5)
 if(NOT code STREQUAL "0")
   message(FATAL_ERROR "BLE GUI startup without an address failed: ${code} ${out} ${err}")
+endif()
+if(LINUX_BLE)
+  execute_process(COMMAND "${CLI}" --transport ble --ble-session --ble-legacy-handles --gui
+    INPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt"
+    RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 5)
+  if(NOT code STREQUAL "0")
+    message(FATAL_ERROR "Linux BLE legacy-handle GUI startup failed: ${code} ${out} ${err}")
+  endif()
 endif()
 if(WINDOWS_BLE)
   reject(--gui-ble-control)
@@ -50,6 +62,7 @@ if(WINDOWS_BLE)
   reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --gui --background)
   reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --ble-isolate)
   reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --ble-session)
+  reject(--transport ble --ble-legacy-handles)
   # EOF cancels GUI startup before opening Bluetooth. Exercise the real parser
   # and stdin stop path without accessing any adapter or modifying pairings.
   execute_process(COMMAND "${CLI}" --transport ble --ble-peer AA:BB:CC:DD:EE:FF --gui --gui-ble-control

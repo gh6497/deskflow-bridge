@@ -71,6 +71,7 @@ struct app_options {
     int ble_restore;
     int ble_service;
     int ble_session;
+    bool ble_legacy_handles;
     int ble_status;
     int ble_stop_service;
     bool adapter_explicit;
@@ -288,6 +289,7 @@ static void usage(const char *prog)
              "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
              "      --ble-service     Linux: resident user GATT service (keep running)\n"
+             "      --ble-legacy-handles  Linux: 8-bit HID handles for older Android (on service and session)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
               "      --ble-peer MAC    Optional target identity/address filter for BLE\n"
               "      --background       Windows BLE: keep the provider alive after closing the console\n"
@@ -830,6 +832,8 @@ int main(int argc, char **argv)
             opts.ble_service = 1;
         } else if (strcmp(a, "--ble-session") == 0) {
             opts.ble_session = 1;
+        } else if (strcmp(a, "--ble-legacy-handles") == 0) {
+            opts.ble_legacy_handles = true;
         } else if (strcmp(a, "--ble-status") == 0) {
             opts.ble_status = 1;
         } else if (strcmp(a, "--ble-stop-service") == 0) {
@@ -1122,6 +1126,18 @@ int main(int argc, char **argv)
             fprintf(stderr,"ERROR: --ble-peer requires BLE bridge mode and an identity MAC address\n");return 2;
         }
     }
+    if (opts.ble_legacy_handles) {
+#ifdef OTG_HAVE_BLE
+        if ((!opts.ble_service && strcmp(opts.transport,"ble")) ||
+            opts.ble_status || opts.ble_stop_service || opts.ble_restore) {
+            fprintf(stderr,"ERROR: --ble-legacy-handles requires a BLE bridge or --ble-service\n");
+            return 2;
+        }
+#else
+        fprintf(stderr,"ERROR: --ble-legacy-handles requires Linux with BUILD_BLE=ON\n");
+        return 2;
+#endif
+    }
 #ifdef OTG_HAVE_BLE_WIN
     if (g_ble_control && (!g_gui || strcmp(opts.transport, "ble") || opts.background ||
         strlen(opts.host) >= sizeof(g_control.host) || strlen(opts.name) >= sizeof(g_control.name))) {
@@ -1175,7 +1191,7 @@ int main(int argc, char **argv)
             fprintf(stderr,"ERROR: --ble-service is standalone; --ble-session requires --transport ble and absolute mouse mode\n");return 2;
         }
 #ifdef OTG_HAVE_BLE
-        if(opts.ble_service)return otg_ble_service_run(opts.adapter,&g_stop);
+        if(opts.ble_service)return otg_ble_service_run(opts.adapter,opts.ble_legacy_handles,&g_stop);
 #else
         fprintf(stderr,"ERROR: resident BLE requires BUILD_BLE=ON\n");return 2;
 #endif
@@ -1245,8 +1261,8 @@ int main(int argc, char **argv)
     else if (strcmp(opts.transport, "ble") == 0) {
 #ifdef OTG_HAVE_BLE
         state.resident_session=opts.ble_session;
-        state.transport_owner=opts.ble_session ? (void *)otg_ble_session_open(opts.adapter) :
-                                                 (void *)otg_ble_hid_create(opts.adapter);
+        state.transport_owner=opts.ble_session ? (void *)otg_ble_session_open(opts.adapter,opts.ble_legacy_handles) :
+                                                 (void *)otg_ble_hid_create(opts.adapter,opts.ble_legacy_handles);
         if(state.transport_owner &&
            !(opts.ble_session ? otg_ble_session_set_peer(state.transport_owner,opts.ble_peer) :
              (!opts.ble_peer || otg_ble_hid_set_peer(state.transport_owner,opts.ble_peer)))) {

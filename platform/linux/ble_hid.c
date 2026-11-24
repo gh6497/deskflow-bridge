@@ -56,6 +56,7 @@ enum ble_kind { BLE_ROOT, BLE_SERVICE, BLE_REPORT, BLE_MAP, BLE_INFO,
 struct ble_object { struct otg_ble_hid *b; enum ble_kind kind; int report; };
 
 struct otg_ble_hid {
+    bool legacy_handles;
     GDBusConnection *bus;
     GDBusObjectManager *devices;
     char *peer_path;
@@ -237,18 +238,20 @@ static const char *path_for(const struct ble_object *o)
 static const char *iface_for(enum ble_kind k)
 { switch (k) { case BLE_ROOT:return "org.freedesktop.DBus.ObjectManager"; case BLE_SERVICE:return "org.bluez.GattService1"; case BLE_LEDS: case BLE_CONTROL: case BLE_REPORT: case BLE_MAP: case BLE_INFO:return "org.bluez.GattCharacteristic1"; case BLE_REF:return "org.bluez.GattDescriptor1"; default:return "org.bluez.LEAdvertisement1"; } }
 
-/* Stable, contiguous schema: BlueZ characteristic Handle is the VALUE handle.
- * CCCDs occupy 0x107/0x10b and remain managed by BlueZ, not exported twice. */
+/* Both layouts reserve the same contiguous range. Older Android HID hosts
+ * narrow characteristic handles to eight bits while looking up the CCCD.
+ * BlueZ reserves a CCCD after each input value handle. */
 static uint16_t object_handle(const struct ble_object *o)
 {
+    const uint16_t base = o->b->legacy_handles ? 0x0040 : 0x0100;
     switch (o->kind) {
-    case BLE_SERVICE: return 0x100;
-    case BLE_MAP: return 0x102;
-    case BLE_INFO: return 0x104;
-    case BLE_REPORT: return o->report ? 0x10a : 0x106;
-    case BLE_REF: return o->report == 2 ? 0x10f : o->report ? 0x10c : 0x108;
-    case BLE_LEDS: return 0x10e;
-    case BLE_CONTROL: return 0x111;
+    case BLE_SERVICE: return base;
+    case BLE_MAP: return base + 0x02;
+    case BLE_INFO: return base + 0x04;
+    case BLE_REPORT: return base + (o->report ? 0x0a : 0x06);
+    case BLE_REF: return base + (o->report == 2 ? 0x0f : o->report ? 0x0c : 0x08);
+    case BLE_LEDS: return base + 0x0e;
+    case BLE_CONTROL: return base + 0x11;
     default: return 0;
     }
 }
@@ -823,9 +826,10 @@ static bool ready_ble(void *ctx){struct otg_ble_hid*b=ctx;return b->channel_read
 static void close_ble(void *ctx){struct otg_ble_hid*b=ctx;if(!b)return;GError*e=NULL;if(b->adv_registered){GVariant*r=call_wait(b,"org.bluez.LEAdvertisingManager1","UnregisterAdvertisement",g_variant_new("(o)",ROOT "/advertisement"),&e);if(r)g_variant_unref(r);g_clear_error(&e);b->adv_registered=false;}if(b->app_registered){GVariant*r=call_wait(b,"org.bluez.GattManager1","UnregisterApplication",g_variant_new("(o)",ROOT),&e);if(r)g_variant_unref(r);g_clear_error(&e);b->app_registered=false;}for(int i=0;i<BLE_OBJECT_COUNT;i++)if(b->registrations[i]){g_dbus_connection_unregister_object(b->bus,b->registrations[i]);b->registrations[i]=0;}}
 static const struct otg_hid_transport_ops OPS={reg,send_report,poll_ble,ready_ble,close_ble};
 const struct otg_hid_transport_ops*otg_ble_hid_ops(void){return &OPS;}
-static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident)
+static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident,bool legacy_handles)
 {
     memset(b,0,sizeof(*b));b->resident=resident;
+    b->legacy_handles=legacy_handles;
     b->hci_fd=-1;
     if(resident)b->latency_fd=-1;else latency_init(b);
     b->adapter=g_strdup(adapter ? adapter : "hci0");
@@ -849,9 +853,25 @@ static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident)
     if(!node_info){g_clear_error(&error);return false;}
     return register_objects(b);
 }
-bool otg_ble_hid_init(struct otg_ble_hid *b,const char *adapter){return init_mode(b,adapter,false);}
-struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter){struct otg_ble_hid*b=calloc(1,sizeof(*b));if(b&&!init_mode(b,adapter,true)){otg_ble_hid_destroy(b);return NULL;}return b;}
-struct otg_ble_hid *otg_ble_hid_create(const char *adapter){struct otg_ble_hid*b=calloc(1,sizeof(*b));if(b&&!otg_ble_hid_init(b,adapter)){otg_ble_hid_destroy(b);return NULL;}return b;}
+static struct otg_ble_hid *create_hid(const char *adapter, bool resident, bool legacy_handles)
+{
+    struct otg_ble_hid *b = calloc(1, sizeof(*b));
+    if (b && !init_mode(b, adapter, resident, legacy_handles)) {
+        otg_ble_hid_destroy(b);
+        return NULL;
+    }
+    return b;
+}
+
+struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter, bool legacy_handles)
+{
+    return create_hid(adapter, true, legacy_handles);
+}
+
+struct otg_ble_hid *otg_ble_hid_create(const char *adapter, bool legacy_handles)
+{
+    return create_hid(adapter, false, legacy_handles);
+}
 void otg_ble_hid_destroy(struct otg_ble_hid *b)
 {
     if (!b) return;

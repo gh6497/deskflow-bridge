@@ -333,6 +333,8 @@ Leave **Phone address (optional)** blank to use the first paired phone that conn
 
 Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its persistent service after the GUI exits. Windows keeps an idle service while the GUI is running and stops it on Quit. Stopping the service or deleting pairings is not a routine reconnect step; pairing-cache behavior after restarts can still vary by device.
 
+If an older Android phone pairs on Linux but its keyboard and mouse stay unavailable, disconnect the session, click **Stop idle Bluetooth service**, then enable **Keyboard and mouse compatibility for older Android** for that phone and reconnect. If the phone still uses cached Bluetooth settings, turn its Bluetooth off and on. If necessary, remove the pairing on both devices and pair again. If the phone only makes a classic Bluetooth connection, use the separate **Temporarily use BLE-only mode (administrator authentication)** option to test BLE. That option temporarily disconnects all devices on the adapter.
+
 **If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`12500us` means 12.5 ms). On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
 
 <a id="troubleshooting"></a>

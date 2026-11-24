@@ -910,6 +910,20 @@ private slots:
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QVERIFY(session.statusMessage().contains("已有会话"));
         qunsetenv("OTG_TEST_BLE_STATUS");
+        options.bleLegacyHandles = true;
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+        QCOMPARE(session.statusMessage(), qtTrId("otg.ble.handle_layout_mismatch"));
+        qputenv("OTG_TEST_BLE_STATUS", "legacy");
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Connected);
+        session.stop();
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+        options.bleLegacyHandles = false;
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+        QCOMPARE(session.statusMessage(), qtTrId("otg.ble.handle_layout_mismatch"));
+        qunsetenv("OTG_TEST_BLE_STATUS");
 #endif
         session.start(options);
         session.stop(); // Cancel an in-flight service probe, not another user's service.

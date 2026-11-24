@@ -228,7 +228,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   普通 `--transport ble` 不切换模式。手机掉线不注销 GATT：BlueZ 5.72 对 bonded peer 可能
   保留 CCC 而不调用 StopNotify，因此就绪还须 Device1 Connected/Paired。断线断开 Deskflow
   TCP、清空输入，原手机回来后重新握手；不能以重新删除配对作为正常重连方案。
-  GATT 固定 `0x0100..0x0111`（characteristic Handle 为 value handle），含 LED 输出、
+  GATT 默认固定 `0x0100..0x0111`（characteristic Handle 为 value handle），含 LED 输出、
   Control Point；长读处理 offset。`test_ble_gatt.c` 使用私有 D-Bus，不访问系统蓝牙；
   常驻会话的 REPORT/POLL 为非阻塞、单请求在途（仍兼容 IPC v2），状态查询间隔 5ms。
   最多排队 64 条报告，只替换相邻纯移动；按下位置、松键、滚轮、键盘及范围变化必须保序。
@@ -414,6 +414,11 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   BlueZ 解析隐私地址后可能保留原 `dev_随机地址` 路径。授权仍要求该在线对象本身 Paired；
   另一个同 Address、离线且已配对的对象不能替它提供授权。GATT device 选项核对当前已认证
   在线对象路径，多连接继续关闭输入。服务日志的 `BLE waiting:` 会区分身份、配对和订阅等待。
+  旧版 AOSP HID Host 会将 CCCD 查找用的特征句柄截成 8 位。Linux `--ble-legacy-handles` 使用
+  `0x0040..0x0051`，默认布局为 `0x0100..0x0111`。常驻服务和桥接会话须使用相同布局，IPC v2
+  用独立接入操作核对兼容模式，保留旧版标准模式和状态查询。GUI 按设备保存，切换时显式停止
+  空闲服务。仅 BLE 隔离单独控制经典蓝牙链路。2026-11-24，OPPO R17 在 BlueZ 5.72、低句柄
+  与仅 BLE 模式组合下，已由用户确认键盘和鼠标工作正常。
 
 - `-DBUILD_GUI=ON` 启用 Qt Widgets 桌面端；默认 OFF 保留纯 C 构建。GUI 支持 Linux、macOS、Windows。
 - `gui/main_window.cpp` 管理界面、ADB 异步查询和 QSettings；`device_info.cpp` 解析设备/尺寸/方向并生成布局。

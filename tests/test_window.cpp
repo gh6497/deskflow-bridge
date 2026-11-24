@@ -1579,6 +1579,7 @@ private slots:
         settings.setValue("blePeer", "AA:BB:CC:DD:EE:FF");
 #ifdef Q_OS_WIN
         settings.setValue("bleIsolate", true); // Stale Linux settings must never leak into Windows args.
+        settings.setValue("bleLegacyHandles", true);
         qputenv("OTG_TEST_BLE_WINDOWS", "1");
         const auto restoreEnv = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_WINDOWS"); });
 #endif
@@ -1600,8 +1601,15 @@ private slots:
 #ifdef Q_OS_WIN
         QVERIFY(!window.findChild<QLineEdit *>("bleAdapter")->isVisible());
         QVERIFY(!window.findChild<QCheckBox *>("bleIsolate")->isVisible());
+        QVERIFY(!window.findChild<QCheckBox *>("bleLegacyHandles")->isVisible());
         QVERIFY(!window.findChild<QPushButton *>("stopBleService")->isVisible());
         QVERIFY(window.findChild<QLineEdit *>("blePeer")->toolTip().contains("Windows"));
+#elif defined(Q_OS_LINUX)
+        auto *legacy = window.findChild<QCheckBox *>("bleLegacyHandles");
+        QVERIFY(legacy && legacy->isVisible() && !legacy->isChecked());
+        legacy->setChecked(true);
+        qputenv("OTG_TEST_BLE_STATUS", "legacy");
+        const auto restoreEnv = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
 #endif
         auto *session = window.findChild<Session *>();
         auto *peer = window.findChild<QLineEdit *>("blePeer");
@@ -1623,6 +1631,9 @@ private slots:
         QVERIFY(settings.value("blePeer").toString().isEmpty());
         AutoConnectTestWindow restored;
         QVERIFY(restored.findChild<QLineEdit *>("blePeer")->text().isEmpty());
+#ifdef Q_OS_LINUX
+        QVERIFY(restored.findChild<QCheckBox *>("bleLegacyHandles")->isChecked());
+#endif
         restored.findChild<QComboBox *>("transportSelector")->setCurrentIndex(0);
         QVERIFY(restored.findChild<QLineEdit *>("usbSerial")->isEnabled());
         restored.findChild<QAction *>("trayQuit")->trigger();

@@ -34,9 +34,11 @@ static bool fake_send(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
 static bool fake_poll(void *ctx){return ((struct otg_ble_hid *)ctx)->application;}
 static const struct otg_hid_transport_ops FAKE_OPS={fake_register,fake_send,fake_poll,fake_ready,NULL};
 const struct otg_hid_transport_ops *otg_ble_hid_ops(void){return &FAKE_OPS;}
-struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter)
+static bool last_created_legacy_handles;
+struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter,bool legacy_handles)
 {
     CHECK(!strcmp(adapter,"hci0"));created++;
+    last_created_legacy_handles=legacy_handles;
     return g_new0(struct otg_ble_hid,1);
 }
 void otg_ble_hid_destroy(struct otg_ble_hid *b){destroyed++;g_free(b);}
@@ -291,7 +293,7 @@ static void test_async_reports(void)
     close(fds[0]);close(fds[1]);
 }
 
-static void test_service_process(void)
+static void test_service_process(bool legacy_handles)
 {
     /* Exercise the actual accept loop/lock/client API in an isolated runtime
      * tree. The backend is still fake; never touch /run/user or system BlueZ. */
@@ -304,8 +306,9 @@ static void test_service_process(void)
     pid_t pid=fork();CHECK(pid>=0);
     if(!pid) {
         signal(SIGTERM,stop_signal);alarm(10);
-        CHECK(otg_ble_service_run("hci0",&stop_service)==0);
+        CHECK(otg_ble_service_run("hci0",legacy_handles,&stop_service)==0);
         CHECK(created==initial_created+1 && activated==initial_activated+2);
+        CHECK(last_created_legacy_handles==legacy_handles);
         _exit(0);
     }
     bool listening=false;
@@ -314,14 +317,20 @@ static void test_service_process(void)
         g_usleep(10000);
     }
     CHECK(listening);
+    int fd=connect_service(getuid(),"hci0");CHECK(fd>=0);
+    struct message status_reply;
+    CHECK(request(fd,STATUS_WITH_LAYOUT,0,NULL,0,&status_reply));
+    CHECK(status_reply.data[0]==(legacy_handles?STATUS_LEGACY_HANDLES:0) && status_reply.data[1]);
+    close(fd);
+    CHECK(!otg_ble_session_open("hci0",!legacy_handles));
     for(int session=0;session<2;session++) {
-        struct otg_ble_session *client=otg_ble_session_open("hci0");CHECK(client);
+        struct otg_ble_session *client=otg_ble_session_open("hci0",legacy_handles);CHECK(client);
         CHECK(otg_ble_session_set_peer(client,NULL));
         struct message keys=descriptor(1),pointer=descriptor(2);
         CHECK(session_register(client,1,keys.data,keys.size));
         CHECK(session_register(client,2,pointer.data,pointer.size));
         CHECK(session_poll(client) && !session_ready(client));
-        CHECK(!otg_ble_session_open("hci0")); /* Exclusive owner. */
+        CHECK(!otg_ble_session_open("hci0",legacy_handles)); /* Exclusive owner. */
         otg_ble_session_destroy(client);
         CHECK(otg_ble_service_wait_idle(getuid(),"hci0"));
     }
@@ -339,7 +348,7 @@ static void test_service_process(void)
 int main(void)
 {
     test_packets();test_sessions();test_client_rpc(false);test_client_rpc(true);
-    test_async_reports();test_service_process();
+    test_async_reports();test_service_process(false);test_service_process(true);
     puts("PASS: resident GATT sessions, EOF release, retained CCCs, schema/busy/UID guards and real seqpacket framing");
     return 0;
 }
