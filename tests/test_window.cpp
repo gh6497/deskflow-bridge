@@ -1707,8 +1707,11 @@ private slots:
         QVERIFY(writeSnapshot(phone));
         qputenv("OTG_TEST_USB_SNAPSHOT", snapshotFile.toUtf8());
         qputenv("OTG_TEST_RIGHT_ACTION", "back");
+        const auto commandLog = settingsDir.filePath("commands.jsonl");
+        qputenv("OTG_TEST_UHID_LOG", commandLog.toUtf8());
         const auto restore = qScopeGuard([] {
             qunsetenv("OTG_TEST_USB_SNAPSHOT"); qunsetenv("OTG_TEST_RIGHT_ACTION");
+            qunsetenv("OTG_TEST_UHID_LOG");
         });
         {
             AutoConnectTestWindow window;
@@ -1745,6 +1748,16 @@ private slots:
             QTRY_COMPARE(session->state(), Session::State::Idle);
             QVERIFY(monitor->acceptSnapshot(phone));
             QCOMPARE(session->state(), Session::State::Idle);
+            // Enabling ADB enhancements after the first successful AOA
+            // connection must affect the next automatic connection too;
+            // the remembered snapshot still represents the old no-ADB run.
+            window.findChild<QLineEdit *>("adbExecutable")->setText(testPeerPath());
+            adbSerial->clear(); // Use the AOA serial as the local ADB target.
+            auto *adbEnabled = window.findChild<QCheckBox *>("adbEnabled");
+            auto *audio = window.findChild<QCheckBox *>("audioEnabled");
+            QVERIFY(adbEnabled && audio);
+            adbEnabled->setChecked(true);
+            audio->setChecked(true);
             // Reinsert restores the phone's settings, not unsaved form edits.
             width->setValue(999);
             multiplier->setValue(1.0);
@@ -1757,6 +1770,14 @@ private slots:
             QVERIFY(writeSnapshot(phone));
             monitor->poll();
             QTRY_COMPARE(session->state(), Session::State::Connected);
+            QVERIFY(adbEnabled->isChecked());
+            QVERIFY(audio->isChecked());
+            QFile commands(commandLog);
+            QVERIFY(commands.open(QIODevice::ReadOnly));
+            const auto commandText = commands.readAll();
+            QVERIFY(commandText.contains("--audio"));
+            QVERIFY(commandText.contains("--adb"));
+            QVERIFY(commandText.contains("\"--adb-serial\",\"TEST123\""));
             QCOMPARE(width->value(), 1234);
             QCOMPARE(multiplier->value(), 2.0);
             QCOMPARE(window.findChild<QComboBox *>("rightButtonAction")->currentData().toString(), "back");

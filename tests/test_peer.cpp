@@ -115,7 +115,24 @@ int main(int argc, char **argv)
         if (mode == "settings-failure" && args.contains("settings")) return 1;
         const char *text = "";
         if (args.contains("start-server")) text = "";
-        else if (args.contains("get-state")) text = mode == "offline" ? "unauthorized\n" : "device\n";
+        else if (args.contains("get-state")) {
+            const auto transientFile = qEnvironmentVariable("OTG_TEST_ADB_TRANSIENT_FILE");
+            const int transientAttempts = qEnvironmentVariableIntValue("OTG_TEST_ADB_TRANSIENT_ATTEMPTS");
+            if (!transientFile.isEmpty() && transientAttempts > 0) {
+                int attempt = 0;
+                QFile state(transientFile);
+                if (state.open(QIODevice::ReadOnly))
+                    attempt = QString::fromUtf8(state.readAll()).trimmed().toInt();
+                if (attempt < transientAttempts) {
+                    QFile next(transientFile);
+                    if (next.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                        next.write(QByteArray::number(attempt + 1));
+                    output("error: device TEST123 not found\n");
+                    return 1;
+                }
+            }
+            text = mode == "offline" ? "unauthorized\n" : "device\n";
+        }
         else if (args.contains("get-devpath")) text = mode == "wired" ? "usb:5-1\n" : "unknown\n";
         else if (args.contains("install")) text = mode == "install-failure" ?
             "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]\n" : "Success\n";

@@ -451,6 +451,34 @@ private slots:
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QCOMPARE(sizes.size(), audio || clipboard ? 1 : 0);
     }
+    void usbAdbTargetAppearsAfterHotplug()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto attempts = dir.filePath("adb-attempts");
+        qputenv("OTG_TEST_ADB_TRANSIENT_FILE", attempts.toUtf8());
+        qputenv("OTG_TEST_ADB_TRANSIENT_ATTEMPTS", "3");
+        const auto cleanup = qScopeGuard([] {
+            qunsetenv("OTG_TEST_ADB_TRANSIENT_FILE");
+            qunsetenv("OTG_TEST_ADB_TRANSIENT_ATTEMPTS");
+        });
+        ConnectionOptions options;
+        options.manageServer = false;
+        options.bridge = options.adb = peerPath();
+        options.serial = "TEST123";
+        options.audio = true;
+        options.scrcpyServer = "fake-server";
+        options.scrcpyVersion = "5.0.1";
+        Session session;
+        session.start(options);
+        QTRY_COMPARE_WITH_TIMEOUT(session.state(), Session::State::Connected, 6000);
+        QVERIFY(!session.hasFailure());
+        session.stop();
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+        QFile state(attempts);
+        QVERIFY(state.open(QIODevice::ReadOnly));
+        QCOMPARE(state.readAll().trimmed(), QByteArray("3"));
+    }
     void clipboardSession_data()
     {
         QTest::addColumn<bool>("audio");
