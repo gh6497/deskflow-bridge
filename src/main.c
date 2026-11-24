@@ -289,7 +289,7 @@ static void usage(const char *prog)
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
              "      --ble-service     Linux: resident user GATT service (keep running)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
-              "      --ble-peer MAC    Target phone identity (Linux) / Windows BLE address (required)\n"
+              "      --ble-peer MAC    Optional target identity/address filter for BLE\n"
               "      --background       Windows BLE: keep the provider alive after closing the console\n"
               "      --background-stop  Stop the Windows BLE background process\n"
               "      --ble-status      Read resident service JSON status without attaching\n"
@@ -1112,9 +1112,6 @@ int main(int argc, char **argv)
             fprintf(stderr,"ERROR: invalid adapter (use hci0..hci65534)\n");return 2;
         }
     }
-    if(!strcmp(opts.transport,"ble") && !opts.ble_service && !opts.ble_status && !opts.ble_stop_service && !opts.ble_restore && !opts.ble_peer) {
-        fprintf(stderr,"ERROR: BLE bridge requires --ble-peer identity-address\n");return 2;
-    }
     if(opts.ble_peer) {
         bool valid=strlen(opts.ble_peer)==17;
         for(unsigned i=0;valid && i<17;i++) {
@@ -1174,8 +1171,8 @@ int main(int argc, char **argv)
     }
     if(opts.ble_service || opts.ble_session) {
         if((opts.ble_service && (g_gui || opts.ble_session || opts.ble_isolate || opts.ble_restore || opts.serial || opts.adb_serial)) ||
-           (opts.ble_session && (!opts.ble_peer || opts.ble_restore || strcmp(opts.transport,"ble") || opts.mouse_mode!=OTG_MOUSE_ABSOLUTE))) {
-            fprintf(stderr,"ERROR: --ble-service is standalone; --ble-session requires --transport ble, --ble-peer and absolute mouse mode\n");return 2;
+           (opts.ble_session && (opts.ble_restore || strcmp(opts.transport,"ble") || opts.mouse_mode!=OTG_MOUSE_ABSOLUTE))) {
+            fprintf(stderr,"ERROR: --ble-service is standalone; --ble-session requires --transport ble and absolute mouse mode\n");return 2;
         }
 #ifdef OTG_HAVE_BLE
         if(opts.ble_service)return otg_ble_service_run(opts.adapter,&g_stop);
@@ -1250,10 +1247,10 @@ int main(int argc, char **argv)
         state.resident_session=opts.ble_session;
         state.transport_owner=opts.ble_session ? (void *)otg_ble_session_open(opts.adapter) :
                                                  (void *)otg_ble_hid_create(opts.adapter);
-        if(state.transport_owner && opts.ble_peer &&
+        if(state.transport_owner &&
            !(opts.ble_session ? otg_ble_session_set_peer(state.transport_owner,opts.ble_peer) :
-                                otg_ble_hid_set_peer(state.transport_owner,opts.ble_peer))) {
-            fprintf(stderr,"ERROR: BLE target differs from resident identity; explicitly stop the idle service before changing phones\n");
+             (!opts.ble_peer || otg_ble_hid_set_peer(state.transport_owner,opts.ble_peer)))) {
+            fprintf(stderr,"ERROR: resident BLE service rejected the peer selection; stop the idle service explicitly before changing targets or replacing an older service\n");
             destroy_transport_owner(&state);return 1;
         }
         const struct otg_hid_transport_ops *ops=opts.ble_session ? otg_ble_session_ops() : otg_ble_hid_ops();
@@ -1280,7 +1277,8 @@ int main(int argc, char **argv)
         otg_bridge_set_side_button_action(&state.bridge, 4, opts.side_button_1_action);
         otg_bridge_set_side_button_action(&state.bridge, 5, opts.side_button_2_action);
         otg_bridge_set_side_swipe_distance(&state.bridge, (uint8_t)opts.side_swipe_distance_percent);
-        fprintf(stderr, "INFO: Windows BLE target %s; starting GATT worker, waiting for paired phone subscriptions\n", opts.ble_peer);
+        fprintf(stderr, "INFO: Windows BLE GATT worker started; waiting for a paired phone subscription%s\n",
+                opts.ble_peer ? " matching the requested target" : "");
 #else
         fprintf(stderr, "ERROR: BLE HID requires Linux with BUILD_BLE=ON (adapter %s)\n", opts.adapter);
         return 2;

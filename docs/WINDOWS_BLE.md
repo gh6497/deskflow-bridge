@@ -32,10 +32,10 @@ Windows CI 也编译此 CLI 后端并执行不访问蓝牙的回归测试。
 
 安装 Qt 6.8+ 后，在上述配置中改用 `-DBUILD_GUI=ON`，并通过 `-DCMAKE_PREFIX_PATH`
 指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，选择
-「低功耗蓝牙（Windows，实验性）」，填写手机地址与屏幕尺寸即可连接。GUI 可自动配置并
+「低功耗蓝牙（Windows，实验性）」，填写屏幕尺寸后点击「连接」，再从手机蓝牙设置配对或连接电脑。GUI 可自动配置并
 启动自己管理的 Deskflow server，也可使用已有的明文 server；蓝牙模式不调用 ADB、不自动连接 USB。
 
-GUI 使用 `--gui --gui-ble-control --transport ble --ble-peer MAC` 前台子进程，不传 `--adapter`、
+GUI 使用 `--gui --gui-ble-control --transport ble` 前台子进程，填写手机地址时追加 `--ble-peer MAC`。子进程不接收 `--adapter`、
 `--ble-session`、隔离/提权或 `--background` 参数。等待配对无固定超时，可随时点「断开」取消；
 身份/订阅就绪并完成 Deskflow DSOP 后才显示已连接，手机掉线时显示等待重连。
 「断开」通过 stdin 发 `pause`：先关闭 Deskflow TCP，再丢弃未发动作，把键盘、按钮与范围
@@ -66,15 +66,13 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 
 ## 运行
 
-目标地址必须显式指定。使用原型 `status` 的 `DeviceId` 中**最后一段手机地址**，
-不是前面的电脑适配器地址；也可从 Windows 显示的该已配对 BLE 设备信息确认。
-例如 `BluetoothLE#BluetoothLE<电脑地址>-<手机地址>` 中，取 `<手机地址>`。
-实现还会读取在线 `BluetoothLEDevice.BluetoothAddress`、配对状态和订阅者核对，
-不会根据设备名称授权，也不会回退到任意手机。隐私地址/身份地址解析差异尚未普遍验证。
+省略 `--ble-peer` 时，服务广播并等待手机发起连接。首次选定须满足两路报告各有一个订阅者，
+且订阅者是同一个已配对的在线设备。选定后在 provider 的生命周期内保持该地址。
+也可使用 `--ble-peer` 指定 Windows 报告的手机 BLE 地址。在
+`BluetoothLE#BluetoothLE<电脑地址>-<手机地址>` 中取最后一段手机地址。
 
 ```powershell
 .\build-win-ble\Release\deskflow-bridge.exe --transport ble `
-  --ble-peer AA:BB:CC:DD:EE:FF `
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340
 ```
 
@@ -83,7 +81,6 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 
 ```powershell
 .\build-win-ble\Release\deskflow-bridge.exe --transport ble `
-  --ble-peer AA:BB:CC:DD:EE:FF `
   --host 127.0.0.1 --port 24800 --name android --width 1080 --height 2340 `
   --background
 ```
@@ -98,7 +95,7 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 `--background-stop` 会请求后台进程优雅释放 HID 输入、停止广播并退出。后台模式不接入 GUI，
 也不改变配对或删除手机缓存。
 
-把示例 MAC 替换为自己的手机地址；宽高按手机当前方向填写。
+宽高按手机当前方向填写。
 只支持默认适配器和默认 absolute 指针；不接受 `--adapter`、`--serial`、
 `--mouse-mode relative`、`--ble-service`、`--ble-session` 或隔离/恢复选项。
 `--gui` 供桌面端使用，stdin 任意字节或 EOF 请求优雅退出，stdout 输出 JSON 状态；
@@ -108,7 +105,6 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
    动态句柄可能改变；若手机保留旧缓存而无法订阅，才单独解除这对实验配对后重新配对。
    **不要自动删除配对，也不要在 Redmi ROM 已崩溃的环境反复配对。**
 2. 日志出现 `target paired, connected and subscribed; input ready` 后，才开始 Deskflow TCP 连接。
-   不需要 `arm`/`key` 命令：`--ble-peer` 是显式选择目标的授权。
 3. 把鼠标从 Deskflow 配置的边缘移到手机，正常使用键鼠。
 4. 光标移回电脑后，Ctrl+C 正常退出。程序尽力按序释放输入，再停止广播/注销服务。
    强杀/关终端、手机失联时不能保证释放送达。

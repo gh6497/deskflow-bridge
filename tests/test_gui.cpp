@@ -128,7 +128,6 @@ private slots:
             o.transport = "uhid"; o.adbSerial = "  "; o.adb = peerPath();
         });
 #endif
-        row("ble-peer-empty", "otg.error.ble_peer", [](auto &o) { o.transport = "ble"; });
         row("ble-peer-format", "otg.error.ble_peer", [](auto &o) { o.transport = "ble"; o.blePeer = "bad-mac"; });
         row("ble-relative", "otg.error.ble_mouse_mode", [](auto &o) {
             o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.mouseMode = "relative";
@@ -712,7 +711,7 @@ private slots:
         manager.addDevice("usb"); manager.addDevice("ble"); manager.addDevice("other");
         ConnectionOptions usb;
         usb.bridge = peerPath(); usb.manageServer = false; usb.serial = "A"; usb.phone = "a";
-        auto ble = usb; ble.transport = "ble"; ble.serial.clear(); ble.phone = "b"; ble.blePeer = "AA:BB:CC:DD:EE:FF";
+        auto ble = usb; ble.transport = "ble"; ble.serial.clear(); ble.phone = "b";
         QVERIFY(manager.start("usb", usb, {}));
         QVERIFY(manager.start("ble", ble, {}));
         QTRY_COMPARE(manager.state("usb"), Session::State::Connected);
@@ -730,7 +729,6 @@ private slots:
 #ifdef OTG_TEST_NATIVE_BLE_PEER
         ConnectionOptions options;
         options.transport = "ble";
-        options.blePeer = "AA:BB:CC:DD:EE:FF";
         options.bridge = OTG_TEST_NATIVE_BLE_PEER;
         options.manageServer = false;
         Session session;

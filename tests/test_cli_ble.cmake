@@ -6,7 +6,7 @@ function(reject)
     message(FATAL_ERROR "Expected argument error for ${ARGN}: ${code} ${out} ${err}")
   endif()
 endfunction()
-reject(--transport ble --ble-session)
+reject(--ble-session)
 reject(--adb-serial 192.168.1.20:5555)
 # The internal PIN-file hand-off authorizes a BLE bridge to use an explicit
 # ADB target; standalone BLE service operations must still reject it.
@@ -33,6 +33,14 @@ reject(--ble-status --adapter hci65535)
 reject(--ble-status --ble-stop-service)
 reject(--ble-service --gui)
 reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --ble-session --mouse-mode relative)
+# EOF cancels startup after validation and before opening any BLE adapter.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt" "")
+execute_process(COMMAND "${CLI}" --transport ble --gui
+  INPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt"
+  RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 5)
+if(NOT code STREQUAL "0")
+  message(FATAL_ERROR "BLE GUI startup without an address failed: ${code} ${out} ${err}")
+endif()
 if(WINDOWS_BLE)
   reject(--gui-ble-control)
   reject(--gui --gui-ble-control --serial test)
@@ -44,7 +52,6 @@ if(WINDOWS_BLE)
   reject(--transport ble --ble-peer AA:BB:CC:DD:EE:FF --ble-session)
   # EOF cancels GUI startup before opening Bluetooth. Exercise the real parser
   # and stdin stop path without accessing any adapter or modifying pairings.
-  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt" "")
   execute_process(COMMAND "${CLI}" --transport ble --ble-peer AA:BB:CC:DD:EE:FF --gui --gui-ble-control
     INPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/ble-gui-eof.txt"
     RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 5)

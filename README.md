@@ -48,7 +48,7 @@ The [illustrated user guide](docs/USER_GUIDE.md) covers installation, the first 
 |---|---|---|---|
 | **ADB + UHID** | Windows and ADB users | Enable and authorize USB or wireless debugging | Uses the normal ADB driver; no WinUSB replacement. Recommended for a new Windows setup. |
 | **USB AOA HID** | HID-only use | No ADB or USB debugging | Similar to scrcpy OTG. Linux needs USB permission; Windows needs a libusb-compatible driver. |
-| **Bluetooth LE HID** | Linux, or Windows experimenters | Pair the phone with the computer | No USB cable, but setup and compatibility are more limited. macOS has no BLE backend. |
+| **Bluetooth LE HID** | Linux, or Windows experimenters | Pair or connect from the phone's Bluetooth settings | Phone address is optional. No USB cable is needed. macOS has no BLE backend. |
 
 ADB is only required for ADB + UHID and for optional features such as audio, clipboard, rotation tracking, and file sharing. AOA HID can be used without USB debugging.
 

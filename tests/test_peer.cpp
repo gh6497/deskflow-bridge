@@ -319,8 +319,9 @@ int main(int argc, char **argv)
         if (uhid && (args.contains("--serial") || !args.contains("--adb-serial") ||
                      !args.contains("--scrcpy-server") || !args.contains("--scrcpy-version") ||
                      args.contains("--ble-peer"))) return 14;
-        if (ble && (!args.contains("--ble-peer") || args.contains("--serial") ||
+        if (ble && (args.contains("--serial") ||
                     args.value(args.indexOf("--mouse-mode") + 1) != "absolute")) return 9;
+        if (ble && args.contains("--ble-peer") && args.value(args.indexOf("--ble-peer") + 1).isEmpty()) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
             (args.contains("--ble-session") || args.contains("--adapter") ||
              args.contains("--ble-isolate") || args.contains("--background"))) return 10;
