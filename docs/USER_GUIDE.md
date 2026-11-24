@@ -262,6 +262,8 @@ By default the app presses Space to open the PIN prompt. If the phone's lock scr
 
 This is optional. Enabling it stores the PIN in local computer settings, not runtime logs. Leave it off and unlock manually if you do not want the PIN stored on the computer.
 
+On the OPPO R17 with Android 10, the PIN prompt stays blank when you type on a physical keyboard. Use the number row above the letters to enter the full PIN, then press the main Enter key. If you are unsure what you typed, use the phone's on-screen number pad to unlock.
+
 ### Install the optional phone companion
 
 Keyboard/mouse, text clipboard and audio forwarding do not themselves need the companion. **File sharing, phone-side connection status and pausing media on USB disconnect** use it.
