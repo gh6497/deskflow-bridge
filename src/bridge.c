@@ -426,14 +426,13 @@ static void send_mouse_state(struct otg_bridge *b, int8_t vs, int8_t hs)
         return;
     }
 
-    /* Android classifies this descriptor as a POINTER. Its TouchInputMapper
-     * deliberately uses one scale for both raw axes, based on the display's
-     * long edge, so equal physical motion does not stretch gestures. Mapping
-     * each logical axis to the full HID range would make the short axis too
-     * fast, especially after a portrait-to-landscape rotation. */
-    const int32_t pointer_extent = b->screen_w > b->screen_h ? b->screen_w : b->screen_h;
-    uint16_t x = absolute_axis(b->mouse_x, pointer_extent);
-    uint16_t y = absolute_axis(b->mouse_y, pointer_extent);
+    /* Modern Android POINTER stylus mapping uses a common scale based on
+     * the long edge. Older hosts such as the R17 scale each axis separately. */
+    const int32_t long_edge = b->screen_w > b->screen_h ? b->screen_w : b->screen_h;
+    const int32_t width = b->absolute_per_axis ? b->screen_w : long_edge;
+    const int32_t height = b->absolute_per_axis ? b->screen_h : long_edge;
+    uint16_t x = absolute_axis(b->mouse_x, width);
+    uint16_t y = absolute_axis(b->mouse_y, height);
     uint8_t buttons = b->active ? b->mouse_buttons : 0;
     /* Like Android's mouse, left/right/middle count as pointer down. */
     uint8_t flags = b->active ? (uint8_t)(0x02 | !!(buttons & 0x07)) : 0;
@@ -683,6 +682,11 @@ bool otg_bridge_set_sensitivity(struct otg_bridge *b, double multiplier)
     b->sensitivity_multiplier = multiplier;
     b->motion_residual_x = b->motion_residual_y = 0;
     return true;
+}
+
+void otg_bridge_set_absolute_per_axis(struct otg_bridge *b, bool enabled)
+{
+    b->absolute_per_axis = enabled;
 }
 
 bool otg_bridge_check(struct otg_bridge *b)

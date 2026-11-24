@@ -235,6 +235,8 @@ static const char *connectionOptionsError(const ConnectionOptions &options)
         return "otg.error.mouse_mode";
     if (ble && options.mouseMode != "absolute")
         return "otg.error.ble_mouse_mode";
+    if (options.mouseMode == "relative" && options.absolutePerAxis)
+        return "otg.error.relative_per_axis";
     if (options.middleButtonAction != "normal" && options.middleButtonAction != "home")
         return "otg.error.middle_button_action";
     if (options.rightButtonAction != "normal" && options.rightButtonAction != "back")
@@ -538,8 +540,9 @@ void Session::launchBridge()
                      "--middle-button-action", m_options.middleButtonAction,
                       "--right-button-action", m_options.rightButtonAction,
                       "--side-button-1-action", m_options.sideButton1Action,
-                      "--side-button-2-action", m_options.sideButton2Action,
-                      "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
+                     "--side-button-2-action", m_options.sideButton2Action,
+                     "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
+    if (m_options.absolutePerAxis) args << "--absolute-per-axis";
     if (!m_options.unlockPin.isEmpty() && !m_options.unlockWithSpace)
         args << "--unlock-with-swipe";
     if (adbRequired(m_options)) {
@@ -589,14 +592,14 @@ void Session::launchBridge()
         m_bleProvider.setProcessEnvironment(environment);
         m_bleActive = true;
         if (hasBleProvider()) {
-            const auto resume = QString("resume\t%1\t%2\t%3\t%4\t%5\t%6\t%7\t%8\t%9\t%10\t%11\n")
+            const auto resume = QString("resume\t%1\t%2\t%3\t%4\t%5\t%6\t%7\t%8\t%9\t%10\t%11")
                 .arg(m_options.manageServer ? "127.0.0.1" : m_options.host)
                 .arg(m_options.port).arg(m_options.phone).arg(m_options.width).arg(m_options.height)
                 .arg(m_options.middleButtonAction).arg(m_options.rightButtonAction)
                 .arg(m_options.sideButton1Action).arg(m_options.sideButton2Action)
                 .arg(m_options.sideSwipeDistancePercent)
-                .arg(qRound(m_options.motionMultiplier * 100.0)).toUtf8();
-            m_bleProvider.write(resume);
+                .arg(qRound(m_options.motionMultiplier * 100.0));
+            m_bleProvider.write((resume + (m_options.absolutePerAxis ? "\tper-axis\n" : "\n")).toUtf8());
             emit log(qtTrId("otg.ble.provider_reused"));
         } else {
             m_bleEvents.clear();

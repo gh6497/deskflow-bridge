@@ -324,6 +324,8 @@ int main(int argc, char **argv)
         if (ble && (args.contains("--serial") ||
                     args.value(args.indexOf("--mouse-mode") + 1) != "absolute")) return 9;
         if (ble && args.contains("--ble-peer") && args.value(args.indexOf("--ble-peer") + 1).isEmpty()) return 9;
+        if (ble && qEnvironmentVariableIsSet("OTG_TEST_EXPECT_PER_AXIS") &&
+            !args.contains("--absolute-per-axis")) return 9;
         if (ble && args.contains("--ble-legacy-handles") != (qEnvironmentVariable("OTG_TEST_BLE_STATUS") == "legacy")) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
             (args.contains("--ble-session") || args.contains("--adapter") ||

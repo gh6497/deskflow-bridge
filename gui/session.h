@@ -25,6 +25,7 @@ struct ConnectionOptions {
     QString phone = "android";
     QString direction = "right";
     QString mouseMode = "absolute";
+    bool absolutePerAxis = false;
     QString middleButtonAction = "home";
     QString rightButtonAction = "back";
     QString sideButton1Action = "swipe-up";

@@ -142,8 +142,12 @@ AOAv2 HID（无 adb、无 accessory-mode 握手，直接对已打开设备发 ve
   `BTN_LEFT/RIGHT/...`，而不是 `BTN_0/...`；按钮和坐标在同一个输入设备、同一条报告中。
 - 8 字节报告：`[flags][buttons][X LE16][Y LE16][wheel i8][pan i8]`。
   flags bit0=Tip Switch，bit1=In Range。X/Y 逻辑范围 0..32767。
-- Deskflow 的 `[0,width-1] / [0,height-1]` 分别映射到完整 HID 轴范围。按键、滚轮报告也
-  携带当前位置，丢失一条移动报告不会让后续点击永久偏移。
+- 绝对模式默认用虚拟屏幕长边作为两轴的共同缩放基准。`--absolute-per-axis` 兼容分别缩放两轴的
+  旧版 Android，分别映射 `[0,width-1]` 与 `[0,height-1]` 到完整 HID 范围。GUI 按设备保存，
+  Windows BLE resume 末尾的可选 `per-axis` 同步此设置，旧命令默认采用共同缩放。
+  HID 描述符不变。按键、滚轮报告携带当前位置，下一条报告可恢复丢失的一次移动。
+  2026-11-24 在 Android 10 的 OPPO R17 对照验证。1080×2340 竖屏下，默认横向右端只到约 x=498，
+  开启兼容选项后 USB AOA 和 Linux 仅 BLE 均到达 x≈1080、y≈2340，以手机 InputReader 坐标确认。
 - enter 只发悬停（不带按键）；leave/close 先松开按键，再结束 In Range。
   `DMRM` 累积并钳位到虚拟屏幕，下一条 `DMMV` 重新给出权威位置。
 

@@ -233,6 +233,8 @@
   <message id="otg.mouse.absolute"><source>Absolute (recommended)</source><translation>绝对坐标（推荐）</translation></message>
   <message id="otg.mouse.relative"><source>Relative (compatibility mode)</source><translation>相对坐标（兼容模式）</translation></message>
   <message id="otg.label.mouse_mode"><source>Mouse mode</source><translation>鼠标模式</translation></message>
+  <message id="otg.mouse.per_axis"><source>Pointer compatibility for older Android</source><translation>兼容旧版 Android 指针</translation></message>
+  <message id="otg.mouse.per_axis_hint"><source>Scale the two axes separately if the absolute pointer only reaches part of the screen.</source><translation>如果绝对指针只能到达部分屏幕，启用此选项可分别缩放横轴和纵轴。</translation></message>
   <message id="otg.middle_button.normal"><source>Normal middle button</source><translation>普通中键</translation></message>
   <message id="otg.middle_button.home"><source>Android Home (Win+Enter)</source><translation>返回安卓桌面（Win+Enter）</translation></message>
   <message id="otg.label.middle_button_action"><source>Middle button action</source><translation>中键功能</translation></message>
@@ -311,6 +313,7 @@
   <message id="otg.error.ble_peer"><source>Bluetooth target address is invalid. Enter the phone's paired identity address as six hexadecimal pairs, for example AA:BB:CC:DD:EE:FF.</source><translation>蓝牙目标地址无效。请填写手机已配对的身份地址，格式为六组两位十六进制数，例如 AA:BB:CC:DD:EE:FF。</translation></message>
   <message id="otg.error.mouse_mode"><source>Mouse mode is invalid. Select absolute or relative mode.</source><translation>鼠标模式无效。请选择绝对模式或相对模式。</translation></message>
   <message id="otg.error.ble_mouse_mode"><source>Bluetooth LE requires absolute mouse mode. Change the mouse mode to absolute.</source><translation>低功耗蓝牙仅支持绝对鼠标模式。请将鼠标模式改为绝对模式。</translation></message>
+  <message id="otg.error.relative_per_axis"><source>Pointer compatibility for older Android requires absolute mouse mode.</source><translation>兼容旧版 Android 指针需要使用绝对鼠标模式。</translation></message>
   <message id="otg.error.middle_button_action"><source>Middle mouse button action is invalid. Select normal or Home.</source><translation>鼠标中键动作无效。请选择普通中键或 Home。</translation></message>
   <message id="otg.error.right_button_action"><source>Right mouse button action is invalid. Select normal or Back.</source><translation>鼠标右键动作无效。请选择普通右键或返回。</translation></message>
   <message id="otg.error.side_button1_action"><source>Side button 1 action is invalid. Select normal, swipe up or swipe down.</source><translation>侧键 1 动作无效。请选择普通按键、向上滑动或向下滑动。</translation></message>

@@ -65,6 +65,7 @@ struct otg_bridge {
 
     /* mouse state */
     enum otg_mouse_mode mouse_mode;
+    bool absolute_per_axis;
     enum otg_middle_button_action middle_button_action;
     bool middle_button_home_down;
     enum otg_right_button_action right_button_action;
@@ -167,6 +168,8 @@ void otg_bridge_set_side_button_action(struct otg_bridge *b, uint8_t button,
 void otg_bridge_set_side_swipe_distance(struct otg_bridge *b, uint8_t percent);
 /* Configure absolute-mode motion scaling. Must be set while the bridge is idle. */
 bool otg_bridge_set_sensitivity(struct otg_bridge *b, double multiplier);
+/* Match both display edges on hosts that scale the absolute axes separately. */
+void otg_bridge_set_absolute_per_axis(struct otg_bridge *b, bool enabled);
 void otg_bridge_mouse_move(struct otg_bridge *b, int16_t x, int16_t y);
 void otg_bridge_mouse_rel_move(struct otg_bridge *b, int16_t dx, int16_t dy);
 void otg_bridge_mouse_wheel(struct otg_bridge *b, int16_t x, int16_t y);

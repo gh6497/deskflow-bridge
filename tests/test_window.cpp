@@ -13,6 +13,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -26,6 +27,7 @@
 #include <QRegularExpression>
 #include <QRandomGenerator>
 #include <QSettings>
+#include <QScrollArea>
 #include <QScopeGuard>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -1615,6 +1617,11 @@ private slots:
         auto *peer = window.findChild<QLineEdit *>("blePeer");
         QCOMPARE(peer->text(), "AA:BB:CC:DD:EE:FF");
         peer->clear();
+        auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
+        QVERIFY(perAxis && perAxis->isEnabled() && !perAxis->isChecked());
+        perAxis->setChecked(true);
+        qputenv("OTG_TEST_EXPECT_PER_AXIS", "1");
+        const auto restorePerAxisEnv = qScopeGuard([] { qunsetenv("OTG_TEST_EXPECT_PER_AXIS"); });
         auto *button = window.findChild<QPushButton *>("connectButton");
         QVERIFY(button->isEnabled());
         QVERIFY(window.findChild<QPushButton *>("connectAllButton")->isEnabled());
@@ -1631,6 +1638,7 @@ private slots:
         QVERIFY(settings.value("blePeer").toString().isEmpty());
         AutoConnectTestWindow restored;
         QVERIFY(restored.findChild<QLineEdit *>("blePeer")->text().isEmpty());
+        QVERIFY(restored.findChild<QCheckBox *>("absolutePerAxis")->isChecked());
 #ifdef Q_OS_LINUX
         QVERIFY(restored.findChild<QCheckBox *>("bleLegacyHandles")->isChecked());
 #endif
@@ -2003,6 +2011,42 @@ private slots:
         QCOMPARE(restored.findChild<QPushButton *>("connectButton")->text(), "Connect");
         restored.close();
     }
+    void guidePointerScreenshot()
+    {
+        const auto capture = qEnvironmentVariable("OTG_TEST_POINTER_SCREENSHOTS");
+        if (capture.isEmpty()) return;
+        QTemporaryDir settingsDir;
+        QVERIFY(settingsDir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        const QString peer = QCoreApplication::applicationDirPath() + "/test_peer";
+        for (const auto &language : {QStringLiteral("en"), QStringLiteral("zh_CN")}) {
+            QSettings settings;
+            settings.clear();
+            settings.setValue("language", language);
+            settings.setValue("adb", peer);
+            settings.setValue("adbSerial", "DEMO_USB_SERIAL");
+            settings.setValue("adbEnabled", false);
+            settings.setValue("deskflow", peer);
+            settings.setValue("transport", "uhid");
+            settings.setValue("originalWidth", 1080);
+            settings.setValue("originalHeight", 2340);
+            AutoConnectTestWindow window;
+            window.available = false;
+            window.resize(1100, 955);
+            window.show();
+            QCoreApplication::processEvents();
+            auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
+            auto *scroll = window.findChild<QScrollArea *>();
+            QVERIFY(perAxis && scroll);
+            QTRY_VERIFY(perAxis->isEnabled());
+            scroll->ensureWidgetVisible(perAxis, 0, 12);
+            QCoreApplication::processEvents();
+            const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
+            QVERIFY(window.grab().save(QDir(capture).filePath(QString("input-") + suffix)));
+            window.close();
+        }
+    }
     void discoverAndRender_data()
     {
         QTest::addColumn<bool>("noDevpath");
@@ -2068,7 +2112,9 @@ private slots:
         auto *virtualSize = window.findChild<QLabel *>("virtualScreenSize");
         auto *swap = window.findChild<QPushButton *>("swapDimensions");
         auto *mode = window.findChild<QComboBox *>("mouseMode");
-        QVERIFY(multiplier && motion && virtualSize && swap && mode);
+        auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
+        QVERIFY(multiplier && motion && virtualSize && swap && mode && perAxis);
+        QVERIFY(perAxis->isEnabled() && !perAxis->isChecked());
         width->setValue(1080);
         height->setValue(2340);
         multiplier->setValue(1.5);
@@ -2088,10 +2134,13 @@ private slots:
         mode->setCurrentIndex(mode->findData("relative"));
         QVERIFY(!multiplier->isEnabled());
         QVERIFY(!motion->isEnabled());
+        QVERIFY(!perAxis->isEnabled());
         QVERIFY(virtualSize->text().startsWith("1080 × 2340"));
         mode->setCurrentIndex(mode->findData("absolute"));
         QVERIFY(multiplier->isEnabled());
         QVERIFY(motion->isEnabled());
+        QVERIFY(perAxis->isEnabled());
+        perAxis->setChecked(true);
         QVERIFY(virtualSize->text().startsWith("720 × 1560"));
         width->setValue(1);
         height->setValue(3);
@@ -2111,6 +2160,7 @@ private slots:
         QCOMPARE(settings.value("originalHeight").toInt(), 2340);
         QCOMPARE(settings.value("sensitivityMultiplier").toDouble(), 1.5);
         QCOMPARE(settings.value("motionMultiplier").toDouble(), 1.5);
+        QCOMPARE(settings.value("absolutePerAxis").toBool(), true);
         QCOMPARE(settings.value("width").toInt(), 720);
         QCOMPARE(settings.value("height").toInt(), 1560);
         AutoConnectTestWindow restored;

@@ -192,6 +192,8 @@ Disconnect the selected device before adjusting settings. Change one thing at a 
 - **Bridge resolution multiplier**: increasing it makes the phone's virtual Deskflow screen smaller, also changing the movement needed to cross it. It **does not reduce the phone's actual display quality**.
 - Prefer **Absolute (recommended)**. Relative mode is a compatibility option and may drift because of Android mouse acceleration.
 
+If the absolute pointer stops around the middle of the screen on an older Android phone, disconnect that device and enable **Pointer compatibility for older Android** under **Device settings → Input and features**, then reconnect. The setting applies to that device's USB and Bluetooth connections.
+
 After rotating the phone without rotation tracking enabled, disconnect, read the dimensions again or swap width/height, then reconnect.
 
 ### Disconnect, hide and quit
