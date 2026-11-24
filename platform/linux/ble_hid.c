@@ -21,6 +21,8 @@
 #define INFO_UUID "00002a4a-0000-1000-8000-00805f9b34fb"
 #define REF_UUID "00002908-0000-1000-8000-00805f9b34fb"
 #define BLE_POINTER_INTERVAL_NS UINT64_C(15000000)
+/* Active BLE sessions pump pending motion on a 1 ms poll timeout. */
+#define BLE_POINTER_POLL_NS UINT64_C(1000000)
 
 /* Linux HCIGETCONNLIST ABI, also used by hcitool con. This socket is unbound
  * and only used for the read-only ioctl. No libbluetooth dependency. */
@@ -72,7 +74,7 @@ struct otg_ble_hid {
     bool notifying[2], suspended;
     uint8_t values[2][AOA_ABSOLUTE_MOUSE_REPORT_SIZE];
     size_t value_size[2];
-    uint64_t pointer_last_sent_ns;
+    uint64_t pointer_slot_ns;
     bool pointer_pending;
     int latency_fd;
     int hci_fd;
@@ -256,7 +258,7 @@ static void reset_reports(struct otg_ble_hid *b)
     memset(b->values, 0, sizeof(b->values));
     b->value_size[0] = b->value_size[1] = 8;
     b->pointer_pending = false;
-    b->pointer_last_sent_ns = 0;
+    b->pointer_slot_ns = 0;
 }
 
 /* Pin the BlueZ identity address, not a transient advertising address. Never
@@ -730,6 +732,17 @@ static bool reg(void *ctx,uint16_t id,const uint8_t *desc,uint16_t size)
     return reg_initial(ctx,id,desc,size);
 }
 
+/* Carry a late poll (e.g. 8 ms for a 7.5 ms slot) into the next deadline.
+ * After a longer stall or idle period, start a fresh cadence at the latest
+ * position so missed slots never turn into a burst of catch-up reports. */
+static bool take_motion_slot(struct otg_ble_hid *b, uint64_t now)
+{
+    uint64_t due = b->pointer_slot_ns + pointer_interval(b);
+    if (b->pointer_slot_ns && now < due) return false;
+    b->pointer_slot_ns = b->pointer_slot_ns && now - due <= BLE_POINTER_POLL_NS ? due : now;
+    return true;
+}
+
 /* Only coordinates may be replaced. Button, range and wheel transitions are
  * ordering barriers, including a release to zero buttons. Drag motion with
  * unchanged buttons can be coalesced just like hover motion. */
@@ -743,13 +756,12 @@ static bool queue_pointer(struct otg_ble_hid *b, const uint8_t *data,
                   data[6] == 0 && data[7] == 0;
     memcpy(b->values[1], data, size);
     b->value_size[1] = size;
-    if (motion && b->pointer_last_sent_ns &&
-        now - b->pointer_last_sent_ns < pointer_interval(b)) {
+    if (motion && !take_motion_slot(b, now)) {
         b->pointer_pending = true;
         return false;
     }
     b->pointer_pending = false;
-    b->pointer_last_sent_ns = now;
+    if (!motion) b->pointer_slot_ns = now;
     return true;
 }
 
@@ -761,12 +773,10 @@ static bool pointer_due(struct otg_ble_hid *b, uint64_t now)
         b->pointer_pending = false;
         return false;
     }
-    if (!b->pointer_pending ||
-        now - b->pointer_last_sent_ns < pointer_interval(b)) {
+    if (!b->pointer_pending || !take_motion_slot(b, now)) {
         return false;
     }
     b->pointer_pending = false;
-    b->pointer_last_sent_ns = now;
     return true;
 }
 

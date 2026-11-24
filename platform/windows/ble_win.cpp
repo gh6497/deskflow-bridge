@@ -40,8 +40,8 @@ struct State {
     bool ready = false, failed = false, closing = false, in_flight = false, worker_done = false;
     bool suspended = false;
     uint64_t peer_address = 0, epoch = 0;
-    unsigned notification_interval_ms = otg_ble_win_detail::notification_interval_ms;
-    unsigned pointer_interval_ms = otg_ble_win_detail::pointer_notification_interval_ms;
+    std::chrono::microseconds state_interval = otg_ble_win_detail::fallback_state_interval;
+    std::chrono::microseconds motion_interval = otg_ble_win_detail::fallback_motion_interval;
     uint8_t protocol_mode = 1; // Report Protocol; Boot Protocol is not implemented.
     std::string waiting;
     otg_ble_win_detail::Queue queue;
@@ -55,6 +55,17 @@ static void log(const char *level, const std::string& message)
     static const auto started = Clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count();
     std::fprintf(stderr, "%s: Windows BLE [%lldms] %s\n", level, static_cast<long long>(elapsed), message.c_str());
+}
+
+static void set_connection_interval(const std::shared_ptr<State>& state, uint16_t units)
+{
+    if (!units) return;
+    const auto interval = otg_ble_win_detail::connection_interval(units);
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->state_interval = state->motion_interval = interval;
+    }
+    log("INFO", "BLE negotiated connection interval=" + std::to_string(interval.count()) + "us");
 }
 static std::string describe(const hresult_error& e)
 {
@@ -470,10 +481,8 @@ public:
                         if (device.ConnectionStatus() != BluetoothConnectionStatus::Connected) {
                             {
                                 std::lock_guard<std::mutex> lock(state->mutex);
-                                state->notification_interval_ms =
-                                    otg_ble_win_detail::notification_interval_ms;
-                                state->pointer_interval_ms =
-                                    otg_ble_win_detail::pointer_notification_interval_ms;
+                                state->state_interval = otg_ble_win_detail::fallback_state_interval;
+                                state->motion_interval = otg_ble_win_detail::fallback_motion_interval;
                             }
                             log("INFO", "device ConnectionStatus=disconnected; observed sessions keyboard=" +
                                 session_text(key_session) + " pointer=" + session_text(mouse_session));
@@ -484,34 +493,14 @@ public:
                     parameters_changed = peer.ConnectionParametersChanged(auto_revoke,
                         [state](auto const& device, auto const&) {
                             try {
-                                const auto parameters = device.GetConnectionParameters();
-                                if (!parameters.ConnectionInterval()) return;
-                                const auto ms = static_cast<unsigned>(
-                                    (static_cast<uint32_t>(parameters.ConnectionInterval()) * 125 + 99) / 100);
-                                if (ms == 0) return;
-                                {
-                                    std::lock_guard<std::mutex> lock(state->mutex);
-                                    state->notification_interval_ms = ms;
-                                    state->pointer_interval_ms = ms;
-                                }
-                                log("INFO", "BLE negotiated connection interval=" + std::to_string(ms) + "ms");
+                                set_connection_interval(state, device.GetConnectionParameters().ConnectionInterval());
                             } catch (const hresult_error& e) {
                                 log("WARN", "connection parameters: " + describe(e));
                             }
                         });
-                    const auto parameters = peer.GetConnectionParameters();
-                    if (parameters.ConnectionInterval()) {
-                        const auto ms = static_cast<unsigned>(
-                            (static_cast<uint32_t>(parameters.ConnectionInterval()) * 125 + 99) / 100);
-                        {
-                            std::lock_guard<std::mutex> lock(s->mutex);
-                            s->notification_interval_ms = ms;
-                            s->pointer_interval_ms = ms;
-                        }
-                        log("INFO", "BLE negotiated connection interval=" + std::to_string(ms) + "ms");
-                    }
+                    set_connection_interval(s, peer.GetConnectionParameters().ConnectionInterval());
                 } catch (const hresult_error& e) {
-                    log("INFO", "negotiated BLE interval unavailable; using 30ms fallback: " + describe(e));
+                    log("INFO", "negotiated BLE interval unavailable; fallback motion=15ms state=30ms: " + describe(e));
                 }
             }
         }
@@ -583,7 +572,7 @@ public:
         if (became_ready) log("INFO", "target paired, connected and subscribed; input ready");
     }
 
-    void send(const otg_ble_win_detail::Report& report)
+    void send(const otg_ble_win_detail::Report& report, Clock::time_point& next_notification)
     {
         auto c = report.id == 1 ? keyboard : pointer;
         auto selected = report.id == 1 ? key_client : pointer_client;
@@ -600,8 +589,8 @@ public:
             if (!s->ready || report.epoch != s->epoch || peer.BluetoothAddress() != s->peer_address) return;
         }
         if (notification) throw std::runtime_error("attempt to overlap notifications");
-        notification = c.NotifyValueAsync(buffer(report.bytes), selected);
         notification_started = Clock::now();
+        notification = c.NotifyValueAsync(buffer(report.bytes), selected);
         GattClientNotificationResult result{nullptr};
         try {
             result = wait(s, notification, report.id == 1 ? "notify keyboard" : "notify pointer", 1500ms, report.epoch);
@@ -627,8 +616,11 @@ public:
         if (report.id == 1) ++sent_keyboard;
         else ++sent_pointer;
         std::lock_guard<std::mutex> lock(s->mutex);
-        if (report.epoch == s->epoch)
+        if (report.epoch == s->epoch) {
             (report.id == 1 ? s->keyboard : s->pointer) = report.bytes;
+            next_notification = otg_ble_win_detail::next_notification_time(report, notification_started,
+                Clock::now(), s->motion_interval, s->state_interval);
+        }
     }
 
     // A local overload/failure must not intentionally abandon held inputs on
@@ -728,14 +720,7 @@ static void worker(const std::shared_ptr<State>& s)
                             report = s->queue.pop();
                             s->in_flight = true;
                         }
-                        service.send(report);
-                        unsigned interval_ms;
-                        {
-                            std::lock_guard<std::mutex> lock(s->mutex);
-                            interval_ms = report.id == 2 && report.movement
-                                ? s->pointer_interval_ms : s->notification_interval_ms;
-                        }
-                        next_notification = Clock::now() + std::chrono::milliseconds(interval_ms);
+                        service.send(report, next_notification);
                         {
                             std::lock_guard<std::mutex> lock(s->mutex);
                             s->in_flight = false;
