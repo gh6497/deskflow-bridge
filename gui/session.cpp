@@ -165,6 +165,16 @@ static bool adbDeviceState(const QString &output)
     return output.trimmed() == QStringLiteral("device");
 }
 
+static bool adbTargetMayAppear(const QString &output)
+{
+    const auto text = output.toLower();
+    return text.contains(QStringLiteral("device")) &&
+        (text.contains(QStringLiteral("not found")) ||
+         text.contains(QStringLiteral("offline")) ||
+         text.contains(QStringLiteral("unauthorized")) ||
+         text.contains(QStringLiteral("no devices")));
+}
+
 /* AOA/BLE input is independent; UHID and the optional features require ADB. */
 static bool adbRequested(const ConnectionOptions &options)
 {
@@ -274,6 +284,7 @@ void Session::start(const ConnectionOptions &options)
     m_audioReady = false;
     m_adbServerStarted = false;
     m_adbTargetPrepared = false;
+    m_adbTargetAttempts = 0;
     m_clipboardStatusId = options.clipboard ? "otg.clipboard.waiting" : "otg.clipboard.off";
     emit clipboardChanged();
     m_failureId.clear();
@@ -421,19 +432,34 @@ void Session::startConnection()
     }
     const auto target = adbTarget(m_options);
     if (needsAdb && !m_adbTargetPrepared) {
-        m_adbTargetPrepared = true;
+        ++m_adbTargetAttempts;
         const auto generation = m_generation;
         emit log(qtTrId("otg.log.adb.checking_target").arg(target));
         runCommand(this, m_options.adb, {"-s", target, "get-state"},
                    [this, generation, target](bool ok, const QString &output) {
             if (generation != m_generation || m_state != State::Starting) return;
             const bool ready = ok && adbDeviceState(output);
-            emit log(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
-                                       "ADB", output));
             if (ready) {
+                m_adbTargetPrepared = true;
+                emit log(withProcessOutput(qtTrId("otg.log.adb.target_ready").arg(target), "ADB", output));
                 startConnection();
                 return;
             }
+            // AOA hotplug is reported as soon as libusb sees the physical
+            // device, while Android may need another few seconds to publish
+            // its ADB USB transport. Do not turn that insertion race into a
+            // failed automatic connection. Keep wireless ADB's connect-on-
+            // demand path unchanged and fail promptly for other errors.
+            if (m_options.transport == "usb" && m_adbTargetAttempts < 20 &&
+                adbTargetMayAppear(output)) {
+                QTimer::singleShot(500, this, [this, generation] {
+                    if (generation == m_generation && m_state == State::Starting)
+                        startConnection();
+                });
+                return;
+            }
+            emit log(withProcessOutput(qtTrId("otg.log.adb.target_unavailable").arg(target),
+                                       "ADB", output));
             if (!isWirelessAdbTarget(target)) {
                 fail("otg.error.bridge_start",
                      qtTrId("otg.log.adb.target_unavailable").arg(target));
@@ -451,18 +477,19 @@ void Session::startConnection()
                 }
                 emit log(qtTrId("otg.log.adb.checking_target").arg(target));
                 runCommand(this, m_options.adb, {"-s", target, "get-state"},
-                           [this, generation, target](bool ok, const QString &stateOutput) {
-                    if (generation != m_generation || m_state != State::Starting) return;
-                    const bool ready = ok && adbDeviceState(stateOutput);
-                    emit log(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
-                                               "ADB", stateOutput));
-                    if (!ready) {
-                        fail("otg.error.bridge_start",
-                             qtTrId("otg.log.adb.target_unavailable").arg(target));
-                        return;
-                    }
-                    startConnection();
-                });
+                    [this, generation, target](bool ok, const QString &stateOutput) {
+                        if (generation != m_generation || m_state != State::Starting) return;
+                        const bool ready = ok && adbDeviceState(stateOutput);
+                        emit log(withProcessOutput(qtTrId(ready ? "otg.log.adb.target_ready" : "otg.log.adb.target_unavailable").arg(target),
+                                                   "ADB", stateOutput));
+                        if (!ready) {
+                            fail("otg.error.bridge_start",
+                                 qtTrId("otg.log.adb.target_unavailable").arg(target));
+                            return;
+                        }
+                        m_adbTargetPrepared = true;
+                        startConnection();
+                    });
             });
         });
         return;

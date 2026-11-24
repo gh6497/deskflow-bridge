@@ -116,6 +116,7 @@ private:
     bool m_bleActive = false, m_shutdown = false, m_stoppingBleProvider = false;
     bool m_audioReady = false;
     bool m_adbServerStarted = false, m_adbTargetPrepared = false;
+    int m_adbTargetAttempts = 0;
     QByteArray m_failureId, m_statusId;
     QByteArray m_clipboardStatusId = "otg.clipboard.off";
     QString m_failureDetail, m_statusDetail;

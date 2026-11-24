@@ -1316,6 +1316,14 @@ void MainWindow::autoConnectDevice(const QString &transport, const QString &seri
         profile["direction"] = it->value("direction", "right");
         // Use the currently configured gain, even if edited since the last connection.
         if (it->contains("audioGainDb")) profile["audioGainDb"] = it->value("audioGainDb");
+        // A remembered AOA profile may have been created before the user
+        // enabled ADB enhancements. These are per-device feature settings,
+        // so restore the current record rather than the older successful
+        // connection snapshot. Otherwise auto-connect silently unchecks ADB
+        // and drops audio/clipboard on the next insertion.
+        for (const auto *field : {"adbEnabled", "adbSerial", "audio", "clipboard", "autoRotate",
+                                  "unlockEnabled", "unlockPin", "unlockWithSpace"})
+            if (it->contains(field)) profile[field] = it->value(field);
         m_records[id] = profile;
         m_pendingProfiles[id] = profile;
         appendLog(qtTrId("otg.auto_connect.connecting").arg(serial), id);
