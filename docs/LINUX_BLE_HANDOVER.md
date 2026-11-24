@@ -20,6 +20,26 @@ BlueZ `Device1`。经典蓝牙同时在线时，两路订阅必须来自该手�
 常驻服务保留选定的身份。要更换手机或在自动和指定地址之间切换，先停止空闲服务。自动模式
 需要新版服务。IPC 仍是 v2，旧版服务可通过 `--ble-stop-service` 显式停止，仍可用指定地址模式接入。
 
+### 旧版 Android HID 兼容选项
+
+旧版 AOSP HID Host 查找输入通知的 CCCD 时，把 16 位特征句柄截为 8 位。见
+[Android 10 源码](https://android.googlesource.com/platform/system/bt/+/android-10.0.0_r1/bta/hh/bta_hh_le.cc#671)。常规布局的键鼠值分别为
+`0x0106`、`0x010a`，兼容布局改用 `0x0046`、`0x004a`，整个 HID 服务使用 `0x0040..0x0051`。
+GUI 按设备保存「兼容旧版 Android 蓝牙键鼠」。CLI 常驻模式须在服务和会话两端传相同选项。
+
+```bash
+deskflow-bridge --ble-service --adapter hci0 --ble-legacy-handles
+# 另一个终端按自己的 Deskflow 屏幕名、尺寸和 TLS 设置运行会话
+deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handles --name android
+```
+
+切换布局前显式停止空闲服务，手机可能需要重新发现 HID 服务。布局在 GATT 注册期间固定。
+若手机选择了经典蓝牙连接，可用独立的仅 BLE 模式验证。这会暂时断开适配器上的其他连接。
+
+2026-11-24 在 Linux Mint 22.3、BlueZ 5.72、Intel AX210 与 OPPO R17 上验证。原布局在仅 BLE
+模式下能完成加密连接和描述符读取，抓包只看到 `0x000b` 的 CCCD 写入，重新配对后仍未就绪。
+保持该配对，启用低句柄和仅 BLE 模式后，两路订阅、Deskflow TLS 握手及用户实际键鼠输入均通过。
+
 分支：`feat/linux-ble-hid`。基于 `d11c432`（`main`）。实验功能包含本地实现及本轮续测记录，
 未推送、未开 PR、未发布安装包；不要将其当作完成真机验收的正式版本。
 

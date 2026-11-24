@@ -491,6 +491,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_bleIsolate = translated(new QCheckBox, "text", "otg.ble.isolate");
     m_bleIsolate->setObjectName("bleIsolate");
     deviceForm->addRow(m_bleIsolate);
+    m_bleLegacyHandles = translated(new QCheckBox, "text", "otg.ble.legacy_handles");
+    m_bleLegacyHandles->setObjectName("bleLegacyHandles");
+    setTranslatedProperty(m_bleLegacyHandles, "toolTip", "otg.ble.legacy_handles_hint");
+    deviceForm->addRow(m_bleLegacyHandles);
     m_stopBleService = translated(new QPushButton, "text", "otg.ble.stop_service");
     m_stopBleService->setObjectName("stopBleService");
     deviceForm->addRow(m_stopBleService);
@@ -989,6 +993,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_adapter->setText(settings.value("bleAdapter", "hci0").toString());
     m_blePeer->setText(settings.value("blePeer").toString());
     m_bleIsolate->setChecked(settings.value("bleIsolate", false).toBool());
+    m_bleLegacyHandles->setChecked(settings.value("bleLegacyHandles", false).toBool());
     m_width->setValue(settings.value("originalWidth", settings.value("width", 1080)).toInt());
     m_height->setValue(settings.value("originalHeight", settings.value("height", 1920)).toInt());
     m_sensitivity->setValue(settings.value("sensitivityMultiplier", 1.0).toDouble());
@@ -1357,6 +1362,7 @@ void MainWindow::addDevice()
     profile["transport"] = defaultTransport();
     profile["blePeer"] = "";
     profile["bleIsolate"] = false;
+    profile["bleLegacyHandles"] = false;
     profile["autoConnect"] = false;
     profile["uhidUsbAutoConnect"] = false;
     profile["neighbor"] = m_phone->text().trimmed();
@@ -1520,6 +1526,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
 #ifdef Q_OS_LINUX
     options.adapter = profile.value("bleAdapter", "hci0").toString();
     options.bleIsolate = profile.value("bleIsolate", false).toBool();
+    options.bleLegacyHandles = profile.value("bleLegacyHandles", false).toBool();
 #else
     options.adapter.clear();
 #endif
@@ -1564,6 +1571,7 @@ void MainWindow::updateEnabled()
     m_deviceForm->setRowVisible(m_adapter, linuxBle);
     m_deviceForm->setRowVisible(m_blePeer, ble);
     m_deviceForm->setRowVisible(m_bleIsolate, linuxBle);
+    m_deviceForm->setRowVisible(m_bleLegacyHandles, linuxBle);
     m_deviceForm->setRowVisible(m_stopBleService, linuxBle || (ble && m_session->hasBleProvider()));
     m_deviceForm->setRowVisible(m_devices->parentWidget(), !ble);
     m_deviceForm->setRowVisible(m_serial, !ble && !uhid);
@@ -1661,6 +1669,7 @@ void MainWindow::updateEnabled()
     m_adapter->setEnabled(linuxBle);
     m_blePeer->setEnabled(ble);
     m_bleIsolate->setEnabled(linuxBle);
+    m_bleLegacyHandles->setEnabled(linuxBle);
     m_stopBleService->setEnabled((linuxBle || m_session->hasBleProvider()) && !m_stoppingBleService);
     m_mouseMode->setEnabled(!ble);
     m_unlockEnabled->setEnabled(adbFeatures);
@@ -2154,6 +2163,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"alias", m_alias->text().trimmed()},
             {"transport", m_transport->currentData()}, {"bleAdapter", m_adapter->text()},
             {"blePeer", m_blePeer->text().trimmed().toUpper()}, {"bleIsolate", m_bleIsolate->isChecked()},
+            {"bleLegacyHandles", m_bleLegacyHandles->isChecked()},
             {"autoConnect", m_autoConnectEnabled->isChecked()}, {"neighbor", m_neighbor->currentData()},
             {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},
             {"originalWidth", m_width->value()}, {"originalHeight", m_height->value()},
@@ -2202,6 +2212,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_adapter->setText(profile.value("bleAdapter", "hci0").toString());
     m_blePeer->setText(profile.value("blePeer").toString());
     m_bleIsolate->setChecked(profile.value("bleIsolate", false).toBool());
+    m_bleLegacyHandles->setChecked(profile.value("bleLegacyHandles", false).toBool());
     const QSignalBlocker audioBlocker(m_audio);
     m_audio->setChecked(profile.value("audio", false).toBool());
     m_audioGain->setValue(storedAudioGain(profile.value("audioGainDb")));
@@ -2271,6 +2282,7 @@ void MainWindow::saveSettings()
     settings.setValue("bleAdapter", m_adapter->text());
     settings.setValue("blePeer", m_blePeer->text());
     settings.setValue("bleIsolate", m_bleIsolate->isChecked());
+    settings.setValue("bleLegacyHandles", m_bleLegacyHandles->isChecked());
     settings.setValue("originalWidth", m_width->value());
     settings.setValue("originalHeight", m_height->value());
     settings.setValue("sensitivityMultiplier", m_sensitivity->value());

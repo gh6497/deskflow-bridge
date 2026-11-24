@@ -44,6 +44,7 @@ struct ConnectionOptions {
 #endif
     QString blePeer;
     bool bleIsolate = false;
+    bool bleLegacyHandles = false;
     int port = 24800;
     int width = 1080;
     int height = 1920;

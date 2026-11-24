@@ -374,6 +374,10 @@ void Session::prepareBle(bool started, int attempts)
                 fail("otg.ble.busy");
                 return;
             }
+            if (status.value("legacyHandles").toBool() != m_options.bleLegacyHandles) {
+                fail("otg.ble.handle_layout_mismatch");
+                return;
+            }
             startConnection();
             return;
         }
@@ -397,7 +401,9 @@ void Session::prepareBle(bool started, int attempts)
         }
         QProcess service;
         service.setProgram(m_options.bridge);
-        service.setArguments({"--ble-service", "--adapter", m_options.adapter});
+        QStringList args{"--ble-service", "--adapter", m_options.adapter};
+        if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
+        service.setArguments(args);
         service.setStandardInputFile(QProcess::nullDevice());
         service.setStandardOutputFile(QProcess::nullDevice());
         service.setStandardErrorFile(dir + "/ble-" + m_options.adapter + ".log", QIODevice::Append);
@@ -566,6 +572,7 @@ void Session::launchBridge()
         setState(State::Starting, "otg.ble.waiting");
 #ifdef Q_OS_LINUX
         args << "--ble-session" << "--adapter" << m_options.adapter;
+        if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
         if (m_options.bleIsolate) {
             args.prepend(m_options.bridge);
             args << "--ble-isolate";

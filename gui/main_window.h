@@ -143,7 +143,7 @@ private:
     QWidget *m_adbBox;
     QComboBox *m_transport;
     QLineEdit *m_adapter, *m_blePeer;
-    QCheckBox *m_bleIsolate;
+    QCheckBox *m_bleIsolate, *m_bleLegacyHandles;
     QPushButton *m_stopBleService;
     bool m_stoppingBleService = false;
     QLineEdit *m_serial, *m_adbSerial, *m_adb, *m_deskflow, *m_host, *m_computer, *m_phone;

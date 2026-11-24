@@ -454,6 +454,7 @@ if(BUILD_TESTING)
     PASS_REGULAR_EXPRESSION "deskflow-bridge ${PROJECT_VERSION}")
   add_test(NAME cli_ble_validation COMMAND "${CMAKE_COMMAND}"
     "-DCLI=$<TARGET_FILE:deskflow-bridge>" "-DWINDOWS_BLE=${BUILD_BLE_WIN}" "-DCLIPBOARD=${BUILD_CLIPBOARD}"
+    "-DLINUX_BLE=${BUILD_BLE}"
     -P "${PROJECT_SOURCE_DIR}/tests/test_cli_ble.cmake")
 endif()
 

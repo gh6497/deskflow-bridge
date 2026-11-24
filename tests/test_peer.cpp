@@ -159,6 +159,8 @@ int main(int argc, char **argv)
             output("{\"version\":2,\"available\":true,\"idle\":false,\"ready\":true}\n");
         else if (mode == "incompatible")
             output("{\"version\":1,\"available\":true,\"idle\":true}\n");
+        else if (mode == "legacy")
+            output("{\"version\":2,\"available\":true,\"idle\":true,\"ready\":false,\"legacyHandles\":true}\n");
         else
             output("{\"version\":2,\"available\":true,\"idle\":true,\"ready\":false}\n");
         return 0;
@@ -322,9 +324,10 @@ int main(int argc, char **argv)
         if (ble && (args.contains("--serial") ||
                     args.value(args.indexOf("--mouse-mode") + 1) != "absolute")) return 9;
         if (ble && args.contains("--ble-peer") && args.value(args.indexOf("--ble-peer") + 1).isEmpty()) return 9;
+        if (ble && args.contains("--ble-legacy-handles") != (qEnvironmentVariable("OTG_TEST_BLE_STATUS") == "legacy")) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
             (args.contains("--ble-session") || args.contains("--adapter") ||
-             args.contains("--ble-isolate") || args.contains("--background"))) return 10;
+             args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
         if (args.contains("--gui-ble-control")) {
             auto generation = std::make_shared<int>(0);
             auto connectSession = [&app, generation] {

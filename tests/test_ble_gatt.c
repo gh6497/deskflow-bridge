@@ -267,6 +267,18 @@ int main(void)
     GVariant *props_value=g_variant_get_child_value(result,0);guint16 handle=0;
     CHECK(g_variant_lookup(props_value,"Handle","q",&handle) && handle==0x106);
     g_variant_unref(props_value);g_variant_unref(result);
+    b.legacy_handles=true;
+    for(unsigned report=0;report<2;report++) {
+        result=invoke(&b,report?ROOT "/hid/pointer":ROOT "/hid/keys",
+            "org.freedesktop.DBus.Properties","GetAll",
+            g_variant_new("(s)","org.bluez.GattCharacteristic1"),true);
+        props_value=g_variant_get_child_value(result,0);
+        /* Truncating a low value handle on an older host preserves its CCCD lookup. */
+        CHECK(g_variant_lookup(props_value,"Handle","q",&handle));
+        CHECK(handle==(report?0x004a:0x0046) && (uint8_t)handle==handle);
+        g_variant_unref(props_value);g_variant_unref(result);
+    }
+    b.legacy_handles=false;
     result=read_at(&b,ROOT "/hid/map",3,true);
     GVariant *value=g_variant_get_child_value(result,0);gsize size;
     const uint8_t *data=g_variant_get_fixed_array(value,&size,1);

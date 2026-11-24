@@ -25,7 +25,12 @@
 #define STATUS_INTERVAL_US 5000
 #define REQUEST_TIMEOUT_US 3000000
 static const char *runtime_base="/run/user";
-enum operation { ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER, STOP_SERVICE };
+enum operation {
+    ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
+    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT
+};
+#define STATUS_READY 1u
+#define STATUS_LEGACY_HANDLES 2u
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -37,7 +42,7 @@ struct service {
     struct otg_ble_hid *hid;
     int client;
     unsigned registered;
-    bool active, clean, shutdown;
+    bool active, clean, shutdown, legacy_handles;
     gint64 last_request;
     uint8_t descriptors[2][MAX_DESC];
     uint16_t sizes[2];
@@ -152,7 +157,7 @@ static bool register_descriptor(struct service *s,const struct message *m)
     s->registered|=1u<<index;
     if(s->registered!=3)return true;
     if(!s->hid) {
-        s->hid=otg_ble_hid_create_resident(s->adapter);
+        s->hid=otg_ble_hid_create_resident(s->adapter,s->legacy_handles);
         if(!s->hid)return false;
         if(s->peer[0] && !otg_ble_hid_set_peer(s->hid,s->peer))return false;
         const struct otg_hid_transport_ops *ops=otg_ble_hid_ops();
@@ -165,11 +170,17 @@ static bool register_descriptor(struct service *s,const struct message *m)
     return s->active;
 }
 
-static bool reply_status(struct service *s,int fd,bool ok)
+static bool reply_status_with_flags(struct service *s,int fd,bool ok,uint8_t flags)
 {
-    uint8_t status[2]={s->active && s->hid && otg_ble_hid_ops()->ready(s->hid),
+    if(s->active && s->hid && otg_ble_hid_ops()->ready(s->hid))flags|=STATUS_READY;
+    uint8_t status[2]={flags,
                        s->client<0 && !s->active && s->clean};
     return send_message(fd,REPLY,ok?0:1,status,sizeof(status));
+}
+
+static bool reply_status(struct service *s,int fd,bool ok)
+{
+    return reply_status_with_flags(s,fd,ok,0);
 }
 
 static bool handle_session(struct service *s,const struct message *m)
@@ -218,12 +229,15 @@ static void handle_pending(struct service *s,struct pending_peer *p)
     if(!result && g_get_monotonic_time()<p->deadline)return;
     if(result==1 && !m.size && !m.id) {
         if(m.operation==STATUS)(void)reply_status(s,p->fd,true);
+        else if(m.operation==STATUS_WITH_LAYOUT)
+            (void)reply_status_with_flags(s,p->fd,true,s->legacy_handles?STATUS_LEGACY_HANDLES:0);
         else if(m.operation==STOP_SERVICE && p->owner) {
             bool ok=s->client<0 && !s->active && s->clean;
             if(reply_status(s,p->fd,ok) && ok)s->shutdown=true;
         }
-        else if(m.operation==ATTACH && p->owner) {
-            bool ok=s->client<0 && s->clean && !s->shutdown;
+        else if((m.operation==ATTACH || m.operation==ATTACH_LEGACY) && p->owner) {
+            bool ok=s->client<0 && s->clean && !s->shutdown &&
+                    s->legacy_handles==(m.operation==ATTACH_LEGACY);
             if(ok){s->client=p->fd;s->registered=0;s->last_request=g_get_monotonic_time();}
             bool sent=reply_status(s,p->fd,ok);
             if(ok && sent){p->fd=-1;return;}
@@ -233,7 +247,7 @@ static void handle_pending(struct service *s,struct pending_peer *p)
     close(p->fd);p->fd=-1;
 }
 
-int otg_ble_service_run(const char *adapter,volatile sig_atomic_t *stop)
+int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_atomic_t *stop)
 {
     if(geteuid()==0){fprintf(stderr,"ERROR: run --ble-service as an ordinary user, without sudo\n");return 2;}
     char dir[128],lock_name[160];struct sockaddr_un address;
@@ -258,10 +272,11 @@ int otg_ble_service_run(const char *adapter,volatile sig_atomic_t *stop)
     if(listener<0 || bind(listener,(struct sockaddr *)&address,sizeof(address)))goto out;
     bound=true;
     if(chmod(address.sun_path,0600) || listen(listener,4))goto out;
-    struct service s={.client=-1,.clean=true,.adapter=adapter};
+    struct service s={.client=-1,.clean=true,.adapter=adapter,.legacy_handles=legacy_handles};
     struct pending_peer pending[4];
     for(size_t i=0;i<G_N_ELEMENTS(pending);i++)pending[i].fd=-1;
-    fprintf(stderr,"INFO: resident BLE service listening on %s; idle, no advertisement; keep this process running between bridge sessions\n",address.sun_path);
+    fprintf(stderr,"INFO: resident BLE service listening on %s (%s handles); idle, no advertisement; keep this process running between bridge sessions\n",
+            address.sun_path,legacy_handles?"legacy":"standard");
     result=0;
     while(!*stop && !s.shutdown) {
         if(s.hid && !otg_ble_hid_ops()->poll(s.hid)){result=1;break;}
@@ -359,14 +374,15 @@ static void notify_supervisor(struct otg_ble_session *s,const char *adapter,bool
 
 /* Adapter is needed for the supervisor notification but never comes from IPC. */
 struct session_owner {struct otg_ble_session session;char adapter[16];};
-struct otg_ble_session *otg_ble_session_open(const char *adapter)
+struct otg_ble_session *otg_ble_session_open(const char *adapter,bool legacy_handles)
 {
     if(!valid_adapter(adapter))return NULL;
     int fd=connect_service(getuid(),adapter);
     if(fd<0){fprintf(stderr,"ERROR: start deskflow-bridge --ble-service --adapter %s as this ordinary user first\n",adapter);return NULL;}
     struct message reply;
-    if(!request(fd,ATTACH,0,NULL,0,&reply)) {
-        fprintf(stderr,"ERROR: resident BLE service busy, incompatible, or unavailable\n");close(fd);return NULL;
+    if(!request(fd,legacy_handles?ATTACH_LEGACY:ATTACH,0,NULL,0,&reply)) {
+        fprintf(stderr,"ERROR: resident BLE service busy, unavailable, or incompatible with the requested handle layout; stop the idle service before changing layouts\n");
+        close(fd);return NULL;
     }
     struct session_owner *owner=g_new0(struct session_owner,1);
     struct otg_ble_session *s=&owner->session;
@@ -533,14 +549,21 @@ int otg_ble_service_status(const char *adapter)
 {
     int fd=connect_service(getuid(),adapter);
     struct message reply;
-    bool ok=fd>=0 && request(fd,STATUS,0,NULL,0,&reply);
+    bool ok=fd>=0 && request(fd,STATUS_WITH_LAYOUT,0,NULL,0,&reply);
     if(fd>=0)close(fd);
+    if(fd>=0 && !ok) {
+        /* Older v2 services support only the standard layout. */
+        fd=connect_service(getuid(),adapter);
+        ok=fd>=0 && request(fd,STATUS,0,NULL,0,&reply);
+        if(fd>=0)close(fd);
+    }
     if(!ok) {
         puts("{\"version\":2,\"available\":false}");
         return 1;
     }
-    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s}\n",
-           reply.data[0]?"true":"false",reply.data[1]?"true":"false");
+    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s}\n",
+           (reply.data[0]&STATUS_READY)?"true":"false",reply.data[1]?"true":"false",
+           (reply.data[0]&STATUS_LEGACY_HANDLES)?"true":"false");
     return 0;
 }
 
