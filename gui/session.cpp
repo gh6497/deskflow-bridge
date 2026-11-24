@@ -197,7 +197,8 @@ static QStringList auxiliarySignature(const ConnectionOptions &options)
             options.audio ? QString::number(options.audioGainDb) : QString(),
             options.clipboard ? QStringLiteral("clipboard") : QStringLiteral("no-clipboard"),
             options.unlockAdb ? QStringLiteral("unlock") : QStringLiteral("no-unlock"),
-            options.unlockPin};
+            options.unlockPin,
+            options.unlockAdb && options.unlockWithSpace ? QStringLiteral("space") : QString()};
 }
 
 // Keep the ID, not translated text, so a failed session follows language changes.
@@ -506,6 +507,8 @@ void Session::launchBridge()
                       "--side-button-1-action", m_options.sideButton1Action,
                       "--side-button-2-action", m_options.sideButton2Action,
                       "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
+    if (!m_options.unlockPin.isEmpty() && !m_options.unlockWithSpace)
+        args << "--unlock-with-swipe";
     if (adbRequired(m_options)) {
         if (m_options.audio) {
             args << "--audio";

@@ -226,10 +226,16 @@ static void open_unlock_bridge(struct otg_bridge *b, enum otg_mouse_mode mode)
     otg_bridge_set_right_button_action(b, OTG_RIGHT_BUTTON_BACK);
 }
 
+static void open_swipe_unlock_bridge(struct otg_bridge *b, enum otg_mouse_mode mode)
+{
+    open_unlock_bridge(b, mode);
+    otg_bridge_set_unlock_with_space(b, false);
+}
+
 static void test_unlock_mouse_suppression(bool gated)
 {
     struct otg_bridge b;
-    open_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
+    open_swipe_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
     otg_bridge_set_unlock_adb_gated(&b, gated);
     otg_bridge_enter(&b, 100, 200, 0);
     if (gated) {
@@ -294,7 +300,7 @@ static void test_unlock_mouse_cancellation(void)
 {
     for (unsigned action = 0; action < 3; ++action) {
         struct otg_bridge b;
-        open_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
+        open_swipe_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
         otg_bridge_enter(&b, 100, 200, 0);
         unlock_tick_now(&b); /* Cancel with the synthetic swipe held down. */
         CHECK(b.mouse_buttons == 1);
@@ -315,14 +321,60 @@ static void test_unlock_mouse_cancellation(void)
         }
     }
     struct otg_bridge b;
-    open_unlock_bridge(&b, OTG_MOUSE_RELATIVE);
+    open_swipe_unlock_bridge(&b, OTG_MOUSE_RELATIVE);
     otg_bridge_enter(&b, 100, 200, 0);
     CHECK(b.unlock_pending);
     check_unlock_mouse_blocked(&b);
-    unlock_tick_now(&b); /* Unsupported relative mode skips the unlock. */
+    unlock_tick_now(&b); /* Swipe mode cannot unlock with relative mouse reports. */
     CHECK(!b.unlock_pending);
     otg_bridge_mouse_move(&b, 110, 210);
     CHECK(last_id == AOA_HID_ID_MOUSE && last_size == 5 && report[1] == 10 && report[2] == 10);
+    otg_bridge_close(&b);
+}
+
+static void test_unlock_with_space(enum otg_mouse_mode mode, bool cancel)
+{
+    struct otg_bridge b;
+    open_unlock_bridge(&b, mode);
+    otg_bridge_set_unlock_adb_gated(&b, true);
+    otg_bridge_enter(&b, 100, 200, 0);
+    unsigned before = keyboard_count;
+    otg_bridge_unlock_adb_state(&b, false, true);
+    otg_bridge_unlock_adb_state(&b, true, false);
+    unlock_tick_now(&b);
+    CHECK(!b.unlock_pending && keyboard_count == before);
+    otg_bridge_unlock_adb_state(&b, true, true);
+    CHECK(b.unlock_pending);
+    CHECK(keyboard_count == before + 2);
+    CHECK(report_has_key(keyboard_reports[before], HID_KEY_ENTER)); /* Existing wake tap. */
+    before = keyboard_count;
+    int before_reports = reports;
+    unlock_tick_now(&b);
+    CHECK(b.unlock_pending && !b.mouse_buttons);
+    CHECK(reports == before_reports + 2 && keyboard_count == before + 2);
+    CHECK(report_has_key(keyboard_reports[before], HID_KEY_SPACE));
+    CHECK(!keyboard_reports[before + 1][2]);
+    before = keyboard_count;
+    before_reports = reports;
+    otg_bridge_mouse_move(&b, 150, 250);
+    otg_bridge_mouse_button(&b, 1, true);
+    CHECK(reports == before_reports);
+    if (cancel) {
+        otg_bridge_leave(&b);
+        unlock_tick_now(&b);
+        CHECK(!b.unlock_pending && keyboard_count == before);
+    } else {
+        unlock_tick_now(&b);
+        const uint8_t usages[] = {HID_KEY_1, HID_KEY_1 + 1, HID_KEY_0,
+                                  HID_KEY_1 + 8, HID_KEY_ENTER};
+        CHECK(!b.unlock_pending && keyboard_count == before + 2 * sizeof(usages));
+        CHECK(reports == before_reports + 2 * (int)sizeof(usages) + (mode == OTG_MOUSE_ABSOLUTE));
+        CHECK(b.mouse_x == 150 && b.mouse_y == 250);
+        for (unsigned i = 0; i < sizeof(usages); ++i) {
+            CHECK(report_has_key(keyboard_reports[before + 2 * i], usages[i]));
+            CHECK(!keyboard_reports[before + 2 * i + 1][2]);
+        }
+    }
     otg_bridge_close(&b);
 }
 
@@ -369,7 +421,7 @@ static void test_sensitivity(void)
 static void test_unlock_cursor_tracking(void)
 {
     struct otg_bridge b;
-    open_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
+    open_swipe_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
     otg_bridge_enter(&b, 100, 200, 0);
     int before = reports;
     otg_bridge_mouse_rel_move(&b, 30, -20); /* Wake delay: retain relative motion. */
@@ -401,7 +453,7 @@ static void test_unlock_cursor_resize(void)
     /* Rotation can happen before, during or after the lock-screen swipe. */
     for (unsigned phase = 0; phase < 3; ++phase) {
         struct otg_bridge b;
-        open_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
+        open_swipe_unlock_bridge(&b, OTG_MOUSE_ABSOLUTE);
         otg_bridge_enter(&b, 100, 200, 0);
         if (phase >= 1) unlock_tick_now(&b);
         if (phase >= 2)
@@ -496,6 +548,9 @@ int main(void)
     test_unlock_mouse_suppression(false);
     test_unlock_mouse_suppression(true);
     test_unlock_mouse_cancellation();
+    test_unlock_with_space(OTG_MOUSE_ABSOLUTE, false);
+    test_unlock_with_space(OTG_MOUSE_RELATIVE, false);
+    test_unlock_with_space(OTG_MOUSE_ABSOLUTE, true);
     test_unlock_cursor_tracking();
     test_unlock_cursor_resize();
     test_side_button_swipes();

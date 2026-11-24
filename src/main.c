@@ -98,6 +98,7 @@ struct app_options {
     const char *unlock_pin;
     const char *unlock_pin_file;
     int unlock_adb_gate;
+    bool unlock_with_space;
     double sensitivity_multiplier;
 };
 
@@ -302,7 +303,9 @@ static void usage(const char *prog)
                "      --side-button-1-action MODE swipe-up (default), swipe-down or normal\n"
                "      --side-button-2-action MODE swipe-down (default), swipe-up or normal\n"
                "      --side-swipe-distance PERCENT 1..100 (default 17; screen-height percentage)\n"
-              "      OTG_UNLOCK_PIN       GUI/experimental numeric PIN sent once on first enter\n"
+               "      --unlock-with-space Reveal the PIN prompt with Space (default)\n"
+               "      --unlock-with-swipe Reveal the PIN prompt with an upward swipe instead\n"
+               "      OTG_UNLOCK_PIN       GUI/experimental numeric PIN sent once on first enter\n"
              "      --audio             Forward Android output audio through ADB (Linux/macOS/Windows)\n"
              "      --audio-gain-db DB   Desktop playback gain, 0..%d (default 0; requires --audio)\n"
               "      --clipboard         Share Deskflow text clipboard through ADB/scrcpy\n"
@@ -778,6 +781,7 @@ int main(int argc, char **argv)
         .side_button_1_action = OTG_SIDE_BUTTON_SWIPE_UP,
         .side_button_2_action = OTG_SIDE_BUTTON_SWIPE_DOWN,
         .side_swipe_distance_percent = 17,
+        .unlock_with_space = true,
         .sensitivity_multiplier = 1.0,
         .adb_path = "adb",
     };
@@ -934,6 +938,10 @@ int main(int argc, char **argv)
             opts.adb_path = argv[++i];
         } else if (strcmp(a, "--adb-serial") == 0 && i + 1 < argc) {
             opts.adb_serial = argv[++i];
+        } else if (strcmp(a, "--unlock-with-space") == 0) {
+            opts.unlock_with_space = true;
+        } else if (strcmp(a, "--unlock-with-swipe") == 0) {
+            opts.unlock_with_space = false;
         } else if (strcmp(a, "--unlock-pin-file") == 0 && i + 1 < argc) {
             /* Internal GUI hand-off for pkexec: the PIN must not be put in
              * argv, while the file path survives the privilege boundary. */
@@ -1297,6 +1305,7 @@ int main(int argc, char **argv)
     }
     state.unlock_adb_gate = opts.unlock_adb_gate != 0;
     otg_bridge_set_unlock_adb_gated(&state.bridge, state.unlock_adb_gate);
+    otg_bridge_set_unlock_with_space(&state.bridge, opts.unlock_with_space);
     if (g_gui && strcmp(opts.transport, "usb") == 0) {
         printf("{\"event\":\"usb-ready\",\"usb-id\":\"%u:%u\"}\n",
                (unsigned)libusb_get_bus_number(state.bridge.aoa.device),

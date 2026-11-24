@@ -254,7 +254,9 @@ Enable **Follow screen rotation** to update control dimensions as the phone rota
 
 ### Wake the phone and unlock with a numeric PIN
 
-UHID sends a wake action when the pointer enters the phone screen. You still need to unlock the phone normally. Optionally enable **Try automatic numeric PIN unlock on entry** and enter that phone's numeric PIN. The app checks lock state through ADB before attempting a swipe and PIN entry. Phone lock screens vary in compatibility.
+UHID sends a wake action when the pointer enters the phone screen. You still need to unlock the phone normally. Optionally enable **Try automatic numeric PIN unlock on entry** and enter that phone's numeric PIN. After confirming the phone is locked through ADB, the app tries to open the PIN prompt and then sends the PIN followed by Enter.
+
+By default the app presses Space to open the PIN prompt. If the phone's lock screen does not respond to Space, uncheck **Use Space instead of swiping** and reconnect to use an upward swipe. Swiping requires absolute mouse mode. This setting is saved per device.
 
 This is optional. Enabling it stores the PIN in local computer settings, not runtime logs. Leave it off and unlock manually if you do not want the PIN stored on the computer.
 
