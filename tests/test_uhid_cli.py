@@ -144,7 +144,7 @@ def receive(sock):
 
 cli, audio, clipboard = sys.argv[1:]
 cases = ['plain', 'drop', 'reject', 'cancel-handshake', 'denied', 'cancel-probe',
-         'unlock-locked', 'unlock-unlocked', 'unlock-unknown', 'unlock-cancel']
+         'unlock-space', 'unlock-swipe', 'unlock-unlocked', 'unlock-unknown', 'unlock-cancel']
 if clipboard == 'ON': cases.append('clipboard')
 if audio == 'ON' and clipboard == 'ON': cases.append('both')
 for mode in cases:
@@ -164,6 +164,7 @@ for mode in cases:
         args = [cli, '--gui', '--transport', 'uhid', '--adb', str(adb), '--adb-serial', 'UHID_PHONE',
                 '--scrcpy-server', 'fake-server', '--scrcpy-version', '5.0.1',
                 '--port', str(listener.getsockname()[1])]
+        if mode == 'unlock-swipe': args.append('--unlock-with-swipe')
         if mode in ('clipboard', 'both'): args.append('--clipboard')
         if mode == 'both': args.append('--audio')
         proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -189,7 +190,7 @@ for mode in cases:
                         packet(connection, b'DMMV' + struct.pack('>HH', 1079, 1919))
                         if mode.startswith('unlock'):
                             wait_file(root / 'awake', proc)
-                            if mode == 'unlock-locked':
+                            if mode in ('unlock-space', 'unlock-swipe'):
                                 wait_file(root / 'pin-submitted', proc)
                             elif mode == 'unlock-cancel':
                                 wait_file(root / 'unlock-scheduled', proc)
@@ -250,9 +251,16 @@ for mode in cases:
                     if not mode.startswith('unlock'):
                         assert any(k[2] == 4 for k in keys), keys
                     else:
-                        digits = [k[2] for k in keys if k[2] in (0x1e, 0x1f, 0x20, 0x21)]
-                        assert digits == ([0x1e, 0x1f, 0x20, 0x21] if mode == 'unlock-locked' else []), digits
+                        if mode == 'unlock-space':
+                            assert [k[2] for k in keys if k[2]] == [0x28, 0x2c, 0x1e, 0x1f, 0x20, 0x21, 0x28], keys
+                        else:
+                            digits = [k[2] for k in keys if k[2] in (0x1e, 0x1f, 0x20, 0x21)]
+                            assert digits == ([0x1e, 0x1f, 0x20, 0x21] if mode == 'unlock-swipe' else []), digits
                     pointers = [bytes.fromhex(r[2]) for r in reports if r[:2] == ['input', 2]]
+                    if mode == 'unlock-space':
+                        assert not any(p[0] & 1 for p in pointers), pointers  # No synthetic touch.
+                    if mode == 'unlock-swipe':
+                        assert any(p[0] & 1 for p in pointers), pointers
                     corner_x = 1079 * 32767 // 1919
                     corner = bytes((corner_x & 0xff, corner_x >> 8, 0xff, 0x7f))
                     assert any(p[2:6] == corner for p in pointers), pointers

@@ -32,6 +32,7 @@ struct ConnectionOptions {
     int sideSwipeDistancePercent = 17;
     QString unlockPin;
     bool unlockAdb = false;
+    bool unlockWithSpace = true;
     QString tlsCertificate;
     QString tlsFingerprint;
     QString tlsFingerprintFile;

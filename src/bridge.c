@@ -48,7 +48,7 @@
 
 enum {
     UNLOCK_PHASE_NONE,
-    UNLOCK_PHASE_WAIT_SWIPE,
+    UNLOCK_PHASE_WAIT_PROMPT,
     UNLOCK_PHASE_SWIPE,
     UNLOCK_PHASE_WAIT_PIN,
 };
@@ -542,6 +542,7 @@ int otg_bridge_open(struct otg_bridge *b, const char *serial,
     b->mouse_mode = mouse_mode;
     b->sensitivity_multiplier = 1.0;
     b->side_swipe_distance_percent = SIDE_SWIPE_DISTANCE_DEFAULT_PERCENT;
+    b->unlock_with_space = true;
 
     if (!aoa_hid_init(&b->aoa)) {
         return -1;
@@ -591,6 +592,7 @@ int otg_bridge_open_transport(struct otg_bridge *b,
     b->mouse_mode = mouse_mode;
     b->sensitivity_multiplier = 1.0;
     b->side_swipe_distance_percent = SIDE_SWIPE_DISTANCE_DEFAULT_PERCENT;
+    b->unlock_with_space = true;
     b->transport_ops = ops;
     b->transport_ctx = ctx;
     b->external_transport = true;
@@ -769,7 +771,7 @@ static void schedule_unlock(struct otg_bridge *b)
 {
     b->unlock_pending = true;
     b->unlock_due_ms = bridge_now_ms() + UNLOCK_WAKE_DELAY_MS;
-    b->unlock_phase = UNLOCK_PHASE_WAIT_SWIPE;
+    b->unlock_phase = UNLOCK_PHASE_WAIT_PROMPT;
     b->unlock_swipe_step = 0;
     b->unlock_saved_x = b->server_x;
     b->unlock_saved_y = b->server_y;
@@ -777,7 +779,7 @@ static void schedule_unlock(struct otg_bridge *b)
     b->unlock_saved_mouse_y = b->mouse_y;
     /* ADB lock-state detection may finish after mouse input has started.
      * Release any drag and discard wheel/navigation state before the synthetic
-     * swipe takes ownership. External mouse actions are dropped until done;
+     * sequence takes ownership. External mouse actions are dropped until done;
      * motion only updates the server position used when handing control back. */
     b->middle_button_home_down = b->right_button_back_down = false;
     b->residual_hscroll = b->residual_vscroll = 0;
@@ -785,10 +787,10 @@ static void schedule_unlock(struct otg_bridge *b)
         b->mouse_buttons = 0;
         send_mouse_state(b, 0, 0);
     }
-    /* Enter is widely accepted as a harmless wake-up key on Android lock
-     * screens. The swipe and PIN are delayed for the screen animation. */
+    /* Keep the existing wake tap, then allow the lock screen to settle before
+     * requesting the PIN prompt. */
     send_key_tap(b, HID_KEY_ENTER);
-    LOG_DBG("unlock swipe scheduled after screen entry\n");
+    LOG_DBG("unlock %s scheduled after screen entry\n", b->unlock_with_space ? "Space key" : "swipe");
 }
 
 void otg_bridge_enter(struct otg_bridge *b, int16_t x, int16_t y, uint16_t mask)
@@ -886,6 +888,11 @@ void otg_bridge_set_unlock_adb_gated(struct otg_bridge *b, bool gated)
     b->unlock_adb_gated = gated;
 }
 
+void otg_bridge_set_unlock_with_space(struct otg_bridge *b, bool with_space)
+{
+    b->unlock_with_space = with_space;
+}
+
 void otg_bridge_unlock_adb_state(struct otg_bridge *b, bool valid, bool locked)
 {
     if (!b || !b->unlock_adb_gated || !b->active || !b->unlock_attempted ||
@@ -901,7 +908,15 @@ void otg_bridge_unlock_tick(struct otg_bridge *b)
     if (bridge_now_ms() < b->unlock_due_ms) return;
 
     const uint64_t now = bridge_now_ms();
-    if (b->unlock_phase == UNLOCK_PHASE_WAIT_SWIPE) {
+    if (b->unlock_phase == UNLOCK_PHASE_WAIT_PROMPT) {
+        if (b->unlock_with_space) {
+            /* Android SystemUI handles Space on the interactive lock screen.
+             * Some ROMs do not; keep the swipe available as a separate mode. */
+            send_key_tap(b, HID_KEY_SPACE);
+            b->unlock_phase = UNLOCK_PHASE_WAIT_PIN;
+            b->unlock_due_ms = now + UNLOCK_PIN_DELAY_MS;
+            return;
+        }
         if (b->mouse_mode != OTG_MOUSE_ABSOLUTE) {
             b->unlock_pending = false;
             b->unlock_phase = UNLOCK_PHASE_NONE;
@@ -912,7 +927,7 @@ void otg_bridge_unlock_tick(struct otg_bridge *b)
             b->server_y = b->mouse_y;
             b->have_server_pos = b->have_mouse_pos;
             b->motion_residual_x = b->motion_residual_y = 0;
-            LOG_WARN("automatic unlock requires absolute mouse mode; skipped\n");
+            LOG_WARN("swipe-based automatic unlock requires absolute mouse mode; skipped\n");
             return;
         }
         b->mouse_x = b->screen_w / 2;
@@ -955,7 +970,7 @@ void otg_bridge_unlock_tick(struct otg_bridge *b)
          * position, not the pre-swipe cursor or the synthetic swipe endpoint. */
         b->mouse_x = b->unlock_saved_mouse_x;
         b->mouse_y = b->unlock_saved_mouse_y;
-        send_mouse_state(b, 0, 0);
+        if (b->mouse_mode == OTG_MOUSE_ABSOLUTE) send_mouse_state(b, 0, 0);
         LOG_DBG("unlock PIN sequence sent\n");
     }
 }

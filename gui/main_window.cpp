@@ -618,6 +618,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     setTranslatedProperty(m_unlockPin, "placeholderText", "otg.unlock.pin_hint");
     setTranslatedProperty(m_unlockPin, "toolTip", "otg.unlock.tooltip");
     addTranslatedRow(adbForm, "otg.label.unlock_pin", m_unlockPin);
+    m_unlockWithSpace = translated(new QCheckBox, "text", "otg.unlock.with_space");
+    m_unlockWithSpace->setObjectName("unlockWithSpace");
+    m_unlockWithSpace->setChecked(true);
+    adbForm->addRow(m_unlockWithSpace);
     auto *unlockHint = translated(new QLabel, "text", "otg.unlock.adb_hint");
     unlockHint->setWordWrap(true);
     adbForm->addRow(unlockHint);
@@ -1503,6 +1507,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     options.unlockPin = options.adbEnabled && profile.value("unlockEnabled", false).toBool() ?
         profile.value("unlockPin").toString() : QString();
     options.unlockAdb = !options.unlockPin.isEmpty();
+    options.unlockWithSpace = profile.value("unlockWithSpace", true).toBool();
     options.blePeer = profile.value("blePeer").toString();
 #ifdef Q_OS_LINUX
     options.adapter = profile.value("bleAdapter", "hci0").toString();
@@ -1652,6 +1657,8 @@ void MainWindow::updateEnabled()
     m_mouseMode->setEnabled(!ble);
     m_unlockEnabled->setEnabled(adbFeatures);
     m_unlockPin->setEnabled(adbFeatures && m_unlockEnabled->isChecked());
+    m_unlockWithSpace->setVisible(m_unlockEnabled->isChecked());
+    m_unlockWithSpace->setEnabled(adbFeatures);
     const bool companionTarget = adbFeatures && !m_adb->text().trimmed().isEmpty() &&
         !adbTargetForCurrentDevice().isEmpty();
     m_transferFiles->setEnabled(adbFeatures && !m_closing && !m_companion.busy() &&
@@ -2157,7 +2164,8 @@ QVariantMap MainWindow::deviceProfile() const
                   {"sideButton1Action", m_sideButton1Action->currentData()},
                   {"sideButton2Action", m_sideButton2Action->currentData()},
                   {"sideSwipeDistancePercent", m_sideSwipeDistance->value()},
-                 {"unlockEnabled", m_unlockEnabled->isChecked()}, {"unlockPin", m_unlockPin->text()},
+                  {"unlockEnabled", m_unlockEnabled->isChecked()}, {"unlockPin", m_unlockPin->text()},
+                  {"unlockWithSpace", m_unlockWithSpace->isChecked()},
                  {"clipboard", m_clipboard->isChecked()}, {"autoRotate", m_autoRotate->isChecked()}};
 }
 
@@ -2208,6 +2216,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_sideSwipeDistance->setValue(profile.value("sideSwipeDistancePercent", 17).toInt());
     m_unlockEnabled->setChecked(profile.value("unlockEnabled", false).toBool());
     m_unlockPin->setText(profile.value("unlockPin").toString());
+    m_unlockWithSpace->setChecked(profile.value("unlockWithSpace", true).toBool());
     if (m_transport->currentData() == "ble") m_mouseMode->setCurrentIndex(0);
     const auto neighbor = profile.value("neighbor", m_computer->text()).toString();
     if (m_neighbor->findData(neighbor) < 0) m_neighbor->addItem(neighbor, neighbor);

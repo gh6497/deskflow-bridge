@@ -107,6 +107,7 @@ struct otg_bridge {
     bool unlock_attempted;
     bool unlock_pending; /* Synthetic unlock owns reports; track motion, drop actions. */
     bool unlock_adb_gated;
+    bool unlock_with_space;
     uint64_t unlock_due_ms;
     unsigned unlock_phase;
     unsigned unlock_swipe_step;
@@ -144,6 +145,7 @@ void otg_bridge_leave(struct otg_bridge *b);
 /* Configure an experimental numeric PIN sequence sent once after enter. */
 bool otg_bridge_set_unlock_pin(struct otg_bridge *b, const char *pin);
 void otg_bridge_set_unlock_adb_gated(struct otg_bridge *b, bool gated);
+void otg_bridge_set_unlock_with_space(struct otg_bridge *b, bool with_space);
 void otg_bridge_unlock_adb_state(struct otg_bridge *b, bool valid, bool locked);
 void otg_bridge_unlock_tick(struct otg_bridge *b);
 void otg_bridge_key(struct otg_bridge *b, uint32_t keyid, bool down);

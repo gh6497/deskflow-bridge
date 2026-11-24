@@ -58,7 +58,8 @@ Windows 使用 `deskflow-bridge.exe` 和对应文件路径；GUI 自动定位包
   System Wake Up（Generic Desktop usage `0x83`）按下/释放，映射为 Linux `KEY_WAKEUP=143`
   和 Android `KEYCODE_WAKEUP`。只唤醒、不切换电源、不向应用输入字符，不依赖 PIN 开关、
   SDK `INJECT_EVENTS` 或投屏；注册/重连本身不发唤醒按下。GUI PIN 解锁随后按已有锁屏
-  检测和延时上滑/PIN 流程执行，未知/未锁定状态不发送 PIN；切出取消待执行解锁。
+  检测和延时解锁流程执行：默认用空格键打开 PIN 输入界面，可按设备改用上滑（CLI：`--unlock-with-swipe`），
+  再发送 PIN 和 Enter。未知/未锁定状态不发送 PIN；切出取消待执行解锁。
 - 默认保持绝对定位、悬停、拖拽、滚轮和导航快捷键。相对模式仍可选择，也仍受 Android 加速影响。
 - 每个会话只有一个 scrcpy-server/ADB forward。音频使用独立 socket，UHID 与剪贴板共用
   同一控制 socket 和读写器；不开剪贴板时关闭手机剪贴板自动同步。
@@ -80,7 +81,8 @@ Windows 使用 `deskflow-bridge.exe` 和对应文件路径；GUI 自动定位包
 分片发送与 LED/剪贴板混合解析、ACK 超时、EOF、队列背压和写入超时。
 `uhid_cli` 在 POSIX 使用真实 CLI＋fake ADB/scrcpy/Deskflow，覆盖纯 UHID、共享附加功能、
 断线、拒绝连接、部分握手取消、设备权限失败与启动取消；还模拟息屏设备验证进入先唤醒、
-重入再次唤醒、锁定后发送测试 PIN、未锁定/未知状态不输入 PIN、切出取消解锁，不访问硬件。
+重入再次唤醒、锁定后以上滑或空格键打开 PIN 输入界面并发送测试 PIN、未锁定/未知状态不输入 PIN、
+切出取消解锁，不访问硬件。
 Qt 测试覆盖参数传递、目标隔离、设备发现、配置保存、国际化和下拉框双向滚轮/键盘操作。
 
 以上离线测试不代表 Windows/macOS 真机或所有 Android ROM 已验收；实际使用时需验证悬停、

@@ -237,8 +237,12 @@ private slots:
             auto *language = window.findChild<QComboBox *>("languageSelector");
             auto *adbEnabled = window.findChild<QCheckBox *>("adbEnabled");
             auto *unlock = window.findChild<QCheckBox *>("unlockEnabled");
+            auto *unlockWithSpace = window.findChild<QCheckBox *>("unlockWithSpace");
             auto *pin = window.findChild<QLineEdit *>("unlockPin");
-            QVERIFY(right && middle && distance && list && language && adbEnabled && unlock && pin);
+            QVERIFY(right && middle && distance && list && language && adbEnabled && unlock && unlockWithSpace && pin);
+            QVERIFY(unlockWithSpace->isHidden());
+            QVERIFY(unlockWithSpace->isChecked());
+            QCOMPARE(unlockWithSpace->text(), QStringLiteral("用空格键代替上滑"));
             QCOMPARE(right->currentData().toString(), "back");
             QCOMPARE(distance->value(), 17);
             distance->setValue(25);
@@ -247,6 +251,7 @@ private slots:
             QCOMPARE(right->currentText(), "安卓返回键（Win+Backspace）");
             language->setCurrentIndex(language->findData("en"));
             QCOMPARE(right->currentText(), "Android Back (Win+Backspace)");
+            QCOMPARE(unlockWithSpace->text(), QStringLiteral("Use Space instead of swiping"));
             QCOMPARE(right->currentData().toString(), "back");
             window.findChild<QPushButton *>("addDeviceButton")->click();
             QCOMPARE(list->count(), 2);
@@ -258,6 +263,9 @@ private slots:
             QCOMPARE(middle->currentData().toString(), "home");
             adbEnabled->setChecked(true);
             unlock->setChecked(true);
+            QVERIFY(!unlockWithSpace->isHidden());
+            QVERIFY(unlockWithSpace->isEnabled());
+            unlockWithSpace->setChecked(false);
             pin->setText("1234");
             window.findChild<QAction *>("trayQuit")->trigger();
         }
@@ -270,8 +278,11 @@ private slots:
         QCOMPARE(middle->currentData().toString(), "home");
         QCOMPARE(distance->value(), 25);
         QCOMPARE(restored.findChild<QCheckBox *>("unlockEnabled")->isChecked(), true);
+        auto *unlockWithSpace = restored.findChild<QCheckBox *>("unlockWithSpace");
+        QVERIFY(unlockWithSpace && !unlockWithSpace->isChecked());
         QCOMPARE(restored.findChild<QLineEdit *>("unlockPin")->text(), QStringLiteral("1234"));
         list->setCurrentRow(1);
+        QVERIFY(unlockWithSpace->isChecked());
         QCOMPARE(right->currentData().toString(), "normal");
         QCOMPARE(middle->currentData().toString(), "home");
         restored.findChild<QAction *>("trayQuit")->trigger();

@@ -135,7 +135,7 @@ private:
     QWidget *m_form;
     QComboBox *m_devices, *m_direction, *m_mouseMode, *m_middleButtonAction, *m_rightButtonAction,
               *m_sideButton1Action, *m_sideButton2Action;
-    QCheckBox *m_unlockEnabled;
+    QCheckBox *m_unlockEnabled, *m_unlockWithSpace;
     QLineEdit *m_unlockPin;
     QCheckBox *m_adbEnabled;
     QLabel *m_adbStatus;
