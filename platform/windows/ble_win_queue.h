@@ -1,6 +1,7 @@
 /* Windows adapter's bounded HID queue; caller serializes access. SPDX-License-Identifier: Apache-2.0 */
 #pragma once
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -9,14 +10,28 @@
 namespace otg_ble_win_detail {
 // Fallback for Windows 10 and adapters which do not expose negotiated
 // connection parameters. Windows 11 uses the live interval when available.
-inline constexpr unsigned notification_interval_ms = 30;
-inline constexpr unsigned pointer_notification_interval_ms = 15;
+inline constexpr auto fallback_state_interval = std::chrono::milliseconds(30);
+inline constexpr auto fallback_motion_interval = std::chrono::milliseconds(15);
+
+inline constexpr std::chrono::microseconds connection_interval(uint16_t units)
+{
+    return std::chrono::microseconds(units * 1250);
+}
 struct Report {
     uint16_t id = 0;
     std::array<uint8_t, 8> bytes{};
     bool movement = false;
     uint64_t epoch = 0;
 };
+
+/* The worker has already waited for completion. Count that wait toward the
+ * motion period, but keep the post-completion guard for state transitions. */
+inline auto next_notification_time(const Report& report,
+    std::chrono::steady_clock::time_point submitted, std::chrono::steady_clock::time_point completed,
+    std::chrono::microseconds motion_interval, std::chrono::microseconds state_interval)
+{
+    return report.movement ? submitted + motion_interval : completed + state_interval;
+}
 
 class Queue {
     std::deque<Report> reports;

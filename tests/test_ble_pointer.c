@@ -9,8 +9,41 @@
     } \
 } while (0)
 
+static void check_fractional_interval(uint64_t interval_us)
+{
+    struct otg_ble_hid b = {0};
+    b.app_registered = b.notifying[0] = b.notifying[1] = true;
+    otg_ble_hid_set_interval(&b, interval_us);
+    const uint64_t start = UINT64_C(1000000000), ms = UINT64_C(1000000);
+    uint8_t report[8] = {2};
+    CHECK(queue_pointer(&b, report, sizeof(report), start));
+    unsigned sent = 0;
+    for (unsigned tick = 1; tick <= 150; tick++) {
+        /* Mouse moves at 1 kHz. The last move in an interval may be flushed
+         * by a timer tick or replaced by a fresh report at the deadline. */
+        uint64_t now = start + tick * ms;
+        bool timer = (sent % 2 == 0) && pointer_due(&b, now);
+        if (timer) CHECK(b.values[1][2] == tick - 1);
+        report[2] = (uint8_t)tick;
+        bool immediate = queue_pointer(&b, report, sizeof(report), now);
+        CHECK(!(timer && immediate));
+        if (timer || immediate) sent++;
+        CHECK(sent == tick * 1000 / interval_us);
+    }
+    /* After a stall, send the current position once and allow a full period
+     * before the next one, even if the old cadence had a slot just ahead. */
+    uint64_t restart = start + 299 * ms;
+    CHECK(queue_pointer(&b, report, sizeof(report), restart));
+    report[2]++;
+    CHECK(!queue_pointer(&b, report, sizeof(report), restart + ms));
+    CHECK(!pointer_due(&b, restart + interval_us * 1000 - 1));
+    CHECK(pointer_due(&b, restart + interval_us * 1000));
+}
+
 int main(void)
 {
+    check_fractional_interval(7500);
+    check_fractional_interval(12500);
     struct otg_ble_hid b = {0};
     b.app_registered = b.notifying[0] = b.notifying[1] = true;
     uint64_t t = UINT64_C(1000000000);

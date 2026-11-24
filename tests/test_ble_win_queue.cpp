@@ -13,14 +13,30 @@ static Report mouse(uint8_t flags, uint8_t buttons, uint8_t x, uint8_t wheel = 0
 
 int main()
 {
-    CHECK(notification_interval_ms == 30);
+    using namespace std::chrono_literals;
     Queue queue;
     CHECK(queue.push(mouse(2, 0, 0))); // first hover is a barrier
     CHECK(queue.push(mouse(2, 0, 1)));
     CHECK(queue.push(mouse(2, 0, 2)));
     CHECK(queue.size() == 2);
-    CHECK(!queue.pop().movement);
-    CHECK(queue.pop().bytes[2] == 2);
+    auto enter = queue.pop();
+    auto move = queue.pop();
+    CHECK(!enter.movement && move.movement && move.bytes[2] == 2);
+    const auto start = std::chrono::steady_clock::time_point{};
+    CHECK(next_notification_time(enter, start, start + 10ms, fallback_motion_interval,
+                                 fallback_state_interval) == start + 40ms);
+    for (auto units : {6, 10}) { // Windows reports 7.5 or 12.5 ms in 1.25 ms units.
+        auto interval = connection_interval(units);
+        auto now = start;
+        for (int i = 0; i < 20; ++i) {
+            auto completed = now + 5ms;
+            now = next_notification_time(move, now, completed, interval, interval);
+            CHECK(now >= completed);
+        }
+        CHECK(now - start == (units == 6 ? 150ms : 250ms));
+        // A slow notification already consumed its entire interval.
+        CHECK(next_notification_time(move, now, now + 20ms, interval, interval) <= now + 20ms);
+    }
 
     CHECK(queue.push(mouse(3, 1, 3))); // preserve down position
     CHECK(queue.push(mouse(3, 1, 4)));

@@ -117,9 +117,9 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 - 默认状态通知间隔为 30ms（键盘和范围/按钮屏障），纯指针移动默认 15ms，适用于
   Windows 10 或无法读取链路参数的驱动；顺序仍保留，不丢弃状态屏障。Windows 11
   会在可用时让两者都改用实测协商间隔。
-- Windows 11 如果系统暴露已协商的 LE connection interval，通知节流会跟随该间隔，并在
-  `ConnectionParametersChanged` 时更新；Windows 10 或驱动不支持时回退到状态屏障 30ms、
-  纯指针移动 15ms。状态屏障仍与指针移动共享同一顺序队列，不会因自适应节流而丢失。
+- 协商间隔按 1.25 ms 单位精确换算，在 `ConnectionParametersChanged` 时更新。纯移动从提交
+  通知时起计时，上一条通知完成后只等该周期的剩余时间。键盘、按键、滚轮及范围变化仍在
+  通知完成后留出完整间隔。每次只发送一条在途通知。
 - HID 服务补充 `Protocol Mode`（当前固定 Report Protocol；Boot Protocol 会明确拒绝）、
   `HID Information` 的 `RemoteWake | NormallyConnectable` flags，以及只读 Battery
   Service（100%）。这些是兼容性补全，不改变当前绝对 Digitizer 报告格式。
