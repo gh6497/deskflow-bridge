@@ -39,6 +39,7 @@ private:
     void update(const QString &id);
     bool reject(const QString &id, const char *message);
     QMap<QString, Entry> m_devices;
+    std::shared_ptr<BleStartupCoordinator> m_bleStartup = std::make_shared<BleStartupCoordinator>();
     DeskflowServer m_server;
     ConnectionOptions m_shared;
     QString m_layout;

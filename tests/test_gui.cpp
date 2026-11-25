@@ -748,7 +748,7 @@ private slots:
         QTRY_VERIFY(manager.settled());
     }
 #ifdef OTG_GUI_HAVE_BLE
-    void startsDirectedBleWithoutIsolation()
+    void startsSharedBleOnlyOnce()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -761,14 +761,44 @@ private slots:
         });
         ConnectionOptions options;
         options.bridge = peerPath(); options.manageServer = false; options.transport = "ble";
+        options.blePrivilegeProgram = peerPath();
         options.blePeer = "AA:BB:CC:DD:EE:01";
         options.preferDirectedBle = true;
+        QStringList confirmed;
+        options.confirmSharedBleIsolation = [&confirmed](const QString &adapter) {
+            confirmed << adapter;
+            return true;
+        };
+        ConnectionManager manager;
+        manager.addDevice("one");
+        manager.addDevice("two");
+        QVERIFY(manager.start("one", options, {}));
+        options.blePeer = "AA:BB:CC:DD:EE:02";
+        options.phone = "android2";
+        QVERIFY(manager.start("two", options, {}));
+        QTRY_COMPARE(manager.state("one"), Session::State::Connected);
+        QTRY_COMPARE(manager.state("two"), Session::State::Connected);
+        QCOMPARE(confirmed, QStringList{"hci0"});
+        QVERIFY(QFile::exists(marker));
+        manager.stop("one");
+        QTRY_COMPARE(manager.state("one"), Session::State::Idle);
+        QCOMPARE(manager.state("two"), Session::State::Connected);
+        manager.shutdown();
+        QTRY_VERIFY(manager.settled());
+    }
+
+    void refusesExistingDualModeDirectedService()
+    {
+        qputenv("OTG_TEST_BLE_STATUS", "directed-dual");
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
+        ConnectionOptions options;
+        options.bridge = peerPath(); options.manageServer = false; options.transport = "ble";
+        options.blePeer = "AA:BB:CC:DD:EE:01"; options.preferDirectedBle = true;
         Session session;
         session.start(options);
-        QTRY_COMPARE(session.state(), Session::State::Connected);
-        QVERIFY(QFile::exists(marker));
-        session.shutdown();
         QTRY_COMPARE(session.state(), Session::State::Idle);
+        QVERIFY(session.hasFailure());
+        QCOMPARE(session.statusMessage(), qtTrId("otg.ble.stop_unisolated_service"));
     }
 
     void twoDirectedBleSessions()

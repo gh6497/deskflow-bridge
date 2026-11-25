@@ -372,41 +372,56 @@ static void test_service_process(bool legacy_handles)
     g_free(lock);g_free(user_dir);runtime_base="/run/user";g_free(tmp);
 }
 
-static void test_multi_process(void)
+static void test_multi_process(bool cancel_startup)
 {
     if (!geteuid()) return;
     char *dir=g_dir_make_tmp("otg-multi-session-XXXXXX",NULL);CHECK(dir);
     runtime_base=dir;
     char *user=g_strdup_printf("%s/%u",dir,(unsigned)getuid());CHECK(!mkdir(user,0700));
+    int gui[2];CHECK(!pipe(gui));
     pid_t pid=fork();CHECK(pid>=0);
     if (!pid) {
         alarm(10);
-        CHECK(!otg_ble_multi_service_run("hci0",true,"fixture",true,&stop_service));
-        CHECK(fake_routes[0].sent==1 && fake_routes[1].sent==2);
+        close(gui[1]);
+        CHECK(dup2(gui[0],STDIN_FILENO)>=0);close(gui[0]);
+        CHECK(!otg_ble_multi_service_run("hci0",true,"fixture",-1,true,&stop_service));
+        if (!cancel_startup) CHECK(fake_routes[0].sent==1 && fake_routes[1].sent==2);
         _exit(0);
     }
+    close(gui[0]);
     for (int i=0;i<200 && !otg_ble_service_wait_idle(getuid(),"hci0");i++) g_usleep(5000);
-    const char *a="AA:BB:CC:DD:EE:01", *b="AA:BB:CC:DD:EE:02";
-    CHECK(!otg_ble_service_single_idle(getuid(),"hci0"));
-    CHECK(!otg_ble_session_open("hci0",true));
-    CHECK(!otg_ble_directed_session_open("hci0",false,a,"left"));
-    struct otg_ble_session *first=otg_ble_directed_session_open("hci0",true,a,"left");CHECK(first);
-    CHECK(!otg_ble_directed_session_open("hci0",true,"aa:bb:cc:dd:ee:01","right"));
-    CHECK(!otg_ble_directed_session_open("hci0",true,b,"LEFT"));
-    struct otg_ble_session *second=otg_ble_directed_session_open("hci0",true,b,"right");CHECK(second);
-    for (unsigned i=1;i<=2;i++) {
-        struct message m=descriptor(i);
-        CHECK(session_register(first,i,m.data,m.size));
-        CHECK(session_register(second,i,m.data,m.size));
+    struct message status_reply;
+    int query=connect_service(getuid(),"hci0");CHECK(query>=0);
+    CHECK(request(query,STATUS_WITH_LAYOUT,0,NULL,0,&status_reply));close(query);
+    CHECK(status_reply.data[0]==(STATUS_DIRECTED|STATUS_BLE_ONLY|STATUS_LEGACY_HANDLES));
+    if (cancel_startup) {
+        /* Closing the last waiting GUI session cancels an unused service. */
+        close(gui[1]);
+    } else {
+        const char *a="AA:BB:CC:DD:EE:01", *b="AA:BB:CC:DD:EE:02";
+        CHECK(!otg_ble_service_single_idle(getuid(),"hci0"));
+        CHECK(!otg_ble_session_open("hci0",true));
+        CHECK(!otg_ble_directed_session_open("hci0",false,a,"left"));
+        struct otg_ble_session *first=otg_ble_directed_session_open("hci0",true,a,"left");CHECK(first);
+        CHECK(!otg_ble_directed_session_open("hci0",true,"aa:bb:cc:dd:ee:01","right"));
+        CHECK(!otg_ble_directed_session_open("hci0",true,b,"LEFT"));
+        struct otg_ble_session *second=otg_ble_directed_session_open("hci0",true,b,"right");CHECK(second);
+        /* Once attached, the IPC sessions own the lifetime even after GUI EOF. */
+        close(gui[1]);
+        for (unsigned i=1;i<=2;i++) {
+            struct message m=descriptor(i);
+            CHECK(session_register(first,i,m.data,m.size));
+            CHECK(session_register(second,i,m.data,m.size));
+        }
+        uint8_t keys[8]={0,0,4};
+        CHECK(session_rpc(first,POLL_SESSION,0,NULL,0) && first->ready);
+        CHECK(session_rpc(first,REPORT,1,keys,8));
+        keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8));
+        close(first->fd);first->fd=-1;otg_ble_session_destroy(first);
+        CHECK(otg_ble_service_stop("hci0")!=0);
+        CHECK(session_rpc(second,REPORT,1,keys,8) && second->ready);
+        otg_ble_session_destroy(second);
     }
-    uint8_t keys[8]={0,0,4};
-    CHECK(session_rpc(first,POLL_SESSION,0,NULL,0) && first->ready);
-    CHECK(session_rpc(first,REPORT,1,keys,8));
-    keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8));
-    close(first->fd);first->fd=-1;otg_ble_session_destroy(first);
-    CHECK(otg_ble_service_stop("hci0")!=0);
-    CHECK(session_rpc(second,REPORT,1,keys,8) && second->ready);
-    otg_ble_session_destroy(second);
     int status;CHECK(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
     char *service=g_build_filename(user,"deskflow-bridge",NULL);
     char *lock=g_build_filename(service,"ble-hci0.lock",NULL);
@@ -438,7 +453,7 @@ int main(void)
 {
     test_packets();test_sessions();test_client_rpc(false);test_client_rpc(true);
     test_async_reports();test_service_process(false);test_service_process(true);
-    test_multi_process();
+    test_multi_process(false);test_multi_process(true);
     test_multi_stale_reports();
     puts("PASS: resident GATT sessions, EOF release, retained CCCs, schema/busy/UID guards and real seqpacket framing");
     return 0;

@@ -2157,12 +2157,20 @@ void MainWindow::connectDevice()
     if (m_closing || m_scanning || m_companion.busy() || m_connections.state(m_selectedId) != Session::State::Idle)
         return;
     saveSettings();
-    const auto options = connectionOptions(deviceProfile());
+    auto options = connectionOptions(deviceProfile());
     if (options.transport == "ble" && options.bleIsolate &&
         QMessageBox::warning(this, qtTrId("otg.ble.confirm_title"),
                              qtTrId("otg.ble.confirm").arg(options.adapter),
                              QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Ok)
         return;
+#ifdef Q_OS_LINUX
+    options.confirmSharedBleIsolation = [this](const QString &adapter) {
+        if (m_closing) return false;
+        return QMessageBox::warning(this, qtTrId("otg.ble.confirm_title"),
+            qtTrId("otg.ble.shared_isolation_confirm").arg(adapter),
+            QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel) == QMessageBox::Ok;
+    };
+#endif
     if (options.bridge.isEmpty()) {
         m_sessionStatus = false;
         setTranslatedProperty(m_status, "text", "otg.error.bridge_not_found");

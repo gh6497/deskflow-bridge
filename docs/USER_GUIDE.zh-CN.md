@@ -323,16 +323,15 @@ OPPO R17（Android 10）的 PIN 界面在使用实体键盘输入时不会显示
 
 **在 Linux 上连接两台 BLE 手机**
 
-1. 先准备带定向通知修复的 BlueZ（上游 5.76+，或确认已回移修复的构建）。Ubuntu 原版 `5.72-0ubuntu5.8` 只适合单机。以下命令中的 `FIXED_DAEMON` 指向来源已核实、包含该修复的参考二进制文件。核验脚本会与正在运行的守护进程逐字节比对。重启 BlueZ 后需重新核验。
-2. 如果已有普通蓝牙服务，先断开会话，然后点击「停止空闲蓝牙服务」。完成核验并保存下述两台设备配置后，GUI 会在连接第一台时以当前用户启动双机服务，沿用适配器当前的蓝牙模式。如果 R17 只建立经典蓝牙链路，先断开两台设备并停止已有的空闲蓝牙服务，再在终端中从项目根目录运行以下命令，让两台共用低句柄布局和仅 BLE 模式。切换模式会断开该适配器上的所有蓝牙连接。
+1. 先准备带定向通知修复的 BlueZ（上游 5.76+，或确认已回移修复的构建）。Ubuntu 原版 `5.72-0ubuntu5.8` 只适合单机。在项目根目录，将 `FIXED_DAEMON` 设置为来源已核实、包含该修复的参考二进制文件，再运行以下核验命令。脚本会与正在运行的守护进程逐字节比对。重启 BlueZ 后需重新核验。
 
    ```sh
-   TOKEN=$(sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON") &&
-     sudo ./build/deskflow-bridge --ble-service --ble-multi "$TOKEN" --adapter hci0 --ble-legacy-handles --ble-isolate
+   sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON"
    ```
 
-3. 在 GUI 中为两台手机分别设置蓝牙连接、`hci0`、各自的手机蓝牙身份地址和不同的屏幕名称。两台均开启旧版 Android 键鼠兼容，并关闭**设备配置中的蓝牙隔离**，适配器已由上面的服务统一管理。R17 开启绝对坐标分轴缩放。在 GUI 中逐台点击连接，然后分别从手机的蓝牙设置连接 **Deskflow Bridge**。
-4. `deskflow-bridge --ble-status --adapter hci0` 中的 `directed: true` 表示双机服务可接入。手机接入或掉线后，有空位时服务会刷新 BLE 广播。第二台手机搜索 **Deskflow Bridge** 时，已连接的手机可以继续使用键鼠。已在仅 BLE 模式下用 R17 和 K20 Pro 验证此发现流程。重连时若日志停在 `waiting for fresh keyboard and pointer subscriptions`，可先关开**该手机**的蓝牙，再从系统设置中连接。最后一个桥接会话退出后，上面的仅 BLE 服务结束并恢复适配器。
+2. 在 GUI 中为两台手机分别设置蓝牙连接、`hci0`、各自的手机蓝牙身份地址和不同的屏幕名称。需要旧版 Android 键鼠兼容时，两台均开启该选项，并关闭**设备配置中的蓝牙隔离**。R17 开启绝对坐标分轴缩放。如果已有旧版蓝牙服务，先断开会话，然后点击「停止空闲蓝牙服务」。
+3. 在 GUI 点击第一个屏幕的「连接」。确认切换到仅 BLE 模式并完成管理员认证。切换会断开该适配器上的所有蓝牙连接。两个屏幕共用同一服务。点击第二个屏幕的「连接」，然后分别从手机的系统蓝牙设置连接 **Deskflow Bridge**。两台手机都可以先接入。
+4. `deskflow-bridge --ble-status --adapter hci0` 中的 `directed: true` 和 `bleOnly: true` 表示共享的仅 BLE 双机服务。手机接入或掉线后，有空位时服务会刷新 BLE 广播。重连时若日志停在 `waiting for fresh keyboard and pointer subscriptions`，可先关开**该手机**的蓝牙，再从系统设置中连接。最后一个桥接会话退出后，服务会恢复适配器。
 
 要新增/删除设备、更改屏幕名称、布局或共享服务，先全部断开并等待停止完成。已连接设备的参数会锁定，其他空闲设备的连接目标和尺寸仍可编辑。
 

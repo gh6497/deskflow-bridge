@@ -12,7 +12,7 @@ struct directed_client {
 
 struct directed_service {
     struct directed_client client[2];
-    bool exit_idle;
+    bool ever_attached;
 };
 
 static unsigned multi_count(const struct directed_service *multi)
@@ -34,7 +34,7 @@ static void multi_drop(struct service *s,struct directed_client *c,bool ack)
     bool last=multi_count(s->directed)==0;
     if (last) {
         s->clean=otg_ble_hid_set_session(s->hid,false);
-        s->shutdown=s->directed->exit_idle;
+        s->shutdown=true;
     }
     if (ack) multi_reply(fd,s->clean,0,last && s->clean);
     close(fd);
@@ -100,7 +100,7 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
     struct directed_service *multi=s->directed;
     bool idle=!multi_count(multi) && s->clean;
     if (!m->size && !m->id && (m->operation==STATUS || m->operation==STATUS_WITH_LAYOUT)) {
-        uint8_t flags=m->operation==STATUS_WITH_LAYOUT ? STATUS_DIRECTED |
+        uint8_t flags=m->operation==STATUS_WITH_LAYOUT ? STATUS_DIRECTED | STATUS_BLE_ONLY |
             (s->legacy_handles?STATUS_LEGACY_HANDLES:0) : 0;
         for (unsigned i=0;i<G_N_ELEMENTS(multi->client);i++) {
             uint64_t gen;
@@ -113,7 +113,8 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
         if (multi_reply(fd,idle,0,idle) && idle) s->shutdown=true;
         return false;
     }
-    if (!owner || s->shutdown || !s->clean || m->operation!=ATTACH_DIRECTED ||
+    if (!owner || s->shutdown || !s->clean ||
+        (m->operation!=ATTACH_DIRECTED && m->operation!=ATTACH_DIRECTED_BLE_ONLY) ||
         m->id!=(unsigned)s->legacy_handles || m->size<=17 || m->size>17+255) goto reject;
     char addr[18]={0},screen[256]={0};
     for (unsigned i=0;i<17;i++) {
@@ -132,6 +133,7 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
     struct otg_ble_route *route=otg_ble_route_bind(s->hid,addr);
     if (!route) goto reject;
     *slot=(struct directed_client){.fd=fd,.route=route,.last_request=g_get_monotonic_time()};
+    multi->ever_attached=true;
     g_strlcpy(slot->screen,screen,sizeof(slot->screen));
     if (!multi_reply(fd,true,0,false)) multi_drop(s,slot,false);
     return true;

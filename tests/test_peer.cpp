@@ -161,7 +161,9 @@ int main(int argc, char **argv)
             return 1;
         }
         if (mode == "directed")
-            output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true}\n");
+            output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":true}\n");
+        else if (mode == "directed-dual")
+            output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":false}\n");
         else if (mode == "busy")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"ready\":true}\n");
         else if (mode == "incompatible")
@@ -174,7 +176,7 @@ int main(int argc, char **argv)
     }
     if (args.contains("--ble-service")) {
         if (bleStartMarker.isEmpty() ||
-            args.mid(1) != QStringList{"--ble-service", "--adapter", "hci0", "--ble-multi", "test-bus/:1.1"})
+            args.mid(2) != QStringList{"--ble-service", "--adapter", "hci0", "--ble-multi", "test-bus/:1.1", "--ble-isolate", "--gui"})
             return 2;
         // Stand in for the resident socket without accessing Bluetooth.
         QFile marker(bleStartMarker);

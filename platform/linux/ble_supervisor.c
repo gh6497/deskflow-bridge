@@ -280,6 +280,7 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     GDBusConnection *bus=NULL;GSubprocess *child=NULL;int result=1;
     bool saved=false;uint32_t original=0;char *original_alias=NULL;
     struct otg_ble_link *link=NULL;int ipc[2]={-1,-1};
+    int service_guard[2]={-1,-1};
     bool resident_session=false,shared_service=false;
     bool gui=false;
     for(int i=1;i<argc;i++)if(!strcmp(argv[i],"--ble-session"))resident_session=true;
@@ -340,10 +341,22 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     executable[length]='\0';
     char **args=g_new0(char *,argc+6);int n=0;
     args[n++]="/usr/sbin/runuser";args[n++]="-u";args[n++]=username;args[n++]="--";args[n++]=executable;
-    for (int i=1;i<argc;++i) if (strcmp(argv[i],"--ble-isolate")) args[n++]=argv[i];
+    for (int i=1;i<argc;++i)
+        if (strcmp(argv[i],"--ble-isolate") && !(shared_service && !strcmp(argv[i],"--gui"))) args[n++]=argv[i];
     GSubprocessLauncher *launcher=g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_STDIN_INHERIT);
     g_subprocess_launcher_unsetenv(launcher,"OTG_BLE_LATENCY_FD");
-    if (shared_service) g_subprocess_launcher_setenv(launcher,"OTG_BLE_EXIT_IDLE","1",TRUE);
+    g_subprocess_launcher_unsetenv(launcher,"OTG_BLE_SUPERVISOR_FD");
+    g_subprocess_launcher_unsetenv(launcher,"OTG_BLE_GUI_STARTUP");
+    if (shared_service) {
+        if (socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,service_guard)!=0 ||
+            send(service_guard[0],"L",1,MSG_NOSIGNAL)!=1) {
+            fprintf(stderr,"ERROR: cannot create BLE supervisor guard\n");
+            g_object_unref(launcher);g_free(args);goto restore;
+        }
+        g_subprocess_launcher_take_fd(launcher,service_guard[1],4);service_guard[1]=-1;
+        g_subprocess_launcher_setenv(launcher,"OTG_BLE_SUPERVISOR_FD","4",TRUE);
+        if (gui) g_subprocess_launcher_setenv(launcher,"OTG_BLE_GUI_STARTUP","1",TRUE);
+    }
     if(!shared_service && socketpair(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK,0,ipc)==0)
         link=otg_ble_link_open(c.index,ipc[0]);
     if(link) {
@@ -357,11 +370,18 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     bool done=false;
     g_subprocess_wait_async(child,NULL,child_finished,&done);
     gint64 shutdown=0;
+    gint64 next_mode_check=g_get_monotonic_time()+G_USEC_PER_SEC;
     int stage=0;
+    bool mode_lost=false;
     while (!done) {
         while (g_main_context_pending(NULL)) g_main_context_iteration(NULL,FALSE);
         otg_ble_link_poll(link);
-        if (*stop && !stage) {
+        if (shared_service && !stage && g_get_monotonic_time()>=next_mode_check) {
+            mode_lost=!read_info(&c) || (c.settings & (BIT(0)|BIT(7)|BIT(9)))!=(BIT(0)|BIT(9));
+            if (mode_lost) fprintf(stderr,"ERROR: adapter is no longer in BLE-only mode; stopping the shared service\n");
+            next_mode_check=g_get_monotonic_time()+G_USEC_PER_SEC;
+        }
+        if ((*stop || mode_lost) && !stage) {
             g_subprocess_send_signal(child,SIGINT);stage=1;
             shutdown=g_get_monotonic_time()+5000000;
         } else if (stage && !done && g_get_monotonic_time()>=shutdown) {
@@ -371,7 +391,7 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
         }
         if (!done) g_usleep(10000);
     }
-    result=g_subprocess_get_if_exited(child) ? g_subprocess_get_exit_status(child) : 1;
+    result=!mode_lost && g_subprocess_get_if_exited(child) ? g_subprocess_get_exit_status(child) : 1;
 restore:
     otg_ble_link_close(link);link=NULL;
     if(ipc[0]>=0){close(ipc[0]);ipc[0]=-1;}
@@ -398,6 +418,8 @@ restore:
     }
 out:
     otg_ble_link_close(link);
+    if(service_guard[0]>=0)close(service_guard[0]);
+    if(service_guard[1]>=0)close(service_guard[1]);
     if(ipc[0]>=0)close(ipc[0]);
     if(ipc[1]>=0)close(ipc[1]);
     if (child) g_object_unref(child);

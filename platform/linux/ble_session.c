@@ -27,11 +27,12 @@
 static const char *runtime_base="/run/user";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
-    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED
+    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
 #define STATUS_DIRECTED 4u
+#define STATUS_BLE_ONLY 8u
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -257,8 +258,27 @@ static void handle_pending(struct service *s,struct pending_peer *p)
     close(p->fd);p->fd=-1;
 }
 
+int otg_ble_supervisor_fd(void)
+{
+    const char *value = getenv("OTG_BLE_SUPERVISOR_FD");
+    if (!value || !g_ascii_isdigit(*value)) return -1;
+    char *end;
+    long fd = strtol(value,&end,10);
+    if (*end || fd < 3 || fd > INT32_MAX) return -1;
+    int type;
+    socklen_t length = sizeof(type);
+    struct pollfd supervisor = {.fd=(int)fd};
+    if (getsockopt((int)fd,SOL_SOCKET,SO_TYPE,&type,&length) || type!=SOCK_SEQPACKET ||
+        !peer_uid((int)fd,0) || poll(&supervisor,1,0)!=0 ||
+        fcntl((int)fd,F_SETFD,FD_CLOEXEC)<0) return -1;
+    /* The privileged endpoint sends this only after verifying the adapter mode. */
+    char proof;
+    if (recv((int)fd,&proof,1,MSG_DONTWAIT | MSG_TRUNC)!=1 || proof!='L') return -1;
+    return (int)fd;
+}
+
 static int service_run(const char *adapter,bool legacy_handles,const char *instance,
-                       bool exit_idle,volatile sig_atomic_t *stop)
+                       int supervisor_fd,bool watch_startup,volatile sig_atomic_t *stop)
 {
     if(geteuid()==0){fprintf(stderr,"ERROR: run --ble-service as an ordinary user, without sudo\n");return 2;}
     char dir[128],lock_name[160];struct sockaddr_un address;
@@ -284,7 +304,7 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
     bound=true;
     if(chmod(address.sun_path,0600) || listen(listener,4))goto out;
     struct service s={.client=-1,.clean=true,.adapter=adapter,.legacy_handles=legacy_handles};
-    struct directed_service multi={.client={{.fd=-1},{.fd=-1}},.exit_idle=exit_idle};
+    struct directed_service multi={.client={{.fd=-1},{.fd=-1}}};
     if (instance) {
         s.directed=&multi;
         s.hid=otg_ble_hid_create_directed(adapter,legacy_handles,instance);
@@ -296,6 +316,10 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
             address.sun_path,legacy_handles?"legacy":"standard");
     result=0;
     while(!*stop && !s.shutdown) {
+        struct pollfd supervisor={.fd=supervisor_fd};
+        if (supervisor_fd>=0 && poll(&supervisor,1,0)>0) {result=1;break;}
+        struct pollfd startup={.fd=STDIN_FILENO,.events=POLLIN};
+        if (watch_startup && !multi.ever_attached && poll(&startup,1,0)>0) break;
         if(s.hid && !otg_ble_hid_ops()->poll(s.hid)){result=1;break;}
         if (s.directed) multi_tick(&s);
         if(s.client>=0) {
@@ -350,11 +374,11 @@ out:
 }
 
 int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_atomic_t *stop)
-{ return service_run(adapter,legacy_handles,NULL,false,stop); }
+{ return service_run(adapter,legacy_handles,NULL,-1,false,stop); }
 
 int otg_ble_multi_service_run(const char *adapter,bool legacy_handles,const char *instance,
-                              bool exit_idle,volatile sig_atomic_t *stop)
-{ return service_run(adapter,legacy_handles,instance,exit_idle,stop); }
+                              int supervisor_fd,bool watch_startup,volatile sig_atomic_t *stop)
+{ return service_run(adapter,legacy_handles,instance,supervisor_fd,watch_startup,stop); }
 
 static int connect_service(uid_t uid,const char *adapter)
 {
@@ -418,7 +442,7 @@ static struct otg_ble_session *session_open(const char *adapter,bool legacy_hand
         memcpy(identity+17,screen,strlen(screen));
         length=17+strlen(screen);
     }
-    if(!request(fd,screen?ATTACH_DIRECTED:legacy_handles?ATTACH_LEGACY:ATTACH,
+    if(!request(fd,screen?ATTACH_DIRECTED_BLE_ONLY:legacy_handles?ATTACH_LEGACY:ATTACH,
                 screen && legacy_handles,identity,(uint16_t)length,&reply)) {
         fprintf(stderr,"ERROR: resident BLE service busy, unavailable, or incompatible with the requested handle layout; stop the idle service before changing layouts\n");
         close(fd);return NULL;
@@ -609,10 +633,11 @@ int otg_ble_service_status(const char *adapter)
         printf("{\"version\":2,\"available\":false,\"verifiedInstance\":\"%s\"}\n",token);
         return 1;
     }
-    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s,\"directed\":%s,\"verifiedInstance\":\"%s\"}\n",
+    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s,\"directed\":%s,\"bleOnly\":%s,\"verifiedInstance\":\"%s\"}\n",
            (reply.data[0]&STATUS_READY)?"true":"false",reply.data[1]?"true":"false",
            (reply.data[0]&STATUS_LEGACY_HANDLES)?"true":"false",
-           (reply.data[0]&STATUS_DIRECTED)?"true":"false",token);
+           (reply.data[0]&STATUS_DIRECTED)?"true":"false",
+           (reply.data[0]&STATUS_BLE_ONLY)?"true":"false",token);
     return 0;
 }
 
