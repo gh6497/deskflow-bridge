@@ -206,6 +206,17 @@ void ConnectionManager::stopAll()
     if (!busy()) m_server.stop();
 }
 
+void ConnectionManager::stopIdleBleProvider()
+{
+    if (busy()) return;
+    for (const auto &entry : m_devices) {
+        if (entry.session->hasBleProvider()) {
+            entry.session->stopBleProvider();
+            return;
+        }
+    }
+}
+
 void ConnectionManager::shutdown()
 {
     m_shutdown = true;

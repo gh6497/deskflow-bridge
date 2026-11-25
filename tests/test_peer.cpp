@@ -160,7 +160,9 @@ int main(int argc, char **argv)
             output("{\"version\":2,\"available\":false,\"verifiedInstance\":\"test-bus/:1.1\"}\n");
             return 1;
         }
-        if (mode == "directed")
+        if (mode == "directed-legacy")
+            output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":true,\"legacyHandles\":true}\n");
+        else if (mode == "directed")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":true}\n");
         else if (mode == "directed-dual")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":false}\n");
@@ -343,8 +345,10 @@ int main(int argc, char **argv)
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_EXPECT_PER_AXIS") &&
             !args.contains("--absolute-per-axis")) return 9;
         const auto bleMode = qEnvironmentVariable("OTG_TEST_BLE_STATUS");
-        if (ble && args.contains("--ble-legacy-handles") != (bleMode == "legacy")) return 9;
-        if (ble && args.contains("--ble-directed-session") != (bleMode == "directed")) return 9;
+        if (ble && args.contains("--ble-legacy-handles") != (bleMode == "legacy" || bleMode == "directed-legacy")) return 9;
+        if (ble && args.contains("--ble-directed-session") != (bleMode == "directed" || bleMode == "directed-legacy")) return 9;
+        if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_ADAPTER") &&
+            args.value(args.indexOf("--adapter") + 1) != qEnvironmentVariable("OTG_TEST_BLE_ADAPTER")) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
             (args.contains("--ble-session") || args.contains("--adapter") ||
              args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;

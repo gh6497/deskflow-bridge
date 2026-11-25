@@ -96,7 +96,7 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 
 - **Device list on the left**: select the phone to view, configure or connect. Buttons below add devices, connect all or disconnect all.
 - **Device settings** lets you select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app. For an automatically managed Deskflow server, set the phone's adjacent screen and direction under **Screen and display**.
-- **Shared server**: select Deskflow and choose automatic startup or an existing server.
+- **Shared server** holds Deskflow settings, executable paths and Bluetooth service settings. The **Bluetooth service** section appears in builds that support BLE.
 - The **Connect**, **Disconnect**, **Copy phone screenshot** and **Manual clipboard** buttons at the bottom right apply to the selected device. **Files & sharing** opens the file transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
 - **Language at the top right**: switch between English and Chinese at any time. Appearance follows the system theme.
@@ -142,7 +142,7 @@ Open **Shared server**:
 3. Under **Programs and mode**, the **Deskflow** field tries to locate the installed program. If empty, click **Browse** and select **`deskflow-core` or `deskflow-server`** (`.exe` on Windows), rather than Deskflow's graphical app. On a Mac, it is usually inside `/Applications/Deskflow.app/Contents/MacOS/`.
 4. The **ADB** field normally points to the bundled program and can be left alone. The Linux paths in the screenshot are examples.
 
-![Shared server: automatic Deskflow startup, computer name, port and program paths](screenshots/server-en.png)
+![Shared server showing Deskflow settings, program paths and Bluetooth service settings](screenshots/server-en.png)
 
 Automatic mode starts Deskflow when you click Connect. You do not need to start another server manually on the same port.
 
@@ -244,7 +244,7 @@ The phone must already be online in ADB and have authorized the computer. For AO
 
 On Linux/macOS/Windows, enable **Forward audio** under **ADB enhancements** to play phone audio through the computer. This option is saved per device and is off by default. Android 11 or later and authorized ADB are required. Keep Android 11 unlocked when starting capture. Calls, protected content and apps that disallow capture may be silent.
 
-**If the forwarded sound is too quiet:** disconnect the device, keep **Forward audio** checked, and set **Forwarded audio gain** just below it. Try `3 dB` or `6 dB` first, then reconnect and listen. The `0–12 dB` setting is saved per device; `0 dB` leaves playback unchanged. Boosting affects only sound played on the computer, does not change the phone's media volume, and cannot restore sound that was not captured. In Windows BLE mode, click **Stop idle Bluetooth service** before reconnecting with a different gain.
+**If the forwarded sound is too quiet:** disconnect the device, keep **Forward audio** checked, and set **Forwarded audio gain** just below it. Try `3 dB` or `6 dB` first, then reconnect and listen. The `0–12 dB` setting is saved per device; `0 dB` leaves playback unchanged. Boosting affects only sound played on the computer, does not change the phone's media volume, and cannot restore sound that was not captured. In Windows BLE mode, click **Stop idle Bluetooth service** under **Shared server → Bluetooth service** before reconnecting with a different gain.
 
 On macOS, audio plays through the system default output (speakers or headphones), without microphone permission or an extra audio driver. If there is no sound, check the output device and volume in System Settings, then disconnect and reconnect after selecting an available output. An audio-output failure is logged and keyboard/mouse control remains available. Audio must be included in the build; older macOS packages may not show the switch.
 
@@ -329,7 +329,7 @@ Multiple AOA/UHID devices can connect together. The default Bluetooth service su
    sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON"
    ```
 
-2. In the GUI, set both devices to Bluetooth on `hci0`. Give each a distinct phone identity address and screen name. Enable older Android keyboard and mouse compatibility for both when needed, and turn off **per-device Bluetooth isolation**. Enable per-axis absolute scaling for the R17. If an old Bluetooth service is running, disconnect its sessions and click **Stop idle Bluetooth service**.
+2. Under **Shared server → Bluetooth service**, set the adapter once (for example, `hci0`). If either phone needs **Keyboard and mouse compatibility for older Android**, enable it here. Leave **Temporarily use BLE-only mode (administrator authentication)** unchecked. The two-phone service requests BLE-only mode at startup. If a single-phone service is running, disconnect all devices, then click **Stop idle Bluetooth service** here. Under **Device settings**, select Bluetooth LE for each phone and enter distinct phone identity addresses and screen names. You can enable **Pointer compatibility for older Android** for the R17 alone.
 3. Click **Connect** for the first screen. The GUI asks you to confirm the switch to BLE-only mode and authenticate as an administrator. Switching modes disconnects every Bluetooth link on the adapter. Both screens use the same service. Click **Connect** for the second screen, then connect to **Deskflow Bridge** from each phone's Bluetooth settings. Either phone can connect first.
 4. `directed: true` and `bleOnly: true` in `deskflow-bridge --ble-status --adapter hci0` identify the shared BLE-only service. The service refreshes its BLE advertisement after a phone connects or disconnects when a slot is available. If the service logs `waiting for fresh keyboard and pointer subscriptions` after a reconnect, try toggling Bluetooth on the affected phone and connecting again from its system settings. When the last bridge exits, the service restores the adapter.
 
@@ -341,15 +341,17 @@ Before adding/removing devices or changing screen names, layout or the shared se
 
 BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB debugging for basic input. Adapter and phone compatibility matter, so try wired control first to learn the basics.
 
-- In **Linux single-phone mode**, select Bluetooth Low Energy, set the adapter (usually `hci0`) and screen dimensions, and click **Connect**. Open the phone's Bluetooth settings and pair or connect to **Deskflow Bridge**. Keep the phone as the adapter's only LE connection. Classic Bluetooth connections can coexist when Linux can verify that both input subscriptions belong to the phone's LE link. Leave Bluetooth isolation off initially because it can disconnect other devices on that adapter.
-- On **Windows**, select Bluetooth Low Energy in a build with experimental BLE, set the screen dimensions and click **Connect**. Pair or connect to the PC from the phone's Bluetooth settings. Pairing and control depend on the adapter and phone.
+- In **Linux single-phone mode**, set the adapter (usually `hci0`) under **Shared server → Bluetooth service**. You can leave BLE-only mode off initially. Under **Device settings**, select Bluetooth LE, set the screen dimensions, and click **Connect**. Open the phone's Bluetooth settings and pair or connect to **Deskflow Bridge**. Keep the phone as the adapter's only LE connection. Classic Bluetooth connections can coexist when Linux can verify that both input subscriptions belong to the phone's LE link.
+- On **Windows**, use a build with experimental BLE. The app uses the system's default adapter. Under **Device settings**, select Bluetooth LE, set the screen dimensions, and click **Connect**. Pair or connect to the PC from the phone's Bluetooth settings. Pairing and control depend on the adapter and phone.
 - **macOS**: no BLE backend currently; consider wireless ADB + UHID for wireless control.
 
-Leave **Phone address (optional)** blank to use the first paired phone that connects and subscribes to both keyboard and pointer reports. The service remembers that phone until it stops. To change phones, disconnect the session and click **Stop idle Bluetooth service**, then connect from the new phone. To restrict selection in advance, enter the phone's stable address as reported by the desktop Bluetooth stack. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
+In single-phone mode, leave **Phone address (optional)** blank under **Device settings** to use the first paired phone that connects and subscribes to both keyboard and pointer reports. The service remembers that phone until it stops. To specify a phone, enter its stable address as reported by the desktop Bluetooth stack. To change phones, disconnect all devices, click **Stop idle Bluetooth service** under **Shared server → Bluetooth service**, then connect from the new phone. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
 
 Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its persistent service after the GUI exits. Windows keeps an idle service while the GUI is running and stops it on Quit. Stopping the service or deleting pairings is not a routine reconnect step; pairing-cache behavior after restarts can still vary by device.
 
-If an older Android phone pairs on Linux but its keyboard and mouse stay unavailable, disconnect the session, click **Stop idle Bluetooth service**, then enable **Keyboard and mouse compatibility for older Android** for that phone and reconnect. If the phone still uses cached Bluetooth settings, turn its Bluetooth off and on. If necessary, remove the pairing on both devices and pair again. If the phone only makes a classic Bluetooth connection, use the separate **Temporarily use BLE-only mode (administrator authentication)** option to test BLE. That option temporarily disconnects all devices on the adapter.
+If an older Android phone pairs on Linux but its keyboard and mouse stay unavailable, disconnect all devices. Under **Shared server → Bluetooth service**, click **Stop idle Bluetooth service**, then enable **Keyboard and mouse compatibility for older Android** and reconnect. This setting applies to every phone using the shared adapter. If the phone still uses cached Bluetooth settings, turn its Bluetooth off and on. If necessary, remove the pairing on both devices and pair again. If the phone only makes a classic Bluetooth connection, use **Temporarily use BLE-only mode (administrator authentication)** in the same section to test BLE. That option temporarily disconnects all devices on the adapter.
+
+When you upgrade from an older version on Linux, the shared Bluetooth settings start with those of the first saved Bluetooth device. If your old device settings differed, check the new shared values under **Shared server**.
 
 **If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`12500us` means 12.5 ms). On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
 

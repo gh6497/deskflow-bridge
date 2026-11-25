@@ -1362,7 +1362,7 @@ private slots:
             connectButton->click();
             QTRY_COMPARE(manager->state(secondId), Session::State::Connected);
             QVERIFY(list->isEnabled());
-            QVERIFY(!tabs->widget(1)->isEnabled());
+            QVERIFY(!manageServer->isEnabled());
             QVERIFY(!audio->isEnabled());
             QVERIFY(!window.findChild<QPushButton *>("addDeviceButton")->isEnabled());
             for (int i = 0; i < list->count(); ++i)
@@ -1614,22 +1614,28 @@ private slots:
         auto *mode = window.findChild<QComboBox *>("mouseMode");
         QCOMPARE(mode->currentData().toString(), "absolute");
         QVERIFY(!mode->isEnabled());
-        QCOMPARE(window.findChild<QLineEdit *>("bleAdapter")->text(), "hci1");
+        auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
+        auto *stopService = window.findChild<QPushButton *>("stopBleService");
+        auto *peer = window.findChild<QLineEdit *>("blePeer");
+        QVERIFY(tabs->widget(0)->isAncestorOf(peer));
+        QVERIFY(tabs->widget(1)->isAncestorOf(stopService));
+        auto *adapter = window.findChild<QLineEdit *>("bleAdapter");
 #ifdef Q_OS_WIN
-        QVERIFY(!window.findChild<QLineEdit *>("bleAdapter")->isVisible());
-        QVERIFY(!window.findChild<QCheckBox *>("bleIsolate")->isVisible());
-        QVERIFY(!window.findChild<QCheckBox *>("bleLegacyHandles")->isVisible());
-        QVERIFY(!window.findChild<QPushButton *>("stopBleService")->isVisible());
-        QVERIFY(window.findChild<QLineEdit *>("blePeer")->toolTip().contains("Windows"));
+        QVERIFY(!adapter);
+        QVERIFY(!window.findChild<QCheckBox *>("bleIsolate"));
+        QVERIFY(!window.findChild<QCheckBox *>("bleLegacyHandles"));
+        QVERIFY(!stopService->isEnabled());
+        QVERIFY(peer->toolTip().contains("Windows"));
 #elif defined(Q_OS_LINUX)
+        QVERIFY(tabs->widget(1)->isAncestorOf(adapter));
+        QCOMPARE(adapter->text(), "hci1");
         auto *legacy = window.findChild<QCheckBox *>("bleLegacyHandles");
-        QVERIFY(legacy && legacy->isVisible() && !legacy->isChecked());
+        QVERIFY(tabs->widget(1)->isAncestorOf(legacy) && !legacy->isChecked());
         legacy->setChecked(true);
         qputenv("OTG_TEST_BLE_STATUS", "legacy");
         const auto restoreEnv = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
 #endif
         auto *session = window.findChild<Session *>();
-        auto *peer = window.findChild<QLineEdit *>("blePeer");
         QCOMPARE(peer->text(), "AA:BB:CC:DD:EE:FF");
         peer->clear();
         auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
@@ -1642,11 +1648,26 @@ private slots:
         QVERIFY(window.findChild<QPushButton *>("connectAllButton")->isEnabled());
         button->click();
         QTRY_COMPARE(session->state(), Session::State::Connected);
+        QVERIFY(!stopService->isEnabled());
         QVERIFY(serial->text().isEmpty()); // No startup ADB scan in BLE mode.
         session->stop();
         QTRY_COMPARE(session->state(), Session::State::Idle);
         const auto screenshot = qEnvironmentVariable("OTG_TEST_BLE_SCREENSHOT");
         if (!screenshot.isEmpty()) QVERIFY(window.grab().save(screenshot));
+#if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
+        QVERIFY(stopService->isEnabled());
+        window.findChild<QPushButton *>("addDeviceButton")->click();
+        QVERIFY(transport->currentData().toString() != "ble");
+        QVERIFY(stopService->isEnabled());
+        QTimer::singleShot(0, &window, [&window] {
+            if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
+        });
+        stopService->click();
+        QTRY_VERIFY(!session->hasBleProvider());
+        QVERIFY(!stopService->isEnabled());
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        list->setCurrentRow(0);
+#endif
         window.findChild<QAction *>("trayQuit")->trigger();
         QTRY_VERIFY(!session->hasBleProvider());
         QCOMPARE(settings.value("transport").toString(), "ble");
@@ -1656,9 +1677,79 @@ private slots:
         QVERIFY(restored.findChild<QCheckBox *>("absolutePerAxis")->isChecked());
 #ifdef Q_OS_LINUX
         QVERIFY(restored.findChild<QCheckBox *>("bleLegacyHandles")->isChecked());
+        QCOMPARE(settings.value("sharedBle/adapter").toString(), "hci1");
 #endif
         restored.findChild<QComboBox *>("transportSelector")->setCurrentIndex(0);
         QVERIFY(restored.findChild<QLineEdit *>("usbSerial")->isEnabled());
+        restored.findChild<QAction *>("trayQuit")->trigger();
+    }
+    void sharedBleSettingsAcrossDevices()
+    {
+#if !defined(Q_OS_LINUX) || !defined(OTG_GUI_HAVE_BLE)
+        QSKIP("Linux BLE GUI only");
+#endif
+        QTemporaryDir settingsDir;
+        QVERIFY(settingsDir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        QSettings settings;
+        settings.setValue("manageServer", false);
+        settings.setValue("transport", "ble");
+        settings.setValue("bleAdapter", "hci9"); // A stale last-selected profile snapshot.
+        settings.beginWriteArray("devices", 2);
+        const QStringList ids{"initial", "second"};
+        const QStringList peers{"A0:B1:C2:D3:E4:F5", "11:22:33:44:55:66"};
+        for (int i = 0; i < ids.size(); ++i) {
+            settings.setArrayIndex(i);
+            settings.setValue("id", ids[i]);
+            settings.setValue("profile", QVariantMap{{"transport", "ble"}, {"phone", ids[i]}, {"blePeer", peers[i]},
+                {"bleAdapter", i == 0 ? "hci1" : "hci2"}, {"bleIsolate", i != 0}, {"bleLegacyHandles", false}});
+        }
+        settings.endArray();
+        qputenv("OTG_TEST_BLE_STATUS", "directed-legacy");
+        qputenv("OTG_TEST_BLE_ADAPTER", "hci3");
+        const auto cleanup = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_STATUS");
+            qunsetenv("OTG_TEST_BLE_ADAPTER");
+        });
+        {
+            AutoConnectTestWindow window;
+            auto *manager = window.findChild<ConnectionManager *>();
+            auto *list = window.findChild<QListWidget *>("deviceSidebar");
+            auto *peer = window.findChild<QLineEdit *>("blePeer");
+            auto *adapter = window.findChild<QLineEdit *>("bleAdapter");
+            auto *isolate = window.findChild<QCheckBox *>("bleIsolate");
+            auto *legacy = window.findChild<QCheckBox *>("bleLegacyHandles");
+            QVERIFY(adapter && isolate && legacy);
+            QCOMPARE(adapter->text(), "hci1");
+            QVERIFY(!isolate->isChecked());
+            adapter->setText("hci3");
+            legacy->setChecked(true);
+            QCOMPARE(peer->text(), peers[0]);
+            list->setCurrentRow(1);
+            QCOMPARE(peer->text(), peers[1]);
+            QCOMPARE(adapter->text(), "hci3");
+            QVERIFY(!isolate->isChecked() && legacy->isChecked());
+            window.findChild<QPushButton *>("connectAllButton")->click();
+            QTRY_COMPARE(manager->state(ids[0]), Session::State::Connected);
+            QTRY_COMPARE(manager->state(ids[1]), Session::State::Connected);
+            QVERIFY(!adapter->isEnabled() && !legacy->isEnabled());
+            window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_VERIFY(manager->settled());
+        }
+        QCOMPARE(settings.value("sharedBle/adapter").toString(), "hci3");
+        QCOMPARE(settings.value("sharedBle/legacyHandles").toBool(), true);
+        QCOMPARE(settings.beginReadArray("devices"), 2);
+        for (int i = 0; i < ids.size(); ++i) {
+            settings.setArrayIndex(i);
+            const auto profile = settings.value("profile").toMap();
+            QCOMPARE(profile.value("blePeer").toString(), peers[i]);
+            QVERIFY(!profile.contains("bleAdapter") && !profile.contains("bleIsolate") && !profile.contains("bleLegacyHandles"));
+        }
+        settings.endArray();
+        AutoConnectTestWindow restored;
+        QCOMPARE(restored.findChild<QLineEdit *>("bleAdapter")->text(), "hci3");
+        QVERIFY(restored.findChild<QCheckBox *>("bleLegacyHandles")->isChecked());
         restored.findChild<QAction *>("trayQuit")->trigger();
     }
     void clearLogs()
@@ -2041,6 +2132,33 @@ private slots:
         QCOMPARE(restored.findChild<QPushButton *>("connectButton")->text(), "Connect");
         restored.close();
     }
+    void guideSharedServiceScreenshot()
+    {
+        const auto capture = qEnvironmentVariable("OTG_TEST_SHARED_SERVICE_SCREENSHOTS");
+        if (capture.isEmpty()) return;
+        QTemporaryDir settingsDir;
+        QVERIFY(settingsDir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        for (const auto &language : {QStringLiteral("en"), QStringLiteral("zh_CN")}) {
+            QSettings settings;
+            settings.clear();
+            settings.setValue("language", language);
+            settings.setValue("transport", "ble");
+            AutoConnectTestWindow window;
+            window.available = false;
+            window.resize(1100, 1080);
+            window.findChild<QLineEdit *>("adbExecutable")->setText("/usr/bin/adb");
+            window.findChild<QLineEdit *>("deskflowExecutable")->setText("/usr/bin/deskflow-core");
+            auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
+            tabs->setCurrentIndex(1);
+            window.show();
+            QCoreApplication::processEvents();
+            const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
+            QVERIFY(window.grab().save(QDir(capture).filePath(QString("server-") + suffix)));
+            window.close();
+        }
+    }
     void guidePointerScreenshot()
     {
         const auto capture = qEnvironmentVariable("OTG_TEST_POINTER_SCREENSHOTS");
@@ -2067,7 +2185,8 @@ private slots:
             window.show();
             QCoreApplication::processEvents();
             auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
-            auto *scroll = window.findChild<QScrollArea *>();
+            auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
+            auto *scroll = qobject_cast<QScrollArea *>(tabs->widget(0));
             QVERIFY(perAxis && scroll);
             QTRY_VERIFY(perAxis->isEnabled());
             scroll->ensureWidgetVisible(perAxis, 0, 12);

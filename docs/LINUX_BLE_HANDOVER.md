@@ -25,7 +25,7 @@ BlueZ `Device1`。经典蓝牙同时在线时，两路订阅必须来自该手�
 旧版 AOSP HID Host 查找输入通知的 CCCD 时，把 16 位特征句柄截为 8 位。见
 [Android 10 源码](https://android.googlesource.com/platform/system/bt/+/android-10.0.0_r1/bta/hh/bta_hh_le.cc#671)。常规布局的键鼠值分别为
 `0x0106`、`0x010a`，兼容布局改用 `0x0046`、`0x004a`，整个 HID 服务使用 `0x0040..0x0051`。
-GUI 按设备保存「兼容旧版 Android 蓝牙键鼠」。CLI 常驻模式须在服务和会话两端传相同选项。
+GUI 在「共享服务 → 蓝牙服务」统一配置「兼容旧版 Android 蓝牙键鼠」。CLI 常驻模式须在服务和会话两端传相同选项。
 
 ```bash
 deskflow-bridge --ble-service --adapter hci0 --ble-legacy-handles

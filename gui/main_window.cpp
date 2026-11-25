@@ -46,6 +46,13 @@
 
 namespace {
 
+constexpr const char *legacyBleSettingKeys[] = {"bleAdapter", "bleIsolate", "bleLegacyHandles"};
+#ifdef Q_OS_WIN
+constexpr const char *bleSetupHint = "otg.ble.windows_setup_hint";
+#else
+constexpr const char *bleSetupHint = "otg.ble.setup_hint";
+#endif
+
 int storedAudioGain(const QVariant &value)
 {
     bool ok;
@@ -477,9 +484,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_transport->addItem(qtTrId("otg.transport.ble_windows"), "ble");
 #endif
     addTranslatedRow(deviceForm, "otg.label.transport", m_transport);
-    m_adapter = new QLineEdit;
-    m_adapter->setObjectName("bleAdapter");
-    addTranslatedRow(deviceForm, "otg.ble.adapter", m_adapter);
     m_blePeer = new QLineEdit;
     m_blePeer->setObjectName("blePeer");
     setTranslatedProperty(m_blePeer, "placeholderText", "otg.ble.peer_placeholder");
@@ -488,33 +492,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     setTranslatedProperty(m_blePeer, "toolTip", "otg.ble.windows_peer_hint");
 #endif
     addTranslatedRow(deviceForm, "otg.ble.peer", m_blePeer);
-    m_bleIsolate = translated(new QCheckBox, "text", "otg.ble.isolate");
-    m_bleIsolate->setObjectName("bleIsolate");
-    deviceForm->addRow(m_bleIsolate);
-    m_bleLegacyHandles = translated(new QCheckBox, "text", "otg.ble.legacy_handles");
-    m_bleLegacyHandles->setObjectName("bleLegacyHandles");
-    setTranslatedProperty(m_bleLegacyHandles, "toolTip", "otg.ble.legacy_handles_hint");
-    deviceForm->addRow(m_bleLegacyHandles);
-    m_stopBleService = translated(new QPushButton, "text", "otg.ble.stop_service");
-    m_stopBleService->setObjectName("stopBleService");
-    deviceForm->addRow(m_stopBleService);
-    connect(m_stopBleService, &QPushButton::clicked, this, [this] {
-        if (QMessageBox::warning(this, qtTrId("otg.ble.stop_service"), qtTrId("otg.ble.stop_confirm"),
-                                 QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Ok)
-            return;
-#ifdef Q_OS_WIN
-        m_session->stopBleProvider();
-        return;
-#endif
-        m_stoppingBleService = true;
-        updateEnabled();
-        runCommand(this, bridgeExecutable(), {"--ble-stop-service", "--adapter", m_adapter->text().trimmed()},
-                   [this](bool ok, const QString &output) {
-            appendLog(qtTrId(ok ? "otg.ble.stopped" : "otg.ble.stop_failed") + output);
-            m_stoppingBleService = false;
-            updateEnabled();
-        });
-    });
     auto *deviceRow = new QWidget;
     auto *deviceLayout = new QHBoxLayout(deviceRow);
     deviceLayout->setContentsMargins(0, 0, 0, 0);
@@ -876,15 +853,41 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     advancedForm->addRow("ADB", pathField(m_adb, "otg.path.adb_hint"));
     m_adb->setObjectName("adbExecutable");
     advancedForm->addRow("Deskflow", pathField(m_deskflow, "otg.path.deskflow_hint"));
+    m_deskflow->setObjectName("deskflowExecutable");
+#if (defined(Q_OS_LINUX) && defined(OTG_GUI_HAVE_BLE)) || (defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN))
+    auto *bleBox = translated(new QGroupBox, "title", "otg.ble.shared_title");
+    bleBox->setObjectName("sharedBluetoothService");
+    auto *bleForm = new QFormLayout(bleBox);
+#ifdef Q_OS_LINUX
+    m_adapter = new QLineEdit;
+    m_adapter->setObjectName("bleAdapter");
+    addTranslatedRow(bleForm, "otg.ble.adapter", m_adapter);
+    m_bleIsolate = translated(new QCheckBox, "text", "otg.ble.isolate");
+    m_bleIsolate->setObjectName("bleIsolate");
+    bleForm->addRow(m_bleIsolate);
+    m_bleLegacyHandles = translated(new QCheckBox, "text", "otg.ble.legacy_handles");
+    m_bleLegacyHandles->setObjectName("bleLegacyHandles");
+    setTranslatedProperty(m_bleLegacyHandles, "toolTip", "otg.ble.legacy_handles_hint");
+    bleForm->addRow(m_bleLegacyHandles);
+#else
+    bleForm->addRow(translated(new QLabel, "text", "otg.ble.default_adapter"));
+#endif
+    m_stopBleService = translated(new QPushButton, "text", "otg.ble.stop_service");
+    m_stopBleService->setObjectName("stopBleService");
+    bleForm->addRow(m_stopBleService);
+    connect(m_stopBleService, &QPushButton::clicked, this, &MainWindow::stopIdleBleService);
+    sharedLayout->addWidget(bleBox);
+#endif
     sharedLayout->addWidget(advancedBox);
     sharedLayout->addStretch();
     formLayout->addStretch();
-    auto *scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidget(m_form);
-    m_tabs->addTab(scroll, QString());
-    m_tabs->addTab(m_sharedBox, QString());
+    for (auto *page : {m_form, m_sharedBox}) {
+        auto *scroll = new QScrollArea;
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidget(page);
+        m_tabs->addTab(scroll, QString());
+    }
 
     auto *buttons = new QHBoxLayout;
     m_status = translated(new QLabel, "text", "otg.status.not_connected");
@@ -995,10 +998,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_transport->setCurrentIndex(qMax(0, m_transport->findData(settings.value("transport",
         settings.contains("serial") ? QStringLiteral("usb") : defaultTransport()))));
     if (m_transport->currentData() == "uhid") m_adbEnabled->setChecked(true);
-    m_adapter->setText(settings.value("bleAdapter", "hci0").toString());
     m_blePeer->setText(settings.value("blePeer").toString());
-    m_bleIsolate->setChecked(settings.value("bleIsolate", false).toBool());
-    m_bleLegacyHandles->setChecked(settings.value("bleLegacyHandles", false).toBool());
     m_width->setValue(settings.value("originalWidth", settings.value("width", 1080)).toInt());
     m_height->setValue(settings.value("originalHeight", settings.value("height", 1920)).toInt());
     m_sensitivity->setValue(settings.value("sensitivityMultiplier", 1.0).toDouble());
@@ -1031,7 +1031,8 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     const int profileCount = settings.beginReadArray("rememberedDevices");
     for (int i = 0; i < profileCount; ++i) {
         settings.setArrayIndex(i);
-        const auto profile = settings.value("profile").toMap();
+        auto profile = settings.value("profile").toMap();
+        for (const auto *key : legacyBleSettingKeys) profile.remove(key);
         const auto key = autoConnectKey(profile);
         if (!key.second.isEmpty()) m_profiles.insert(key, profile);
     }
@@ -1040,12 +1041,15 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_alias->setText(m_phone->text());
     m_neighbor->addItem(m_computer->text(), m_computer->text());
     m_records.insert(m_selectedId, deviceProfile());
+    QVariantMap legacyBle;
     const int deviceCount = settings.beginReadArray("devices");
     for (int i = 0; i < deviceCount; ++i) {
         settings.setArrayIndex(i);
         const auto id = settings.value("id").toString();
-        const auto profile = settings.value("profile").toMap();
+        auto profile = settings.value("profile").toMap();
         if (!id.isEmpty() && !profile.isEmpty()) {
+            if (legacyBle.isEmpty() && profile.value("transport") == "ble") legacyBle = profile;
+            for (const auto *key : legacyBleSettingKeys) profile.remove(key);
             if (i == 0) {
                 // Reuse the initial Session so existing single-device settings migrate naturally.
                 m_records[m_selectedId] = profile;
@@ -1056,13 +1060,19 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         }
     }
     settings.endArray();
+    if (m_adapter) {
+        const auto sharedValue = [&](const char *sharedKey, const char *oldKey, const QVariant &fallback) {
+            return settings.value(sharedKey, legacyBle.value(oldKey, settings.value(oldKey, fallback)));
+        };
+        m_adapter->setText(sharedValue("sharedBle/adapter", "bleAdapter", "hci0").toString());
+        m_bleIsolate->setChecked(sharedValue("sharedBle/isolate", "bleIsolate", false).toBool());
+        m_bleLegacyHandles->setChecked(sharedValue("sharedBle/legacyHandles", "bleLegacyHandles", false).toBool());
+        // Save before a device-only update can discard the legacy profile fields.
+        saveSharedBleSettings(settings);
+    }
     if (deviceCount > 0) applyDeviceProfile(m_records.value(m_selectedId));
     if (m_transport->currentData() == "ble")
-#ifdef Q_OS_WIN
-        setTranslatedProperty(m_deviceStatus, "text", "otg.ble.windows_setup_hint");
-#else
-        setTranslatedProperty(m_deviceStatus, "text", "otg.ble.setup_hint");
-#endif
+        setTranslatedProperty(m_deviceStatus, "text", bleSetupHint);
     auto saveAutoConnect = [this] {
         if (m_loadingDevice) return;
         QSettings().setValue("autoConnect", m_autoConnectEnabled->isChecked());
@@ -1119,13 +1129,8 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         if (m_transport->currentData() == "uhid") m_adbEnabled->setChecked(true);
         if (m_transport->currentData() == "ble") m_mouseMode->setCurrentIndex(0);
         setTranslatedProperty(m_deviceStatus, "text", m_transport->currentData() == "ble" ?
-#ifdef Q_OS_WIN
-                              "otg.ble.windows_setup_hint" : "otg.device.manual_hint");
-#else
-                              "otg.ble.setup_hint" : "otg.device.manual_hint");
-#endif
-        if (m_transport->currentData() == "uhid")
-            setTranslatedProperty(m_deviceStatus, "text", "otg.uhid.setup_hint");
+                              bleSetupHint : m_transport->currentData() == "uhid" ?
+                              "otg.uhid.setup_hint" : "otg.device.manual_hint");
         updateEnabled();
     });
     connect(m_adbTest, &QPushButton::clicked, this, [this] {
@@ -1367,8 +1372,6 @@ void MainWindow::addDevice()
     profile["autoRotate"] = false;
     profile["transport"] = defaultTransport();
     profile["blePeer"] = "";
-    profile["bleIsolate"] = false;
-    profile["bleLegacyHandles"] = false;
     profile["absolutePerAxis"] = false;
     profile["autoConnect"] = false;
     profile["uhidUsbAutoConnect"] = false;
@@ -1530,27 +1533,23 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
         profile.value("unlockPin").toString() : QString();
     options.unlockAdb = !options.unlockPin.isEmpty();
     options.unlockWithSpace = profile.value("unlockWithSpace", true).toBool();
-    options.blePeer = profile.value("blePeer").toString();
-#ifdef Q_OS_LINUX
-    options.adapter = profile.value("bleAdapter", "hci0").toString();
-    options.bleIsolate = profile.value("bleIsolate", false).toBool();
-    options.bleLegacyHandles = profile.value("bleLegacyHandles", false).toBool();
-    if (options.transport == "ble" && !options.bleIsolate && !options.blePeer.isEmpty()) {
+    if (options.transport == "ble") options.blePeer = profile.value("blePeer").toString();
+    if (options.transport == "ble" && m_adapter) {
+        options.adapter = m_adapter->text().trimmed();
+        options.bleIsolate = m_bleIsolate->isChecked();
+        options.bleLegacyHandles = m_bleLegacyHandles->isChecked();
+    }
+    if (options.transport == "ble" && m_adapter && !options.bleIsolate && !options.blePeer.isEmpty()) {
         // Decide before the first bridge reserves the adapter's GATT service.
         for (const auto &other : m_records) {
             const auto peer = other.value("blePeer").toString().trimmed();
-            if (other.value("transport").toString() == "ble" &&
-                other.value("bleAdapter", "hci0").toString() == options.adapter &&
-                !other.value("bleIsolate").toBool() && !peer.isEmpty() &&
+            if (other.value("transport") == "ble" && !peer.isEmpty() &&
                 peer.compare(options.blePeer, Qt::CaseInsensitive) != 0) {
                 options.preferDirectedBle = true;
                 break;
             }
         }
     }
-#else
-    options.adapter.clear();
-#endif
     const bool absolute = options.mouseMode == "absolute";
     const double resolutionMultiplier = absolute ?
         qMin(10.0, qMax(1.0, profile.value("sensitivityMultiplier", 1.0).toDouble())) : 1.0;
@@ -1565,7 +1564,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
 
 void MainWindow::connectAll()
 {
-    if (m_closing || m_scanning || m_companion.busy()) return;
+    if (m_closing || m_scanning || m_stoppingBleService || m_companion.busy()) return;
     saveSettings();
     const auto selected = m_selectedId;
     const auto ids = m_records.keys();
@@ -1584,16 +1583,7 @@ void MainWindow::updateEnabled()
     const bool ble = m_transport->currentData() == "ble";
     const bool uhid = m_transport->currentData() == "uhid";
     updateConnectionStatus();
-#ifdef Q_OS_LINUX
-    const bool linuxBle = ble;
-#else
-    const bool linuxBle = false;
-#endif
-    m_deviceForm->setRowVisible(m_adapter, linuxBle);
     m_deviceForm->setRowVisible(m_blePeer, ble);
-    m_deviceForm->setRowVisible(m_bleIsolate, linuxBle);
-    m_deviceForm->setRowVisible(m_bleLegacyHandles, linuxBle);
-    m_deviceForm->setRowVisible(m_stopBleService, linuxBle || (ble && m_session->hasBleProvider()));
     m_deviceForm->setRowVisible(m_devices->parentWidget(), !ble);
     m_deviceForm->setRowVisible(m_serial, !ble && !uhid);
     // File sharing and companion status may use an explicit wireless ADB target
@@ -1641,7 +1631,9 @@ void MainWindow::updateEnabled()
     m_autoConnect.setReady(!m_closing && !m_companion.busy());
     updateAutoConnect();
     m_form->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy());
-    m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
+    m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_stoppingBleService && !m_companion.busy());
+    if (m_stopBleService)
+        m_stopBleService->setEnabled(m_adapter || m_connections.hasBleProvider());
     m_neighbor->setEnabled(sharedIdle && m_manage->isChecked());
     m_addDevice->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
     m_removeDevice->setEnabled(sharedIdle && m_records.size() > 1 && !m_session->hasBleProvider() && !m_closing && !m_companion.busy());
@@ -1653,7 +1645,8 @@ void MainWindow::updateEnabled()
         const auto identity = profile.value(mode == "uhid" ? "adbSerial" : "serial").toString();
         connectable |= m_connections.state(it.key()) == Session::State::Idle && (mode == "ble" || !identity.isEmpty());
     }
-    m_connectAll->setEnabled(connectable && !m_closing && !m_scanning && !m_companion.busy() && m_connections.serverState() != DeskflowServer::State::Stopping);
+    m_connectAll->setEnabled(connectable && !m_closing && !m_scanning && !m_stoppingBleService &&
+                             !m_companion.busy() && m_connections.serverState() != DeskflowServer::State::Stopping);
     m_disconnectAll->setEnabled(m_connections.busy() && !m_closing);
     m_connect->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy() &&
                           m_connections.serverState() != DeskflowServer::State::Stopping &&
@@ -1687,11 +1680,7 @@ void MainWindow::updateEnabled()
     m_autoRotate->setEnabled(adbFeatures && !ble && (uhid || m_audio->isChecked() || m_clipboard->isChecked()) && idle);
     m_autoConnectEnabled->setEnabled(!ble && !uhid);
     m_uhidAutoConnectEnabled->setEnabled(uhid && isUsbAdbSerial(m_adbSerial->text().trimmed()));
-    m_adapter->setEnabled(linuxBle);
     m_blePeer->setEnabled(ble);
-    m_bleIsolate->setEnabled(linuxBle);
-    m_bleLegacyHandles->setEnabled(linuxBle);
-    m_stopBleService->setEnabled((linuxBle || m_session->hasBleProvider()) && !m_stoppingBleService);
     m_mouseMode->setEnabled(!ble);
     m_unlockEnabled->setEnabled(adbFeatures);
     m_unlockPin->setEnabled(adbFeatures && m_unlockEnabled->isChecked());
@@ -2154,7 +2143,8 @@ void MainWindow::readDevice()
 
 void MainWindow::connectDevice()
 {
-    if (m_closing || m_scanning || m_companion.busy() || m_connections.state(m_selectedId) != Session::State::Idle)
+    if (m_closing || m_scanning || m_stoppingBleService || m_companion.busy() ||
+        m_connections.state(m_selectedId) != Session::State::Idle)
         return;
     saveSettings();
     auto options = connectionOptions(deviceProfile());
@@ -2185,15 +2175,36 @@ void MainWindow::connectDevice()
     m_connections.start(m_selectedId, options, layoutConfiguration());
 }
 
+void MainWindow::stopIdleBleService()
+{
+    if (m_closing || !m_stopBleService->isEnabled()) return;
+    const auto adapter = m_adapter ? m_adapter->text().trimmed() : QString();
+    if (QMessageBox::warning(this, qtTrId("otg.ble.stop_service"), qtTrId("otg.ble.stop_confirm"),
+                             QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Ok ||
+        m_closing || !m_stopBleService->isEnabled())
+        return;
+    if (!m_adapter) {
+        m_connections.stopIdleBleProvider();
+        return;
+    }
+    m_stoppingBleService = true;
+    updateEnabled();
+    runCommand(this, bridgeExecutable(), {"--ble-stop-service", "--adapter", adapter},
+               [this](bool ok, const QString &output) {
+        appendLog(qtTrId(ok ? "otg.ble.stopped" : "otg.ble.stop_failed") + output);
+        m_stoppingBleService = false;
+        updateEnabled();
+        if (m_closing) QTimer::singleShot(0, this, &QWidget::close);
+    });
+}
+
 QVariantMap MainWindow::deviceProfile() const
 {
     return {{"serial", m_serial->text().trimmed()},
             {"adbSerial", m_adbSerial->text().trimmed()},
             {"adbEnabled", m_adbEnabled->isChecked()},
             {"alias", m_alias->text().trimmed()},
-            {"transport", m_transport->currentData()}, {"bleAdapter", m_adapter->text()},
-            {"blePeer", m_blePeer->text().trimmed().toUpper()}, {"bleIsolate", m_bleIsolate->isChecked()},
-            {"bleLegacyHandles", m_bleLegacyHandles->isChecked()},
+            {"transport", m_transport->currentData()}, {"blePeer", m_blePeer->text().trimmed().toUpper()},
             {"autoConnect", m_autoConnectEnabled->isChecked()}, {"neighbor", m_neighbor->currentData()},
             {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},
             {"originalWidth", m_width->value()}, {"originalHeight", m_height->value()},
@@ -2240,10 +2251,7 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_tlsFingerprintFile->setText(profile.value("tlsFingerprintFile").toString());
     m_transport->setCurrentIndex(qMax(0, m_transport->findData(profile.value("transport", "usb"))));
     if (m_transport->currentData() == "uhid") m_adbEnabled->setChecked(true);
-    m_adapter->setText(profile.value("bleAdapter", "hci0").toString());
     m_blePeer->setText(profile.value("blePeer").toString());
-    m_bleIsolate->setChecked(profile.value("bleIsolate", false).toBool());
-    m_bleLegacyHandles->setChecked(profile.value("bleLegacyHandles", false).toBool());
     const QSignalBlocker audioBlocker(m_audio);
     m_audio->setChecked(profile.value("audio", false).toBool());
     m_audioGain->setValue(storedAudioGain(profile.value("audioGainDb")));
@@ -2272,7 +2280,8 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     const auto neighbor = profile.value("neighbor", m_computer->text()).toString();
     if (m_neighbor->findData(neighbor) < 0) m_neighbor->addItem(neighbor, neighbor);
     m_neighbor->setCurrentIndex(m_neighbor->findData(neighbor));
-    setTranslatedProperty(m_deviceStatus, "text", m_transport->currentData() == "uhid" ?
+    setTranslatedProperty(m_deviceStatus, "text", m_transport->currentData() == "ble" ?
+                          bleSetupHint : m_transport->currentData() == "uhid" ?
                           "otg.uhid.setup_hint" : "otg.auto_connect.restored");
     m_loadingDevice = false;
 }
@@ -2293,6 +2302,14 @@ void MainWindow::rememberDevice(const QVariantMap &profile)
     updateAutoConnect();
 }
 
+void MainWindow::saveSharedBleSettings(QSettings &settings) const
+{
+    if (!m_adapter) return;
+    settings.setValue("sharedBle/adapter", m_adapter->text().trimmed());
+    settings.setValue("sharedBle/isolate", m_bleIsolate->isChecked());
+    settings.setValue("sharedBle/legacyHandles", m_bleLegacyHandles->isChecked());
+}
+
 void MainWindow::saveSettings()
 {
     storeDevice();
@@ -2311,10 +2328,8 @@ void MainWindow::saveSettings()
     settings.setValue("serial", m_serial->text());
     settings.setValue("adbSerial", m_adbSerial->text());
     settings.setValue("transport", m_transport->currentData());
-    settings.setValue("bleAdapter", m_adapter->text());
     settings.setValue("blePeer", m_blePeer->text());
-    settings.setValue("bleIsolate", m_bleIsolate->isChecked());
-    settings.setValue("bleLegacyHandles", m_bleLegacyHandles->isChecked());
+    saveSharedBleSettings(settings);
     settings.setValue("originalWidth", m_width->value());
     settings.setValue("originalHeight", m_height->value());
     settings.setValue("sensitivityMultiplier", m_sensitivity->value());
@@ -2357,7 +2372,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     m_screenshot.cancel();
     m_manualClipboard.cancel();
     if (m_transferDialog) m_transferDialog->reject();
-    if (m_connections.settled() && !m_companion.busy() && !m_transferDialog && !m_screenshot.busy() && !m_manualClipboard.busy()) {
+    if (m_connections.settled() && !m_stoppingBleService && !m_companion.busy() && !m_transferDialog &&
+        !m_screenshot.busy() && !m_manualClipboard.busy()) {
         m_autoConnect.setEnabled(false);
         m_adbAutoConnect.setEnabled(false);
         m_tray->hide();
@@ -2369,6 +2385,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
         return;
     }
     event->ignore();
-    m_connections.shutdown();
+    if (!m_connections.settled()) m_connections.shutdown();
     updateEnabled();
 }
