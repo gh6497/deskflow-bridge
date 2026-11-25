@@ -332,7 +332,7 @@ OPPO R17（Android 10）的 PIN 界面在使用实体键盘输入时不会显示
    ```
 
 3. 在 GUI 中为两台手机分别设置蓝牙连接、`hci0`、各自的手机蓝牙身份地址和不同的屏幕名称。两台均开启旧版 Android 键鼠兼容，并关闭**设备配置中的蓝牙隔离**，适配器已由上面的服务统一管理。R17 开启绝对坐标分轴缩放。在 GUI 中逐台点击连接，然后分别从手机的蓝牙设置连接 **Deskflow Bridge**。
-4. `deskflow-bridge --ble-status --adapter hci0` 中的 `directed: true` 表示双机服务可接入。每台手机都需要订阅键盘和指针。重连时若日志停在 `waiting for fresh keyboard and pointer subscriptions`，可先关开**该手机**的蓝牙再连接。最后一个桥接会话退出后，上面的仅 BLE 服务结束并恢复适配器。双手机空口输入和缓存重连仍待真机验收。
+4. `deskflow-bridge --ble-status --adapter hci0` 中的 `directed: true` 表示双机服务可接入。手机接入或掉线后，有空位时服务会刷新 BLE 广播。第二台手机搜索 **Deskflow Bridge** 时，已连接的手机可以继续使用键鼠。已在仅 BLE 模式下用 R17 和 K20 Pro 验证此发现流程。重连时若日志停在 `waiting for fresh keyboard and pointer subscriptions`，可先关开**该手机**的蓝牙，再从系统设置中连接。最后一个桥接会话退出后，上面的仅 BLE 服务结束并恢复适配器。
 
 要新增/删除设备、更改屏幕名称、布局或共享服务，先全部断开并等待停止完成。已连接设备的参数会锁定，其他空闲设备的连接目标和尺寸仍可编辑。
 

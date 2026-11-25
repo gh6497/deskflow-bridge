@@ -11,6 +11,9 @@
 - `ble_multi_session.inc` 通过独立的 v2 接入操作一次性预留地址和屏幕名。GUI 读取 `directed` 能力，CLI 为每台运行 `deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 --ble-legacy-handles --ble-peer MAC --name SCREEN`。低句柄与服务保持一致。`--absolute-per-axis` 只需加在需要的桥接上。共享服务可由监督器统一隔离，最后一个客户端退出后恢复。双模使用普通用户运行同一服务命令，省略 `sudo` 和 `--ble-isolate`，空闲时保留 GATT。
 - 私有总线回归使用真实传递的四个 FD，覆盖隔离、掉线、重新订阅、先释放再恢复。真实 Unix socket/fork 回归验证双客户端共享服务、地址和屏幕名冲突、EOF 后另一路继续和最后退出。已重新运行交接基线的 BlueZ 双订阅分发函数实验。K20 Pro 和 R17 的空口、系统模式恢复与手机 CCC 缓存行为仍待真机验收。
 
+- 控制器接入第一台手机时可能停用用于接入的可连接广播，BlueZ 的 `ActiveInstances` 仍可能计入该登记。双机服务观察到 LE peripheral 链路变化而且还有空位时，异步重新登记自身的广播。日志 `BLE advertisement re-registered for another connection` 确认 BlueZ 已接受登记。私有 D-Bus 回归验证登记、失败重试、键鼠报告继续投递和会话退出清理。
+- 2026-11-25 在 AX210、含定向通知回移修复的 BlueZ 5.72、低句柄及仅 BLE 模式下切换到新版服务。R17 保持已连接时，K20 Pro 扫到 `Deskflow Bridge` 的可连接广播（现场读数 −55 dBm）。K20 Pro 通过手机系统蓝牙设置接入键鼠后，两个加密 LE 链路同时在线，两组键鼠订阅均就绪，两个 Deskflow TCP 会话均已建立。更换常驻服务后发现的手机订阅缓存问题仍可能需要由手机重新接入。
+
 ## 已确认的 Linux 环境和行为
 
 - 本机是 Linux Mint 22.3，基于 Ubuntu 24.04 `noble`，适配器是 Intel AX210。本机安装的 BlueZ 包为 `5.72-0ubuntu5.8`，当时官方 APT 源也只提供 5.72。上游 5.76 已在本机临时目录编译通过，验证了二进制版本和动态库依赖。系统 BLE 真机试验均使用发行版的 5.72。[Ubuntu 包列表](https://packages.ubuntu.com/search?keywords=bluez&searchon=names&exact=1&suite=all&section=all)
