@@ -748,6 +748,29 @@ private slots:
         QTRY_VERIFY(manager.settled());
     }
 #ifdef OTG_GUI_HAVE_BLE
+    void startsDirectedBleWithoutIsolation()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto marker = dir.filePath("resident-service");
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
+        qputenv("OTG_TEST_BLE_START_MARKER", marker.toUtf8());
+        const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_STATUS");
+            qunsetenv("OTG_TEST_BLE_START_MARKER");
+        });
+        ConnectionOptions options;
+        options.bridge = peerPath(); options.manageServer = false; options.transport = "ble";
+        options.blePeer = "AA:BB:CC:DD:EE:01";
+        options.preferDirectedBle = true;
+        Session session;
+        session.start(options);
+        QTRY_COMPARE(session.state(), Session::State::Connected);
+        QVERIFY(QFile::exists(marker));
+        session.shutdown();
+        QTRY_COMPARE(session.state(), Session::State::Idle);
+    }
+
     void twoDirectedBleSessions()
     {
         qputenv("OTG_TEST_BLE_STATUS", "directed");

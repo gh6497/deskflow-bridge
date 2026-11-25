@@ -324,7 +324,7 @@ Multiple AOA/UHID devices can connect together. The default Bluetooth service su
 **Connecting two BLE phones on Linux**
 
 1. Use a BlueZ build with directed notifications (upstream 5.76+ or a verified backport). Stock Ubuntu `5.72-0ubuntu5.8` supports the single-phone workflow. In the command below, set `FIXED_DAEMON` to a reference executable from a build known to include the fix. The helper compares it byte for byte with the running daemon. Repeat verification after restarting BlueZ.
-2. If the ordinary service is running, disconnect its sessions and click **Stop idle Bluetooth service**. After verification, save both device profiles as described below. Connecting the first phone in the GUI starts the two-phone service and keeps the adapter in its current mode. If the R17 only establishes a classic Bluetooth link, first run the following command from the source directory to share the low handle layout and BLE-only mode with the K20 Pro. Changing modes disconnects every Bluetooth link on the adapter.
+2. If the ordinary service is running, disconnect its sessions and click **Stop idle Bluetooth service**. After verification, save both device profiles as described below. Connecting the first phone in the GUI starts the two-phone service as your current user and keeps the adapter in its current mode. If the R17 only establishes a classic Bluetooth link, disconnect both sessions and stop any idle Bluetooth service before running the following command in a terminal from the source directory. Both phones will share the low handle layout and BLE-only mode. Changing modes disconnects every Bluetooth link on the adapter.
 
    ```sh
    TOKEN=$(sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON") &&
@@ -373,6 +373,7 @@ The phone can open and check the Bluetooth link without ADB. Its home screen sho
 | Unauthorized or Offline | Unlock and approve the computer, then refresh. For wireless, check the current IP, connection port and network |
 | Deskflow not found | Install Deskflow and select `deskflow-core` / `deskflow-server` under Shared server, rather than its GUI |
 | Port already in use | Check for a manually started Deskflow server. Use existing-server mode or another free port for automatic startup |
+| Linux Bluetooth service unavailable | Open the service log at the path shown in the GUI. `available: false` in `deskflow-bridge --ble-status --adapter hci0` means the bridge could not get a usable reply from the service |
 | Unknown screen or mismatched name | The external Deskflow screen name must exactly match this app and be unique |
 | Connected, but cannot move onto the phone | Check **Screen position** in automatic mode or the layout in Deskflow for an external server. Also check Deskflow's input-capture/Accessibility permissions and any screen-switch lock |
 | No phone pointer or no response to clicks | Check logs for UHID unavailable or USB errors. Start with absolute mode; try relative mode after disconnecting for an incompatible device |
