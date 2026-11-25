@@ -12,6 +12,7 @@ Android 包名仍保持为 `com.github.gh6497.deskflowotg`，用于兼容已安�
   分享后在桌面「文件与分享」刷新、选择接收；电脑发来的文件在 App 中通过系统选择器另存。
   单文件1 GiB、私有暂存合计32个 / 2 GiB，详见 [文件分享](../../docs/FILE_SHARING.md)。
 - 新版桌面的中键 Home / 右键 Back 直接发送 Win+Enter / Win+Backspace 系统 HID 快捷键，不依赖本应用；两项在桌面独立配置、默认普通鼠标按钮，需要手机 ROM 支持系统快捷键。
+- 首页的「蓝牙连接」支持扫描、按地址接入电脑和查看蓝牙链路状态。桌面通过已授权 ADB 上报时，首页同时显示 Deskflow 连接状态和方式。见 [使用说明](../../docs/ANDROID_COMPANION.md#ble-diagnostics)。
 
 工程使用 Android 原生 Java API，不依赖 AndroidX 或第三方库，便于后续增加设备握手、
 状态同步等功能。
@@ -50,6 +51,7 @@ Android 包名仍保持为 `com.github.gh6497.deskflowotg`，用于兼容已安�
 界面使用原生 XML 布局，位于 `app/src/main/res/layout/`，可在 IDE 中预览和调整：
 
 - `activity_main.xml`：首页、连接状态、通知使用权与自动播放设置。
+- `activity_bluetooth_diagnostic.xml`：蓝牙扫描、地址和连接状态。`item_ble_diagnostic.xml` 定义扫描结果项。
 - `activity_transfer.xml`：文件列表页，`item_transfer.xml` 定义动态列表项，
   `transfer_empty.xml` 定义空状态。
 - `activity_share.xml`：系统分享确认、进度与取消。

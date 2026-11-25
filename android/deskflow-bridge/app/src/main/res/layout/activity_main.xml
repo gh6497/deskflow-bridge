@@ -26,6 +26,18 @@
             android:textSize="22sp" />
 
         <TextView
+            android:id="@+id/connection_transport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connection_transport_unknown" />
+
+        <TextView
+            android:id="@+id/bluetooth_link"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/connection_help" />
@@ -49,6 +61,13 @@
             android:layout_height="wrap_content"
             android:text="@string/connection_notification_settings"
             android:visibility="gone" />
+
+        <Button
+            android:id="@+id/open_bluetooth_diagnostic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/ble_diagnostic_title" />
 
         <TextView
             android:layout_width="match_parent"

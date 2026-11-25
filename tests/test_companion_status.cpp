@@ -93,6 +93,8 @@ private slots:
         QCOMPARE(playIds().first().size(), 32);
         for (const auto &args : broadcasts()) {
             QCOMPARE(args.value(args.indexOf("version") + 1), QString("2"));
+            QVERIFY(args.contains("transport"));
+            QCOMPARE(args.value(args.indexOf("transport") + 1), QString("usb"));
             if (args.value(args.indexOf("state") + 1) == "connected") {
                 QCOMPARE(args.value(args.indexOf("connection_id") + 1), playIds().first());
                 QVERIFY(args.contains("usb_required")); // AOA needs the cable even with wireless ADB.

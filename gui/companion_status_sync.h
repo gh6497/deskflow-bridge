@@ -13,12 +13,13 @@ public:
     enum class UsbDependency { None, Required, FromAdb };
     explicit CompanionStatusSync(QObject *parent = nullptr);
     void update(const QString &adb, const QString &target, const QString &state,
-                bool playbackReady = true, UsbDependency usb = UsbDependency::None);
+                bool playbackReady = true, UsbDependency usb = UsbDependency::None,
+                const QString &transport = {});
 
 private:
     void send();
     QTimer m_heartbeat;
-    QString m_adb, m_target, m_state;
+    QString m_adb, m_target, m_state, m_transport;
     QString m_connectionId;
     UsbDependency m_usb = UsbDependency::None;
     std::optional<bool> m_usbAdb;

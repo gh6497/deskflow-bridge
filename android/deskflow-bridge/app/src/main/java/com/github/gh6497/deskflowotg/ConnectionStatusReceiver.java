@@ -16,6 +16,8 @@ public final class ConnectionStatusReceiver extends BroadcastReceiver {
     private static final String ACTION = "com.github.gh6497.deskflowotg.CONNECTION_STATUS";
     private static final String PREFS = "connection_status";
 
+    record Report(String state, String transport) {}
+
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null || !ACTION.equals(intent.getAction())) return;
@@ -30,6 +32,7 @@ public final class ConnectionStatusReceiver extends BroadcastReceiver {
         if (knownId && id.equals(status.getString("usb_ended_id", "")) && !"disconnected".equals(state)) return;
         status.edit()
                 .putString("state", state)
+                .putString("transport", version == 2 ? ConnectionStatus.transport(intent.getStringExtra("transport")) : "")
                 .putLong("received", SystemClock.elapsedRealtime())
                 .putInt("boot", bootCount(context))
                 .putString("connection_id", knownId ? id : "")
@@ -66,10 +69,15 @@ public final class ConnectionStatusReceiver extends BroadcastReceiver {
     }
 
     static String current(Context context) {
+        return report(context).state();
+    }
+
+    static Report report(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        return ConnectionStatus.current(prefs.getString("state", "unknown"),
+        String state = ConnectionStatus.current(prefs.getString("state", "unknown"),
                 prefs.getLong("received", -1), prefs.getInt("boot", -1),
                 SystemClock.elapsedRealtime(), bootCount(context));
+        return new Report(state, "unknown".equals(state) ? "" : prefs.getString("transport", ""));
     }
 
     private static int bootCount(Context context) {

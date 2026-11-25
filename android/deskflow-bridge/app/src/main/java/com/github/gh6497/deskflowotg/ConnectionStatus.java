@@ -17,6 +17,10 @@ final class ConnectionStatus {
         return id != null && CONNECTION_ID.matcher(id).matches();
     }
 
+    static String transport(String value) {
+        return "usb".equals(value) || "uhid".equals(value) || "ble".equals(value) ? value : "";
+    }
+
     static String current(String state, long received, int boot, long now, int currentBoot) {
         if (!valid(state) || boot < 0 || boot != currentBoot || received < 0
                 || now < received || now - received >= LEASE_MS) return "unknown";
