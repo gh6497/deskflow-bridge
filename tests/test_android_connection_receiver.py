@@ -219,6 +219,24 @@ public final class ReceiverHostTest {
                 .put("state", state).put("play_event", edge).put("playback_ready", ready);
     }
     private static void check(boolean result) { if (!result) throw new AssertionError(); }
+    private static void testTransportReports() {
+        Context context = new Context();
+        ConnectionStatusReceiver receiver = new ConnectionStatusReceiver();
+        long start = SystemClock.now;
+        for (String type : new String[]{"usb", "uhid", "ble"}) {
+            receiver.onReceive(context, event(1, false, false, "connected").put("transport", type));
+            check(ConnectionStatusReceiver.report(context).transport().equals(type));
+        }
+        SystemClock.now += ConnectionStatus.LEASE_MS;
+        check(ConnectionStatusReceiver.report(context).state().equals("unknown"));
+        check(ConnectionStatusReceiver.report(context).transport().isEmpty());
+        receiver.onReceive(context, event(1, false, false, "connected").put("transport", "unsupported"));
+        check(ConnectionStatusReceiver.report(context).transport().isEmpty());
+        receiver.onReceive(context, event(1, false, false, "connected").put("transport", "ble"));
+        receiver.onReceive(context, event(1, false, false, "connected").put("version", 1).put("transport", "ble"));
+        check(ConnectionStatusReceiver.report(context).transport().isEmpty());
+        SystemClock.now = start;
+    }
     private static void testNotifications() {
         Context context = new Context();
         ConnectionStatusReceiver receiver = new ConnectionStatusReceiver();
@@ -348,6 +366,7 @@ public final class ReceiverHostTest {
         System.out.println("PASS: device-side USB detach, shared pause path, ADB dedup and wireless isolation");
     }
     public static void main(String[] args) {
+        testTransportReports();
         Context context = new Context();
         ConnectionStatusReceiver receiver = new ConnectionStatusReceiver();
         SharedPreferences prefs = AutoplaySettings.prefs(context);

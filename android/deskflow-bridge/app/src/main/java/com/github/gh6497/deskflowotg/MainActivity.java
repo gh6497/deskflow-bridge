@@ -55,6 +55,9 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_CONNECTION_NOTIFICATIONS = 1;
     private TextView status;
     private TextView connectionStatus;
+    private TextView connectionTransport;
+    private TextView bluetoothLink;
+    private BluetoothLinkStatus bluetooth;
     private TextView autoplayTarget;
     private TextView wirelessAdbAddresses;
     private View connectionNotificationSettings;
@@ -62,13 +65,24 @@ public final class MainActivity extends Activity {
     private final Runnable refreshConnection = new Runnable() {
         @Override
         public void run() {
-            String state = ConnectionStatusReceiver.current(MainActivity.this);
+            ConnectionStatusReceiver.Report report = ConnectionStatusReceiver.report(MainActivity.this);
+            String state = report.state();
             int text = R.string.connection_unknown;
             if ("connecting".equals(state)) text = R.string.connection_connecting;
             else if ("connected".equals(state)) text = R.string.connection_connected;
             else if ("disconnecting".equals(state)) text = R.string.connection_disconnecting;
             else if ("disconnected".equals(state)) text = R.string.connection_disconnected;
             connectionStatus.setText(text);
+            int method = switch (report.transport()) {
+                case "usb" -> R.string.connection_transport_aoa;
+                case "uhid" -> R.string.connection_transport_uhid;
+                case "ble" -> R.string.connection_transport_ble;
+                default -> R.string.connection_transport_unknown;
+            };
+            connectionTransport.setText(method);
+            String local = bluetooth.display();
+            bluetoothLink.setText(local);
+            bluetoothLink.setVisibility(local.isEmpty() ? View.GONE : View.VISIBLE);
             handler.postDelayed(this, 1000);
         }
     };
@@ -79,6 +93,9 @@ public final class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         status = findViewById(R.id.notification_status);
         connectionStatus = findViewById(R.id.connection_status);
+        connectionTransport = findViewById(R.id.connection_transport);
+        bluetoothLink = findViewById(R.id.bluetooth_link);
+        bluetooth = BluetoothLinkStatus.get(this);
         autoplayTarget = findViewById(R.id.autoplay_target);
         wirelessAdbAddresses = findViewById(R.id.wireless_adb_addresses);
 
@@ -104,6 +121,8 @@ public final class MainActivity extends Activity {
         findViewById(R.id.wireless_adb_wifi_settings).setOnClickListener(view ->
                 startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS)));
         findViewById(R.id.wireless_adb_copy_address).setOnClickListener(view -> copyWirelessAdbAddress());
+        findViewById(R.id.open_bluetooth_diagnostic).setOnClickListener(view ->
+                startActivity(new Intent(this, BluetoothDiagnosticActivity.class)));
 
         findViewById(R.id.notification_settings).setOnClickListener(view -> {
             startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));

@@ -151,7 +151,7 @@ void Session::syncCompanionStatus()
     const auto usb = m_options.transport == "usb" ? UsbDependency::Required :
         m_options.transport == "uhid" ? UsbDependency::FromAdb : UsbDependency::None;
     m_companionStatus.update(m_options.adb, target, QString::fromLatin1(status),
-                             !m_options.audio || m_audioReady, usb);
+                              !m_options.audio || m_audioReady, usb, m_options.transport);
 }
 
 static bool isWirelessAdbTarget(const QString &target)

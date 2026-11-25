@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ble_diagnostic_title"
+            android:textSize="26sp" />
+
+        <TextView
+            android:id="@+id/ble_local_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/ble_local_unselected" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/ble_diagnostic_help" />
+
+        <Button
+            android:id="@+id/ble_scan"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/ble_scan" />
+
+        <TextView
+            android:id="@+id/ble_scan_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite"
+            android:text="@string/ble_scan_idle" />
+
+        <LinearLayout
+            android:id="@+id/ble_scan_results"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:labelFor="@+id/ble_address"
+            android:text="@string/ble_address_label" />
+
+        <EditText
+            android:id="@+id/ble_address"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/ble_address_hint"
+            android:importantForAutofill="no"
+            android:inputType="textVisiblePassword|textNoSuggestions"
+            android:maxLength="32"
+            android:saveEnabled="false"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/ble_connect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ble_connect" />
+
+        <Button
+            android:id="@+id/ble_test_link"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ble_test_link" />
+
+        <TextView
+            android:id="@+id/ble_link_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite"
+            android:text="@string/ble_link_idle" />
+
+        <Button
+            android:id="@+id/ble_open_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/ble_open_settings" />
+    </LinearLayout>
+</ScrollView>

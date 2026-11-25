@@ -15,8 +15,11 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 LAYOUTS = {
     "activity_main": {
         "connection_status": "TextView",
+        "connection_transport": "TextView",
+        "bluetooth_link": "TextView",
         "connection_notifications_enabled": "Switch",
         "connection_notification_settings": "Button",
+        "open_bluetooth_diagnostic": "Button",
         "notification_status": "TextView",
         "wireless_adb_addresses": "TextView",
         "wireless_adb_settings": "Button",
@@ -28,6 +31,18 @@ LAYOUTS = {
         "autoplay_select_player": "Button",
         "open_transfers": "Button",
     },
+    "activity_bluetooth_diagnostic": {
+        "ble_local_status": "TextView",
+        "ble_scan": "Button",
+        "ble_scan_status": "TextView",
+        "ble_scan_results": "LinearLayout",
+        "ble_address": "EditText",
+        "ble_test_link": "Button",
+        "ble_connect": "Button",
+        "ble_link_status": "TextView",
+        "ble_open_settings": "Button",
+    },
+    "item_ble_diagnostic": {},
     "activity_transfer": {
         "transfer_status": "TextView",
         "transfer_auto_public": "Switch",
@@ -81,6 +96,7 @@ class AndroidLayoutsTest(unittest.TestCase):
     def test_activities_load_layouts_and_bind_existing_views(self):
         for activity, layout_names in (
                 ("MainActivity", ("activity_main",)),
+                ("BluetoothDiagnosticActivity", ("activity_bluetooth_diagnostic", "item_ble_diagnostic")),
                 ("TransferActivity", ("activity_transfer", "item_transfer", "transfer_empty")),
                 ("ShareActivity", ("activity_share",))):
             source = (APP / f"java/com/github/gh6497/deskflowotg/{activity}.java").read_text()
@@ -89,6 +105,18 @@ class AndroidLayoutsTest(unittest.TestCase):
             expected_ids = {name for layout in layout_names for name in LAYOUTS[layout]}
             self.assertEqual(set(re.findall(r"findViewById\(R\.id\.(\w+)\)", source)), expected_ids)
             self.assertNotRegex(source, r"new (?:TextView|Button|Switch|ProgressBar|LinearLayout|ScrollView)\(")
+
+    def test_bluetooth_diagnostic_manifest(self):
+        manifest = ET.parse(APP / "AndroidManifest.xml").getroot()
+        activity = next(activity for activity in manifest.findall("./application/activity")
+                        if activity.get(ANDROID + "name") == ".BluetoothDiagnosticActivity")
+        self.assertEqual(activity.get(ANDROID + "exported"), "false")
+        permissions = {item.get(ANDROID + "name"): item for item in manifest.findall("uses-permission")}
+        for permission in ("BLUETOOTH", "BLUETOOTH_ADMIN", "ACCESS_FINE_LOCATION"):
+            self.assertEqual(permissions[f"android.permission.{permission}"].get(ANDROID + "maxSdkVersion"), "30")
+        self.assertEqual(permissions["android.permission.BLUETOOTH_SCAN"].get(ANDROID + "usesPermissionFlags"),
+                         "neverForLocation")
+        self.assertIn("android.permission.BLUETOOTH_CONNECT", permissions)
 
     def test_initial_states(self):
         self.assertEqual(self.layouts["activity_main"].tag, "ScrollView")

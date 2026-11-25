@@ -354,6 +354,14 @@ If an older Android phone pairs on Linux but its keyboard and mouse stay unavail
 
 **If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`12500us` means 12.5 ms). On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
 
+### Find the computer with the companion app
+
+1. Start the phone’s BLE session in the desktop GUI. On the phone, open **Bluetooth connection → Scan for BLE devices** in the companion app. Allow Nearby devices on Android 12 or later. On Android 10 and 11, grant Location permission and turn on Location for the scan.
+2. Tap the computer in the scan results to fill in its address. If the list is empty, enter the computer adapter’s public Bluetooth address. **Test LE connection** tries that address and reports the result. If it times out, check that the address is correct and the computer is advertising.
+3. Tap **Connect to computer**. Confirm any system pairing prompts. The app remembers the computer address and shows the Bluetooth link status and type when Android reports them. Check the desktop connection status and try the keyboard and mouse.
+
+The phone can open and check the Bluetooth link without ADB. Its home screen shows the Deskflow connection status and method (AOA HID, ADB + UHID, or BLE HID) when the updated desktop GUI reports them over authorized ADB. See the [Android companion app documentation](ANDROID_COMPANION.md#ble-diagnostics).
+
 <a id="troubleshooting"></a>
 
 ## 11. Troubleshooting

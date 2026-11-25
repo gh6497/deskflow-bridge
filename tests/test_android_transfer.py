@@ -14,8 +14,8 @@ PACKAGE = Path("com/github/gh6497/deskflowotg")
 def main():
     if not shutil.which("javac") or not shutil.which("java"):
         return 77
-    # The wireless ADB helper only inspects network state. Connection alerts
-    # can post notifications, but do not grant any access to other apps' notifications.
+    # Allow only the permissions used by the network helper, connection alerts
+    # and Bluetooth diagnostics. File transfer uses the system picker.
     manifest = ET.parse(APP / "main/AndroidManifest.xml").getroot()
     android = "{http://schemas.android.com/apk/res/android}"
     provider = next(p for p in manifest.findall("application/provider")
@@ -24,7 +24,12 @@ def main():
     assert provider.get(android + "writePermission") == "android.permission.DUMP"
     assert provider.get(android + "grantUriPermissions") == "false"
     permissions = [p.get(android + "name") for p in manifest.findall("uses-permission")]
-    assert sorted(permissions) == ["android.permission.ACCESS_NETWORK_STATE",
+    assert sorted(permissions) == ["android.permission.ACCESS_FINE_LOCATION",
+                                   "android.permission.ACCESS_NETWORK_STATE",
+                                   "android.permission.BLUETOOTH",
+                                   "android.permission.BLUETOOTH_ADMIN",
+                                   "android.permission.BLUETOOTH_CONNECT",
+                                   "android.permission.BLUETOOTH_SCAN",
                                    "android.permission.POST_NOTIFICATIONS"]
     for language in ("values", "values-zh-rCN"):
         resources = ET.parse(APP / f"main/res/{language}/strings.xml").getroot()

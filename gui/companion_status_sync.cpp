@@ -11,7 +11,7 @@ CompanionStatusSync::CompanionStatusSync(QObject *parent) : QObject(parent)
 }
 
 void CompanionStatusSync::update(const QString &adb, const QString &target, const QString &state,
-                                 bool playbackReady, UsbDependency usb)
+                                 bool playbackReady, UsbDependency usb, const QString &transport)
 {
     const bool targetChanged = m_adb != adb || m_target != target;
     const bool newConnection = state == "connected" && (m_state != "connected" || targetChanged);
@@ -36,6 +36,7 @@ void CompanionStatusSync::update(const QString &adb, const QString &target, cons
     m_adb = adb;
     m_target = target;
     m_state = state;
+    m_transport = transport == "usb" || transport == "uhid" || transport == "ble" ? transport : QString();
     m_heartbeat.stop();
     m_pending = false;
     if (adb.trimmed().isEmpty() || target.isEmpty() || target.startsWith('-') ||
@@ -60,7 +61,7 @@ void CompanionStatusSync::send()
     m_busy = true;
     m_pending = false;
     const auto revision = m_revision;
-    const auto adb = m_adb, target = m_target, state = m_state;
+    const auto adb = m_adb, target = m_target, state = m_state, transport = m_transport;
     const auto connectionId = m_connectionId;
     const bool playbackReady = m_playbackReady;
     // A transient edge, never a heartbeat/retry. Consume even if ADB is offline.
@@ -71,13 +72,13 @@ void CompanionStatusSync::send()
         if (m_pending) send();
     };
     runCommand(this, adb, {"-s", target, "get-state"},
-               [this, revision, adb, target, state, connectionId, playbackReady, playEvent, finish]
+               [this, revision, adb, target, state, transport, connectionId, playbackReady, playEvent, finish]
                (bool ok, const QString &output) {
         if (revision != m_revision || !ok || output.trimmed() != "device") {
             finish();
             return;
         }
-        auto report = [this, adb, target, state, connectionId, playbackReady, playEvent, finish](bool usb) {
+        auto report = [this, adb, target, state, transport, connectionId, playbackReady, playEvent, finish](bool usb) {
             // Explicit receiver and fixed tokens only. No app launch, permission grants or fallback device.
             QStringList args{"-s", target, "shell", "am", "broadcast", "--user", "current",
                        "-n", "com.github.gh6497.deskflowotg/.ConnectionStatusReceiver",
@@ -86,6 +87,7 @@ void CompanionStatusSync::send()
                        "--es", "connection_id", connectionId.isEmpty() ? "none" : connectionId,
                        "--ez", "playback_ready", playbackReady ? "true" : "false",
                        "--ez", "play_event", playEvent ? "true" : "false"};
+            if (!transport.isEmpty()) args << "--es" << "transport" << transport;
             if (usb && (state == "connected" || state == "disconnecting"))
                 args << "--ez" << "usb_required" << "true";
             // BLE can end one session while immediately waiting for the next handshake.
