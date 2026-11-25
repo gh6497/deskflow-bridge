@@ -247,6 +247,7 @@ if(BUILD_BLE)
   target_include_directories(deskflow-bridge PRIVATE platform/linux)
   target_link_libraries(deskflow-bridge PRIVATE PkgConfig::GLIB)
   target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_BLE=1)
+  install(FILES scripts/ble-verified-instance.sh DESTINATION share/deskflow-bridge)
 endif()
 
 target_include_directories(deskflow-bridge PRIVATE

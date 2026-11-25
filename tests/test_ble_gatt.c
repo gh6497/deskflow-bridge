@@ -241,6 +241,113 @@ static void test_mixed_links(GDBusConnection *bus,struct mock_bluez *mock)
     g_clear_object(&b.devices);
     g_free(b.peer_path);
 }
+struct acquired_fd { bool done; GVariant *reply; GUnixFDList *fds; };
+static void got_fd(GObject *source,GAsyncResult *result,gpointer user)
+{
+    struct acquired_fd *a=user;
+    a->reply=g_dbus_connection_call_with_unix_fd_list_finish(G_DBUS_CONNECTION(source),&a->fds,result,NULL);
+    a->done=true;
+}
+
+static GVariant *device_options(const char *path)
+{
+    GVariantBuilder options;
+    g_variant_builder_init(&options,G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&options,"{sv}","device",g_variant_new_object_path(path));
+    g_variant_builder_add(&options,"{sv}","link",g_variant_new_string("LE"));
+    g_variant_builder_add(&options,"{sv}","mtu",g_variant_new_uint16(23));
+    return g_variant_builder_end(&options);
+}
+
+static int get_report_fd(struct otg_ble_hid *b,GDBusConnection *caller,const char *phone,unsigned n)
+{
+    struct acquired_fd a={0};
+    g_dbus_connection_call_with_unix_fd_list(caller,g_dbus_connection_get_unique_name(b->bus),
+        n?ROOT "/hid/pointer":ROOT "/hid/keys","org.bluez.GattCharacteristic1","AcquireNotify",
+        g_variant_new("(@a{sv})",device_options(phone)),G_VARIANT_TYPE("(hq)"),0,1000,NULL,NULL,got_fd,&a);
+    while(!a.done)g_main_context_iteration(NULL,TRUE);
+    if (!a.reply) return -1;
+    gint index;guint16 mtu;g_variant_get(a.reply,"(hq)",&index,&mtu);
+    CHECK(mtu==23 && a.fds);
+    int fd=g_unix_fd_list_get(a.fds,index,NULL);CHECK(fd>=0);
+    g_variant_unref(a.reply);g_object_unref(a.fds);
+    return fd;
+}
+
+static void expect_report(int fd,const uint8_t expected[8])
+{
+    uint8_t data[9];
+    CHECK(recv(fd,data,sizeof(data),MSG_DONTWAIT)==8 && !memcmp(data,expected,8));
+}
+
+static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
+{
+    const char *a="/org/bluez/hci0/dev_52_00_00_00_00_01",*b="/org/bluez/hci0/dev_11_22_33_44_55_66";
+    struct otg_ble_hid hid={.bus=bus,.adapter_path="/org/bluez/hci0",.read_links=read_fake_links,
+                            .resident=true,.latency_fd=-1,.legacy_handles=true};
+    fake_links=(struct link_snapshot){.le_count=2,.entries={{"52:00:00:00:00:01",5,true},{"11:22:33:44:55:66",9,true}}};
+    observe_devices(&hid,mock,3,0,true);
+    hid.directed_owner=g_strdup(g_dbus_connection_get_unique_name(mock->bus));
+    CHECK(register_objects(&hid) && register_blueZ(&hid));
+    struct otg_ble_route *one=otg_ble_route_bind(&hid,"AA:BB:CC:DD:EE:FF");
+    struct otg_ble_route *two=otg_ble_route_bind(&hid,"11:22:33:44:55:66");
+    CHECK(one && two && !otg_ble_route_bind(&hid,"aa:bb:cc:dd:ee:ff"));
+    CHECK(otg_ble_hid_set_session(&hid,true));
+    CHECK(get_report_fd(&hid,bus,a,0)<0);
+    CHECK(!invoke_from(&hid,mock->bus,ROOT "/hid/keys","org.bluez.GattCharacteristic1","StartNotify",NULL,false));
+    int ak=get_report_fd(&hid,mock->bus,a,0),bp=get_report_fd(&hid,mock->bus,b,1);
+    CHECK(ak>=0 && bp>=0 && directed_poll(&hid) && !one->ready && !two->ready);
+    int ap=get_report_fd(&hid,mock->bus,a,1),bk=get_report_fd(&hid,mock->bus,b,0);
+    CHECK(directed_poll(&hid) && one->ready && two->ready);
+    uint8_t neutral[8]={0},key[8]={0,0,30},drag[8]={3,1,32,0,42};
+    expect_report(ak,neutral);expect_report(ap,neutral);expect_report(bk,neutral);expect_report(bp,neutral);
+    otg_ble_route_send(one,1,key);otg_ble_route_send(two,2,drag);
+    expect_report(ak,key);expect_report(bp,drag);
+    struct pollfd silent[]={{bk,POLLIN,0},{ap,POLLIN,0}};CHECK(!poll(silent,2,0));
+    GVariant *read=invoke_from(&hid,mock->bus,ROOT "/hid/keys","org.bluez.GattCharacteristic1","ReadValue",
+        g_variant_new("(@a{sv})",device_options(b)),true);
+    GVariant *val=g_variant_get_child_value(read,0);gsize n=0;
+    const uint8_t *data=g_variant_get_fixed_array(val,&n,1);CHECK(n==8 && !memcmp(data,neutral,8));
+    g_variant_unref(val);g_variant_unref(read);
+    uint8_t led=2;
+    read=invoke_from(&hid,mock->bus,ROOT "/hid/leds","org.bluez.GattCharacteristic1","WriteValue",
+        g_variant_new("(@ay@a{sv})",bytes(&led,1),device_options(a)),true);g_variant_unref(read);
+    CHECK(one->leds==2 && !two->leds);
+    uint8_t suspend=0;
+    read=invoke_from(&hid,mock->bus,ROOT "/hid/control","org.bluez.GattCharacteristic1","WriteValue",
+        g_variant_new("(@ay@a{sv})",bytes(&suspend,1),device_options(a)),true);g_variant_unref(read);
+    CHECK(directed_poll(&hid) && !one->ready && two->ready);
+    expect_report(ak,neutral);expect_report(ap,neutral);
+    /* Per-client pacing can merge drag coordinates; a scroll must flush the
+     * final drag position and then arrive as a separate packet. */
+    uint8_t move[8]={3,1,53,0,42},scroll[8]={3,1,53,0,42,0,1};
+    otg_ble_route_send(two,2,move);otg_ble_route_send(two,2,scroll);
+    expect_report(bp,move);expect_report(bp,scroll);
+    close(ak);close(ap);
+    CHECK(directed_poll(&hid) && !one->ready && two->ready && one->generation);
+    CHECK(!memcmp(two->value[1],scroll,8));
+    otg_ble_route_send(one,1,key);otg_ble_route_send(two,1,key);expect_report(bk,key);
+    observe_devices(&hid,mock,3,1,true);
+    /* Preserve the identity string while replacing the HCI connection. */
+    fake_links.entries[0].handle++;
+    ak=get_report_fd(&hid,mock->bus,a,0);CHECK(ak>=0);
+    ap=get_report_fd(&hid,mock->bus,a,1);CHECK(ap>=0);
+    CHECK(directed_poll(&hid) && !one->ready && two->ready);
+    CHECK(!invoke_from(&hid,mock->bus,ROOT "/hid/keys","org.bluez.GattCharacteristic1","ReadValue",
+        g_variant_new("(@a{sv})",device_options(a)),false));
+    observe_devices(&hid,mock,3,0,true);
+    CHECK(directed_poll(&hid) && one->ready);
+    expect_report(ak,neutral);expect_report(ap,neutral);
+    otg_ble_route_unbind(one);expect_report(ak,neutral);expect_report(ap,neutral);
+    CHECK(!one->ready && two->ready && !memcmp(two->value[1],scroll,8));
+    links_available=false;CHECK(directed_poll(&hid) && !two->ready && two->fd[0]<0);
+    links_available=true;
+    close(ak);close(ap);close(bk);close(bp);
+    otg_ble_route_unbind(two);CHECK(otg_ble_hid_set_session(&hid,false));
+    close_ble(&hid);directed_free(one);directed_free(two);g_free(hid.directed_owner);
+    g_free(hid.peer_path);g_clear_object(&hid.devices);
+}
+
 int main(void)
 {
     char *daemon=g_find_program_in_path("dbus-daemon");
@@ -359,6 +466,7 @@ int main(void)
     g_free(b.original_alias);
     g_clear_object(&b.devices);g_free(b.peer_path);
     test_mixed_links(b.bus,&mock);
+    test_directed(b.bus,&mock);
     g_dbus_node_info_unref(node_info);node_info=NULL;
     g_dbus_connection_close_sync(b.bus,NULL,NULL);g_object_unref(b.bus);
     g_main_context_invoke(mock.context,stop_manager,mock.loop);g_thread_join(thread);

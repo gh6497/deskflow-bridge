@@ -1535,6 +1535,19 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     options.adapter = profile.value("bleAdapter", "hci0").toString();
     options.bleIsolate = profile.value("bleIsolate", false).toBool();
     options.bleLegacyHandles = profile.value("bleLegacyHandles", false).toBool();
+    if (options.transport == "ble" && !options.bleIsolate && !options.blePeer.isEmpty()) {
+        // Decide before the first bridge reserves the adapter's GATT service.
+        for (const auto &other : m_records) {
+            const auto peer = other.value("blePeer").toString().trimmed();
+            if (other.value("transport").toString() == "ble" &&
+                other.value("bleAdapter", "hci0").toString() == options.adapter &&
+                !other.value("bleIsolate").toBool() && !peer.isEmpty() &&
+                peer.compare(options.blePeer, Qt::CaseInsensitive) != 0) {
+                options.preferDirectedBle = true;
+                break;
+            }
+        }
+    }
 #else
     options.adapter.clear();
 #endif

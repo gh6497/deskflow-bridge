@@ -27,10 +27,11 @@
 static const char *runtime_base="/run/user";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
-    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT
+    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
+#define STATUS_DIRECTED 4u
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -48,6 +49,7 @@ struct service {
     uint16_t sizes[2];
     const char *adapter;
     char peer[18];
+    struct directed_service *directed;
 };
 struct otg_ble_session {
     int fd, latency_fd;
@@ -222,11 +224,19 @@ static bool handle_session(struct service *s,const struct message *m)
     }
 }
 
+#include "ble_multi_session.inc"
+
 struct pending_peer {int fd;gint64 deadline;bool owner;};
 static void handle_pending(struct service *s,struct pending_peer *p)
 {
     struct message m;int result=receive_message(p->fd,&m);
     if(!result && g_get_monotonic_time()<p->deadline)return;
+    if (result==1 && s->directed) {
+        if (multi_request(s,p->fd,p->owner,&m)) p->fd=-1;
+        if (p->fd>=0) close(p->fd);
+        p->fd=-1;
+        return;
+    }
     if(result==1 && !m.size && !m.id) {
         if(m.operation==STATUS)(void)reply_status(s,p->fd,true);
         else if(m.operation==STATUS_WITH_LAYOUT)
@@ -247,7 +257,8 @@ static void handle_pending(struct service *s,struct pending_peer *p)
     close(p->fd);p->fd=-1;
 }
 
-int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_atomic_t *stop)
+static int service_run(const char *adapter,bool legacy_handles,const char *instance,
+                       bool exit_idle,volatile sig_atomic_t *stop)
 {
     if(geteuid()==0){fprintf(stderr,"ERROR: run --ble-service as an ordinary user, without sudo\n");return 2;}
     char dir[128],lock_name[160];struct sockaddr_un address;
@@ -273,6 +284,12 @@ int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_ato
     bound=true;
     if(chmod(address.sun_path,0600) || listen(listener,4))goto out;
     struct service s={.client=-1,.clean=true,.adapter=adapter,.legacy_handles=legacy_handles};
+    struct directed_service multi={.client={{.fd=-1},{.fd=-1}},.exit_idle=exit_idle};
+    if (instance) {
+        s.directed=&multi;
+        s.hid=otg_ble_hid_create_directed(adapter,legacy_handles,instance);
+        if (!s.hid) {fprintf(stderr,"ERROR: verified bluetoothd instance unavailable\n");goto out;}
+    }
     struct pending_peer pending[4];
     for(size_t i=0;i<G_N_ELEMENTS(pending);i++)pending[i].fd=-1;
     fprintf(stderr,"INFO: resident BLE service listening on %s (%s handles); idle, no advertisement; keep this process running between bridge sessions\n",
@@ -280,6 +297,7 @@ int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_ato
     result=0;
     while(!*stop && !s.shutdown) {
         if(s.hid && !otg_ble_hid_ops()->poll(s.hid)){result=1;break;}
+        if (s.directed) multi_tick(&s);
         if(s.client>=0) {
             struct message m;int n=receive_message(s.client,&m);
             if(n<0)drop_client(&s);
@@ -307,14 +325,18 @@ int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_ato
          * that just received a reply. A sleep here caps throughput at 1k RPC/s.
          * The bounded timeout also pumps BlueZ and the last coalesced pointer
          * report when no socket input arrives. Never busy-spin while idle. */
-        struct pollfd fds[6]={{listener,POLLIN,0},{s.client,POLLIN,0}};
+        struct pollfd fds[8]={{listener,POLLIN,0},{s.client,POLLIN,0}};
         for(size_t i=0;i<G_N_ELEMENTS(pending);i++)
             fds[i+2]=(struct pollfd){pending[i].fd,POLLIN,0};
-        if(!*stop && !s.shutdown && poll(fds,G_N_ELEMENTS(fds),s.active?1:50)<0 && errno!=EINTR) {
+        for (unsigned i=0;i<2;i++) fds[i+6]=(struct pollfd){multi.client[i].fd,POLLIN,0};
+        if(!*stop && !s.shutdown && poll(fds,G_N_ELEMENTS(fds),(s.active || multi_count(&multi))?1:50)<0 && errno!=EINTR) {
             result=1;break;
         }
     }
-    drop_client(&s);
+    if (s.directed) {
+        for (unsigned i=0;i<2;i++) if (multi.client[i].fd>=0) multi_drop(&s,&multi.client[i],false);
+        if (!s.clean) result=1;
+    } else drop_client(&s);
     for(size_t i=0;i<G_N_ELEMENTS(pending);i++)if(pending[i].fd>=0)close(pending[i].fd);
     if(s.hid) {
         fprintf(stderr,"WARN: resident BLE service stopping; unregistering GATT loses CCC continuity\n");
@@ -326,6 +348,13 @@ out:
     close(lock);
     return result;
 }
+
+int otg_ble_service_run(const char *adapter,bool legacy_handles,volatile sig_atomic_t *stop)
+{ return service_run(adapter,legacy_handles,NULL,false,stop); }
+
+int otg_ble_multi_service_run(const char *adapter,bool legacy_handles,const char *instance,
+                              bool exit_idle,volatile sig_atomic_t *stop)
+{ return service_run(adapter,legacy_handles,instance,exit_idle,stop); }
 
 static int connect_service(uid_t uid,const char *adapter)
 {
@@ -374,13 +403,23 @@ static void notify_supervisor(struct otg_ble_session *s,const char *adapter,bool
 
 /* Adapter is needed for the supervisor notification but never comes from IPC. */
 struct session_owner {struct otg_ble_session session;char adapter[16];};
-struct otg_ble_session *otg_ble_session_open(const char *adapter,bool legacy_handles)
+static struct otg_ble_session *session_open(const char *adapter,bool legacy_handles,
+                                            const char *peer,const char *screen)
 {
     if(!valid_adapter(adapter))return NULL;
     int fd=connect_service(getuid(),adapter);
     if(fd<0){fprintf(stderr,"ERROR: start deskflow-bridge --ble-service --adapter %s as this ordinary user first\n",adapter);return NULL;}
     struct message reply;
-    if(!request(fd,legacy_handles?ATTACH_LEGACY:ATTACH,0,NULL,0,&reply)) {
+    uint8_t identity[17+255];
+    size_t length=0;
+    if (screen) {
+        if (!peer || strlen(peer)!=17 || !*screen || strlen(screen)>255) {close(fd);return NULL;}
+        memcpy(identity,peer,17);
+        memcpy(identity+17,screen,strlen(screen));
+        length=17+strlen(screen);
+    }
+    if(!request(fd,screen?ATTACH_DIRECTED:legacy_handles?ATTACH_LEGACY:ATTACH,
+                screen && legacy_handles,identity,(uint16_t)length,&reply)) {
         fprintf(stderr,"ERROR: resident BLE service busy, unavailable, or incompatible with the requested handle layout; stop the idle service before changing layouts\n");
         close(fd);return NULL;
     }
@@ -399,6 +438,13 @@ struct otg_ble_session *otg_ble_session_open(const char *adapter,bool legacy_han
     fprintf(stderr,"INFO: attached to resident BLE service; waiting for genuine phone subscriptions\n");
     return s;
 }
+
+struct otg_ble_session *otg_ble_session_open(const char *adapter,bool legacy_handles)
+{ return session_open(adapter,legacy_handles,NULL,NULL); }
+
+struct otg_ble_session *otg_ble_directed_session_open(const char *adapter,bool legacy_handles,
+                                                      const char *peer,const char *screen)
+{ return session_open(adapter,legacy_handles,peer,screen); }
 
 static bool session_rpc(struct otg_ble_session *s,uint16_t op,uint16_t id,
                           const void *data,uint16_t size)
@@ -547,6 +593,8 @@ bool otg_ble_service_wait_idle(uid_t uid,const char *adapter)
 
 int otg_ble_service_status(const char *adapter)
 {
+    char token[300]={0};
+    otg_ble_verified_instance(token,sizeof(token));
     int fd=connect_service(getuid(),adapter);
     struct message reply;
     bool ok=fd>=0 && request(fd,STATUS_WITH_LAYOUT,0,NULL,0,&reply);
@@ -558,13 +606,28 @@ int otg_ble_service_status(const char *adapter)
         if(fd>=0)close(fd);
     }
     if(!ok) {
-        puts("{\"version\":2,\"available\":false}");
+        printf("{\"version\":2,\"available\":false,\"verifiedInstance\":\"%s\"}\n",token);
         return 1;
     }
-    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s}\n",
+    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s,\"directed\":%s,\"verifiedInstance\":\"%s\"}\n",
            (reply.data[0]&STATUS_READY)?"true":"false",reply.data[1]?"true":"false",
-           (reply.data[0]&STATUS_LEGACY_HANDLES)?"true":"false");
+           (reply.data[0]&STATUS_LEGACY_HANDLES)?"true":"false",
+           (reply.data[0]&STATUS_DIRECTED)?"true":"false",token);
     return 0;
+}
+
+/* Old single-client supervisors use STATUS. New supervisors also check the
+ * mode before changing the adapter for just one bridge. */
+bool otg_ble_service_single_idle(uid_t uid,const char *adapter)
+{
+    if (!otg_ble_service_wait_idle(uid,adapter)) return false;
+    int fd=connect_service(uid,adapter);
+    if (fd<0) return false;
+    struct message reply;
+    bool ok=request(fd,STATUS_WITH_LAYOUT,0,NULL,0,&reply);
+    close(fd);
+    if (!ok) return otg_ble_service_wait_idle(uid,adapter); /* Pre-layout v2. */
+    return reply.data[1] && !(reply.data[0]&STATUS_DIRECTED);
 }
 
 int otg_ble_service_stop(const char *adapter)

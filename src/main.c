@@ -71,6 +71,8 @@ struct app_options {
     int ble_restore;
     int ble_service;
     int ble_session;
+    const char *ble_multi_instance;
+    bool ble_directed_session;
     bool ble_legacy_handles;
     int ble_status;
     int ble_stop_service;
@@ -290,6 +292,8 @@ static void usage(const char *prog)
              "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
              "      --ble-service     Linux: resident user GATT service (keep running)\n"
+             "      --ble-multi TOKEN Linux: two-phone service, verified running bluetoothd instance\n"
+             "      --ble-directed-session  Attach --ble-session by explicit peer and screen name\n"
              "      --ble-legacy-handles  Linux: 8-bit HID handles for older Android (on service and session)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
               "      --ble-peer MAC    Optional target identity/address filter for BLE\n"
@@ -834,6 +838,10 @@ int main(int argc, char **argv)
             opts.ble_service = 1;
         } else if (strcmp(a, "--ble-session") == 0) {
             opts.ble_session = 1;
+        } else if (strcmp(a, "--ble-multi") == 0 && i+1<argc) {
+            opts.ble_multi_instance=argv[++i];
+        } else if (strcmp(a, "--ble-directed-session") == 0) {
+            opts.ble_directed_session=true;
         } else if (strcmp(a, "--ble-legacy-handles") == 0) {
             opts.ble_legacy_handles = true;
         } else if (strcmp(a, "--ble-status") == 0) {
@@ -1146,6 +1154,23 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
+    if (opts.ble_multi_instance || opts.ble_directed_session) {
+#ifdef OTG_HAVE_BLE
+        if ((opts.ble_multi_instance && (!opts.ble_service || g_gui || opts.ble_session || opts.ble_restore ||
+             opts.ble_status || opts.ble_stop_service || opts.serial || opts.adb_serial || opts.ble_peer ||
+             !otg_ble_instance_matches(opts.ble_multi_instance))) ||
+            (opts.ble_directed_session && (!opts.ble_session || !opts.ble_peer || opts.ble_isolate))) {
+            fprintf(stderr,"ERROR: multi service needs a verified running bluetoothd token; directed sessions need an explicit peer and service-level isolation\n");return 2;
+        }
+        if (opts.ble_multi_instance) {
+            if (opts.ble_isolate) return otg_ble_supervise(argc,argv,opts.adapter,0,&g_stop);
+            return otg_ble_multi_service_run(opts.adapter,opts.ble_legacy_handles,opts.ble_multi_instance,
+                                             getenv("OTG_BLE_EXIT_IDLE")!=NULL,&g_stop);
+        }
+#else
+        fprintf(stderr,"ERROR: directed BLE requires Linux with BUILD_BLE=ON\n");return 2;
+#endif
+    }
 #ifdef OTG_HAVE_BLE_WIN
     if (g_ble_control && (!g_gui || strcmp(opts.transport, "ble") || opts.background ||
         strlen(opts.host) >= sizeof(g_control.host) || strlen(opts.name) >= sizeof(g_control.name))) {
@@ -1270,9 +1295,11 @@ int main(int argc, char **argv)
     else if (strcmp(opts.transport, "ble") == 0) {
 #ifdef OTG_HAVE_BLE
         state.resident_session=opts.ble_session;
-        state.transport_owner=opts.ble_session ? (void *)otg_ble_session_open(opts.adapter,opts.ble_legacy_handles) :
+        state.transport_owner=opts.ble_directed_session ? (void *)otg_ble_directed_session_open(
+            opts.adapter,opts.ble_legacy_handles,opts.ble_peer,opts.name) :
+            opts.ble_session ? (void *)otg_ble_session_open(opts.adapter,opts.ble_legacy_handles) :
                                                  (void *)otg_ble_hid_create(opts.adapter,opts.ble_legacy_handles);
-        if(state.transport_owner &&
+        if(state.transport_owner && !opts.ble_directed_session &&
            !(opts.ble_session ? otg_ble_session_set_peer(state.transport_owner,opts.ble_peer) :
              (!opts.ble_peer || otg_ble_hid_set_peer(state.transport_owner,opts.ble_peer)))) {
             fprintf(stderr,"ERROR: resident BLE service rejected the peer selection; stop the idle service explicitly before changing targets or replacing an older service\n");

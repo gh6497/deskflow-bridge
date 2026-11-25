@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -47,6 +48,7 @@ struct link_snapshot {
     unsigned le_count;
     bool classic, peripheral;
     char address[18];
+    struct le_link { char address[18]; uint16_t handle; bool peripheral; } entries[64];
 };
 
 struct otg_ble_hid;
@@ -56,6 +58,8 @@ enum ble_kind { BLE_ROOT, BLE_SERVICE, BLE_REPORT, BLE_MAP, BLE_INFO,
 struct ble_object { struct otg_ble_hid *b; enum ble_kind kind; int report; };
 
 struct otg_ble_hid {
+    char *directed_owner;
+    struct otg_ble_route *routes[2];
     bool legacy_handles;
     GDBusConnection *bus;
     GDBusObjectManager *devices;
@@ -312,20 +316,26 @@ static bool read_kernel_links(struct otg_ble_hid *b, struct link_snapshot *links
         const uint8_t *a=entry->address;
         snprintf(links->address,sizeof(links->address),"%02X:%02X:%02X:%02X:%02X:%02X",
                  a[5],a[4],a[3],a[2],a[1],a[0]);
+        struct le_link *link=&links->entries[links->le_count-1];
+        memcpy(link->address,links->address,sizeof(link->address));
+        link->handle=entry->handle;
+        link->peripheral=links->peripheral;
     }
     return true;
 }
 
-static bool matches_link(const struct link_snapshot *links, const char *address, const char *path)
+static bool matches_address(const char *air_address, const char *address, const char *path)
 {
-    if (address && !g_ascii_strcasecmp(address,links->address)) return true;
+    if (address && !g_ascii_strcasecmp(address,air_address)) return true;
     /* The kernel can still report the on-air address of a resolved peer. */
     char object_id[18];
-    memcpy(object_id,links->address,sizeof(object_id));
+    memcpy(object_id,air_address,sizeof(object_id));
     for (unsigned i=2;i<17;i+=3) object_id[i]='_';
     const char *name=strrchr(path,'/');
     return name && g_str_has_prefix(name,"/dev_") && !g_ascii_strcasecmp(name+5,object_id);
 }
+
+#include "ble_directed.inc"
 
 static bool subscriptions_safe(const struct otg_ble_hid *b)
 {
@@ -370,7 +380,7 @@ static void refresh_peer(struct otg_ble_hid *b)
         GVariant *value=g_dbus_proxy_get_cached_property(G_DBUS_PROXY(interface),"Connected");
         if(value && g_variant_get_boolean(value)) {
             char *current_address=device_address(G_DBUS_PROXY(interface));
-            if (!have_links || (links.le_count==1 && links.peripheral && matches_link(&links,current_address,path))) {
+            if (!have_links || (links.le_count==1 && links.peripheral && matches_address(links.address,current_address,path))) {
                 connected++;g_free(candidate);candidate=g_strdup(path);
                 g_free(address);address=g_steal_pointer(&current_address);
                 GVariant *bond=g_dbus_proxy_get_cached_property(G_DBUS_PROXY(interface),"Paired");
@@ -524,7 +534,15 @@ static GVariant *props(const struct ble_object *o, const char *interface)
     if (o->kind==BLE_SERVICE) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(HID_UUID)); g_variant_builder_add(&d,"{sv}","Primary",g_variant_new_boolean(TRUE)); }
     else if (o->kind==BLE_MAP) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(MAP_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read","encrypt-read",NULL})); }
     else if (o->kind==BLE_INFO) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(INFO_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read",NULL})); }
-    else if (o->kind==BLE_REPORT) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(CHAR_UUID)); g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid")); const char *f[] = {"read","encrypt-read","notify","encrypt-notify",NULL}; g_variant_builder_add(&d,"{sv}","Flags",strv(f)); g_variant_builder_add(&d,"{sv}","Notifying",g_variant_new_boolean(b->notifying[o->report])); g_variant_builder_add(&d,"{sv}","NotifyAcquired",g_variant_new_boolean(FALSE)); }
+    else if (o->kind==BLE_REPORT) {
+        const char *flags[]={"read","encrypt-read","notify","encrypt-notify",NULL};
+        bool acquired=b->directed_owner && directed_acquired(b,o->report);
+        g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(CHAR_UUID));
+        g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid"));
+        g_variant_builder_add(&d,"{sv}","Flags",strv(flags));
+        g_variant_builder_add(&d,"{sv}","Notifying",g_variant_new_boolean(acquired || b->notifying[o->report]));
+        g_variant_builder_add(&d,"{sv}","NotifyAcquired",g_variant_new_boolean(acquired));
+    }
     else if (o->kind==BLE_REF) { g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(REF_UUID)); g_variant_builder_add(&d,"{sv}","Characteristic",g_variant_new_object_path(path_for(&(struct ble_object){b,o->report == 2 ? BLE_LEDS : BLE_REPORT,o->report}))); g_variant_builder_add(&d,"{sv}","Flags",strv((const char*[]){"read",NULL})); }
     else if (o->kind==BLE_LEDS || o->kind==BLE_CONTROL) {
         g_variant_builder_add(&d,"{sv}","UUID",g_variant_new_string(o->kind==BLE_LEDS ? CHAR_UUID : "00002a4c-0000-1000-8000-00805f9b34fb"));
@@ -538,6 +556,7 @@ static GVariant *props(const struct ble_object *o, const char *interface)
 
 static void changed(struct otg_ble_hid *b, int report)
 {
+    if (b->directed_owner) return;
     char *owner = NULL;
     if (b->devices) {
         refresh_peer(b);
@@ -600,12 +619,14 @@ static void method(GDBusConnection *c,const gchar *sender,const gchar *path,cons
     struct ble_object *o=user; struct otg_ble_hid *b=o->b;
     if (b->devices) {
         char *owner=g_dbus_object_manager_client_get_name_owner(G_DBUS_OBJECT_MANAGER_CLIENT(b->devices));
-        bool allowed=owner && sender && !strcmp(owner,sender);
+        bool allowed=owner && sender && !strcmp(owner,sender) &&
+                     (!b->directed_owner || !strcmp(b->directed_owner,owner));
         g_free(owner);
         if(!allowed) {
             g_dbus_method_invocation_return_dbus_error(inv,"org.bluez.Error.NotAuthorized","BlueZ only");return;
         }
     }
+    if (b->directed_owner && directed_method(o,name,p,inv)) return;
     if (o->kind==BLE_ROOT && !strcmp(name,"GetManagedObjects")) { GVariantBuilder top; g_variant_builder_init(&top,G_VARIANT_TYPE("a{oa{sa{sv}}}")); for (int i=1;i<BLE_OBJECT_COUNT-1;i++) { struct ble_object *x=&b->objects[i]; if (!x->b) continue; GVariantBuilder interfaces; g_variant_builder_init(&interfaces,G_VARIANT_TYPE("a{sa{sv}}")); g_variant_builder_add_value(&interfaces,g_variant_new_dict_entry(g_variant_new_string(iface_for(x->kind)),props(x,iface_for(x->kind)))); g_variant_builder_add_value(&top,g_variant_new_dict_entry(g_variant_new_object_path(path_for(x)),g_variant_builder_end(&interfaces))); } g_dbus_method_invocation_return_value(inv,g_variant_new("(@a{oa{sa{sv}}})",g_variant_builder_end(&top))); return; }
     if (!strcmp(iface,"org.freedesktop.DBus.Properties") && !strcmp(name,"GetAll")) { const char *which; g_variant_get(p,"(&s)",&which); g_dbus_method_invocation_return_value(inv,g_variant_new("(@a{sv})",props(o,which))); return; }
     if (o->kind==BLE_ADV && !strcmp(name,"Release")) { g_dbus_method_invocation_return_value(inv,NULL); return; }
@@ -682,6 +703,7 @@ static bool register_blueZ(struct otg_ble_hid *b)
         g_variant_new("(o@a{sv})",ROOT,g_variant_new_array(G_VARIANT_TYPE("{sv}"),NULL,0)),&error);
     if(!reply){fprintf(stderr,"ERROR: BlueZ RegisterApplication: %s\n",error?error->message:"unknown error");g_clear_error(&error);return false;}
     g_variant_unref(reply);b->app_registered=true;
+    fprintf(stderr,"INFO: BLE GATT application registered%s\n",b->directed_owner?" (directed multi-device)":"");
     return b->resident || start_advertisement(b);
 }
 
@@ -694,18 +716,18 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b, bool enabled)
         if(!start_advertisement(b)){restore_adapter_alias(b);return false;}
         reset_reports(b);b->pointer_interval_ns=0;b->suspended=false;
         b->session_enabled=true;
-        update_channel_state(b);
+        if (!b->directed_owner) update_channel_state(b);
         return true;
     }
     /* Release before disabling input. Keep genuine StartNotify evidence and
      * the GATT registration; never infer subscriptions from Connected. */
-    if(b->session_enabled) {
+    if(b->session_enabled && !b->directed_owner) {
         reset_reports(b);
         if(b->notifying[0])changed(b,0);
         if(b->notifying[1])changed(b,1);
     }
     b->session_enabled=false;b->pointer_interval_ns=0;
-    update_channel_state(b);
+    if (!b->directed_owner) update_channel_state(b);
     bool ok=true;
     if(b->adv_registered) {
         GError *error=NULL;
@@ -814,6 +836,7 @@ static bool poll_ble(void *ctx)
     while (g_main_context_pending(NULL)) {
         g_main_context_iteration(NULL, FALSE);
     }
+    if (b->directed_owner) return directed_poll(b);
     refresh_peer(b);
     update_channel_state(b);
     latency_poll(b);
@@ -868,6 +891,67 @@ struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter, bool legacy
     return create_hid(adapter, true, legacy_handles);
 }
 
+static char *instance_owner(GDBusConnection *bus,const char *instance)
+{
+    if (!instance || !bus) return NULL;
+    /* The helper compares /proc/PID/exe with a known fixed build before
+     * recording the bus ID and unique owner in root-owned /run. */
+    char *verified=NULL;
+    if (!g_file_get_contents("/run/deskflow-bridge-bluez-directed",&verified,NULL,NULL)) return NULL;
+    bool matches=!strcmp(instance,g_strchomp(verified));
+    g_free(verified);
+    if (!matches) return NULL;
+    const char *dbus="org.freedesktop.DBus", *path="/org/freedesktop/DBus";
+    GVariant *id=g_dbus_connection_call_sync(bus,dbus,path,dbus,"GetId",NULL,
+        G_VARIANT_TYPE("(s)"),0,2000,NULL,NULL);
+    GVariant *name=g_dbus_connection_call_sync(bus,dbus,path,dbus,"GetNameOwner",
+        g_variant_new("(s)",BLUEZ),G_VARIANT_TYPE("(s)"),0,2000,NULL,NULL);
+    char *result=NULL;
+    if (id && name) {
+        const char *guid,*owner;
+        g_variant_get(id,"(&s)",&guid);
+        g_variant_get(name,"(&s)",&owner);
+        char *actual=g_strdup_printf("%s/%s",guid,owner);
+        if (!strcmp(actual,instance)) result=g_strdup(owner);
+        g_free(actual);
+    }
+    g_clear_pointer(&id,g_variant_unref);
+    g_clear_pointer(&name,g_variant_unref);
+    return result;
+}
+
+bool otg_ble_instance_matches(const char *instance)
+{
+    GDBusConnection *bus=g_bus_get_sync(G_BUS_TYPE_SYSTEM,NULL,NULL);
+    char *owner=instance_owner(bus,instance);
+    bool ok=owner!=NULL;
+    g_free(owner);
+    g_clear_object(&bus);
+    return ok;
+}
+
+bool otg_ble_verified_instance(char *token,size_t capacity)
+{
+    char *marker=NULL;
+    if (!g_file_get_contents("/run/deskflow-bridge-bluez-directed",&marker,NULL,NULL)) return false;
+    g_strchomp(marker);
+    bool valid=strlen(marker)<capacity && otg_ble_instance_matches(marker);
+    if (valid) g_strlcpy(token,marker,capacity);
+    g_free(marker);
+    return valid;
+}
+
+struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter,bool legacy_handles,
+                                                const char *instance)
+{
+    struct otg_ble_hid *b=create_hid(adapter,true,legacy_handles);
+    if (b && !(b->directed_owner=instance_owner(b->bus,instance))) {
+        otg_ble_hid_destroy(b);
+        return NULL;
+    }
+    return b;
+}
+
 struct otg_ble_hid *otg_ble_hid_create(const char *adapter, bool legacy_handles)
 {
     return create_hid(adapter, false, legacy_handles);
@@ -876,6 +960,8 @@ void otg_ble_hid_destroy(struct otg_ble_hid *b)
 {
     if (!b) return;
     close_ble(b);
+    for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++) directed_free(b->routes[i]);
+    g_free(b->directed_owner);
     restore_adapter_alias(b);
     if (b->latency_fd>=0) close(b->latency_fd);
     if (b->hci_fd>=0) close(b->hci_fd);

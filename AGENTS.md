@@ -449,8 +449,12 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   GUI 左侧设备列表，右侧设备配置和共享服务页签。相邻屏幕和方向在设备配置的「屏幕与显示」下，输入参数按设备隔离，日志可筛选。
   活动会话期间禁止新增/移除设备或改共享布局/屏幕名，但允许编辑其他空闲设备的尺寸和连接身份。
   `serverConfiguration` 验证唯一名称、相邻屏幕、双向边、网格重叠和电脑连通性。外部服务的布局在 Deskflow 中配置。
-  当前保守限制为多 USB + 至多一台 BLE（包括空闲 Windows provider 的身份占用），不能放宽
-  底层单目标门控。多设备测试全为 fake 子进程，不访问 USB/系统蓝牙，不等于真机验收。
+  多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）。
+  Linux 双 BLE 使用 `--ble-service --ble-multi TOKEN` 与独立 `ATTACH_DIRECTED` 接入，每个会话预留
+  唯一地址及屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和
+  该连接的两条通知 FD 发送。不能将未重建的 FD 当作已恢复的 CCC，不能回退全局 Value 广播。
+  隔离由共享服务监督器持有，最后一个会话退出时恢复。使用方法见两份用户指南第 9 节。
+  私有 D-Bus、真实 seqpacket 和 fake GUI 子进程测试不访问系统蓝牙。两台真机空口验收待做。
 - `gui/session.cpp` 只管理自己创建的 Deskflow 和桥接进程。自动启动生成独立配置、监听回环地址并同步 TLS 配置；
   外部服务模式不更改或终止已有 Deskflow。根据 `--help` 区分现代 `deskflow-core server --settings` 与传统 server 参数。
 - `src/main.c --gui` 在 stdout 输出 JSON 行 `usb-ready` / `connected` / `disconnected`；日志仍走 stderr。

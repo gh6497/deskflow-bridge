@@ -3,6 +3,8 @@
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
 <context>
   <name></name>
+  <message id="otg.multi.stop_single_service"><source>Disconnect the Bluetooth session, click Stop idle Bluetooth service, then reconnect to start the two-phone service.</source><translation>请先断开蓝牙会话，点击「停止空闲蓝牙服务」，再点「连接」启动双手机服务。</translation></message>
+  <message id="otg.multi.directed_required"><source>For two BLE phones, start a verified directed service, use the same adapter and a different phone address for each screen, and turn off per-device isolation.</source><translation>双蓝牙手机需要先启动已核验的定向服务。两台设备使用同一适配器，分别填写手机地址，并关闭设备配置中的蓝牙隔离。</translation></message>
   <message id="otg.transfer.working"><source>Working with the selected phone…</source><translation>正在处理所选手机的文件请求…</translation></message>
   <message id="otg.transfer.title"><source>Files &amp; sharing</source><translation>文件与分享</translation></message>
   <message id="otg.transfer.help"><source>Requires companion app 0.1.6 and already-authorized ADB. On the phone share to computer, then refresh here and select files to receive. Select files or drag local files into this window to send them. The phone can keep private copies or automatically publish media and files to user-authorized public storage. No clipboard changes or automatic opening. Limits: 32 files, 1 GiB per file, 2 GiB total.</source><translation>需要伴侣应用 0.1.6 和已有的已授权 ADB。在手机「分享至电脑」后，在此刷新并选择接收。可点击选择文件，也可将本地文件拖入窗口发送。手机可以保留私有副本，也可以将媒体文件和其他文件自动保存到用户授权的公共位置。不修改剪贴板、不自动打开。最多 32 个文件，单文件 1 GiB，总计 2 GiB。</translation></message>

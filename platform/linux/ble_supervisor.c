@@ -280,9 +280,10 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     GDBusConnection *bus=NULL;GSubprocess *child=NULL;int result=1;
     bool saved=false;uint32_t original=0;char *original_alias=NULL;
     struct otg_ble_link *link=NULL;int ipc[2]={-1,-1};
-    bool resident_session=false;
+    bool resident_session=false,shared_service=false;
     bool gui=false;
     for(int i=1;i<argc;i++)if(!strcmp(argv[i],"--ble-session"))resident_session=true;
+    for(int i=1;i<argc;i++)if(!strcmp(argv[i],"--ble-service"))shared_service=true;
     for(int i=1;i<argc;i++)if(!strcmp(argv[i],"--gui"))gui=true;
     struct stat lock_stat;
     if (lock<0 || fstat(lock,&lock_stat) || lock_stat.st_uid!=0 ||
@@ -308,8 +309,15 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     if (!(c.supported & BIT(9)) || (c.settings & (BIT(8)|BIT(12)))) {
         fprintf(stderr,"ERROR: unsupported LE controller or special debug/high-speed settings; no changes made\n");goto out;
     }
-    if(resident_session && !otg_ble_service_wait_idle((uid_t)uid,adapter)) {
+    if(resident_session && !otg_ble_service_single_idle((uid_t)uid,adapter)) {
         fprintf(stderr,"ERROR: start an idle --ble-service as the sudo caller before isolation (no changes made)\n");goto out;
+    }
+    if (shared_service) {
+        char *socket_path=g_strdup_printf("/run/user/%lu/deskflow-bridge/ble-%s.sock",uid,adapter);
+        struct stat st;
+        bool free_adapter=lstat(socket_path,&st)<0 && errno==ENOENT;
+        g_free(socket_path);
+        if (!free_adapter) {fprintf(stderr,"ERROR: stop the existing resident service before shared isolation\n");goto out;}
     }
     if(!preflight(bus,object_path,&c)) goto out;
     if(*stop){result=0;goto out;}
@@ -335,7 +343,8 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
     for (int i=1;i<argc;++i) if (strcmp(argv[i],"--ble-isolate")) args[n++]=argv[i];
     GSubprocessLauncher *launcher=g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_STDIN_INHERIT);
     g_subprocess_launcher_unsetenv(launcher,"OTG_BLE_LATENCY_FD");
-    if(socketpair(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK,0,ipc)==0)
+    if (shared_service) g_subprocess_launcher_setenv(launcher,"OTG_BLE_EXIT_IDLE","1",TRUE);
+    if(!shared_service && socketpair(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK,0,ipc)==0)
         link=otg_ble_link_open(c.index,ipc[0]);
     if(link) {
         g_subprocess_launcher_take_fd(launcher,ipc[1],3);ipc[1]=-1;

@@ -727,6 +727,28 @@ private slots:
         manager.shutdown();
         QTRY_VERIFY(manager.settled());
     }
+#ifdef OTG_GUI_HAVE_BLE
+    void twoDirectedBleSessions()
+    {
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
+        ConnectionManager manager;
+        manager.addDevice("a"); manager.addDevice("b");
+        ConnectionOptions a;
+        a.bridge = peerPath(); a.manageServer = false; a.transport = "ble";
+        a.blePeer = "AA:BB:CC:DD:EE:01"; a.phone = "k20";
+        auto b = a; b.phone = "r17"; b.blePeer = a.blePeer.toLower();
+        QVERIFY(manager.start("a", a, {}));
+        QVERIFY(!manager.start("b", b, {}));
+        b.blePeer = "AA:BB:CC:DD:EE:02";
+        QVERIFY(manager.start("b", b, {}));
+        QTRY_COMPARE(manager.state("a"), Session::State::Connected);
+        QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+        manager.stop("a"); QTRY_COMPARE(manager.state("a"), Session::State::Idle);
+        QCOMPARE(manager.state("b"), Session::State::Connected);
+        manager.shutdown(); QTRY_VERIFY(manager.settled());
+    }
+#endif
     void windowsBleProviderReuse()
     {
 #ifdef OTG_TEST_NATIVE_BLE_PEER

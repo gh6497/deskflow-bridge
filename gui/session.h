@@ -46,6 +46,8 @@ struct ConnectionOptions {
     QString blePeer;
     bool bleIsolate = false;
     bool bleLegacyHandles = false;
+    bool requireDirectedBle = false;
+    bool preferDirectedBle = false;
     int port = 24800;
     int width = 1080;
     int height = 1920;
@@ -117,6 +119,7 @@ private:
     QStringList m_bleAuxiliary;
     bool m_bleActive = false, m_shutdown = false, m_stoppingBleProvider = false;
     bool m_audioReady = false;
+    bool m_directedBle = false;
     bool m_adbServerStarted = false, m_adbTargetPrepared = false;
     int m_adbTargetAttempts = 0;
     QByteArray m_failureId, m_statusId;
