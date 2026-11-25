@@ -153,8 +153,13 @@ int main(int argc, char **argv)
     }
     if (qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
         (args.contains("--ble-status") || args.contains("--ble-service"))) return 10;
+    const auto bleStartMarker = qEnvironmentVariable("OTG_TEST_BLE_START_MARKER");
     if (args.contains("--ble-status")) {
         const auto mode = qEnvironmentVariable("OTG_TEST_BLE_STATUS");
+        if (!bleStartMarker.isEmpty() && !QFile::exists(bleStartMarker)) {
+            output("{\"version\":2,\"available\":false,\"verifiedInstance\":\"test-bus/:1.1\"}\n");
+            return 1;
+        }
         if (mode == "directed")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true}\n");
         else if (mode == "busy")
@@ -167,7 +172,14 @@ int main(int argc, char **argv)
             output("{\"version\":2,\"available\":true,\"idle\":true,\"ready\":false}\n");
         return 0;
     }
-    if (args.contains("--ble-service")) return 2; // Never start a real daemon in tests.
+    if (args.contains("--ble-service")) {
+        if (bleStartMarker.isEmpty() ||
+            args.mid(1) != QStringList{"--ble-service", "--adapter", "hci0", "--ble-multi", "test-bus/:1.1"})
+            return 2;
+        // Stand in for the resident socket without accessing Bluetooth.
+        QFile marker(bleStartMarker);
+        return marker.open(QIODevice::WriteOnly | QIODevice::NewOnly) ? 0 : 1;
+    }
     if (args.contains("--usb-watch")) {
         const auto mode = qEnvironmentVariable("OTG_TEST_USB_WATCH");
         if (mode == "registration-failure")

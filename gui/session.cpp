@@ -397,9 +397,11 @@ void Session::prepareBle(bool started, int attempts)
             startConnection();
             return;
         }
+        const auto dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+        const auto logPath = QDir(dir).filePath("ble-" + m_options.adapter + ".log");
         if (started) {
             if (attempts >= 20) {
-                fail("otg.ble.service_failed", output);
+                fail("otg.ble.service_unreachable", QDir::toNativeSeparators(logPath));
                 return;
             }
             QTimer::singleShot(100, this, [this, generation, attempts] {
@@ -411,29 +413,20 @@ void Session::prepareBle(bool started, int attempts)
         if (m_options.requireDirectedBle && !startDirected) {fail("otg.multi.directed_required");return;}
         // Detached, ordinary-user process. No PID-based stop/kill: another GUI
         // or a CLI may reuse it. Its existing private adapter lock wins races.
-        const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
         if (dir.isEmpty() || !QDir().mkpath(dir)) {
             fail("otg.ble.service_failed", dir);
             return;
         }
         QProcess service;
+        service.setProgram(m_options.bridge);
         QStringList args{"--ble-service", "--adapter", m_options.adapter};
+        // Keep the adapter's mode. Shared BLE-only isolation is started explicitly.
         if (startDirected) args << "--ble-multi" << token;
         if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
-        if (startDirected) {
-            /* A directed service must own the adapter-wide BLE-only mode.
-             * Starting it as an ordinary resident process leaves classic
-             * HFP/HSP profiles visible and older phones choose HEADSET. */
-            args << "--ble-isolate";
-            args.prepend(m_options.bridge);
-            service.setProgram("/usr/bin/pkexec");
-        } else {
-            service.setProgram(m_options.bridge);
-        }
         service.setArguments(args);
         service.setStandardInputFile(QProcess::nullDevice());
         service.setStandardOutputFile(QProcess::nullDevice());
-        service.setStandardErrorFile(dir + "/ble-" + m_options.adapter + ".log", QIODevice::Append);
+        service.setStandardErrorFile(logPath, QIODevice::Append);
         if (!service.startDetached()) {
             fail("otg.ble.service_failed", service.errorString());
             return;
