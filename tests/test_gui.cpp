@@ -122,6 +122,14 @@ private slots:
         row("adb-target", "otg.error.adb_target_required", [](auto &o) {
             o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.clipboard = true; o.adb = peerPath();
         });
+#ifdef Q_OS_WIN
+        row("usb-no-adb-target", "otg.error.adb_target_required", [](auto &o) {
+            o.audio = true; o.adb = peerPath();
+        });
+        row("usb-blank-adb-target", "otg.error.adb_target_required", [](auto &o) {
+            o.audio = true; o.adb = peerPath(); o.adbSerial = "  ";
+        });
+#endif
 #ifdef OTG_GUI_HAVE_UHID
         row("uhid-no-usb-fallback", "otg.error.adb_target_required", [](auto &o) { o.transport = "uhid"; o.adb = peerPath(); });
         row("uhid-blank-target", "otg.error.adb_target_required", [](auto &o) {
@@ -453,8 +461,19 @@ private slots:
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QCOMPARE(sizes.size(), audio || clipboard ? 1 : 0);
     }
+    void usbAdbTargetAppearsAfterHotplug_data()
+    {
+        QTest::addColumn<QString>("adbSerial");
+        QTest::newRow("explicit-usb-target") << QStringLiteral("USB_ADB_ID");
+        QTest::newRow("explicit-wireless-target") << QStringLiteral("192.0.2.1:5555");
+#ifndef Q_OS_WIN
+        // Windows requires a separate ADB identity; POSIX also supports AOA serial fallback.
+        QTest::newRow("aoa-serial-fallback") << QString();
+#endif
+    }
     void usbAdbTargetAppearsAfterHotplug()
     {
+        QFETCH(QString, adbSerial);
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const auto attempts = dir.filePath("adb-attempts");
@@ -468,6 +487,7 @@ private slots:
         options.manageServer = false;
         options.bridge = options.adb = peerPath();
         options.serial = "TEST123";
+        options.adbSerial = adbSerial;
         options.audio = true;
         options.scrcpyServer = "fake-server";
         options.scrcpyVersion = "5.0.1";

@@ -441,6 +441,18 @@ private slots:
             qunsetenv("OTG_TEST_CLIPBOARD_PORT");
             qunsetenv("OTG_TEST_UHID_LOG");
         });
+        // The loopback listener can accept a connection before the fake
+        // server reaches main(). Wait for each launch before replying, so
+        // completing or cancelling an exchange cannot erase its launch record.
+        const auto serverLaunchCount = [&logPath] {
+            QFile log(logPath);
+            if (!log.open(QIODevice::ReadOnly)) return qsizetype(0);
+            qsizetype count = 0;
+            for (const auto &line : log.readAll().split('\n'))
+                if (QJsonDocument::fromJson(line).array().contains("com.genymobile.scrcpy.Server"))
+                    ++count;
+            return count;
+        };
 
         AutoConnectTestWindow window;
         window.show();
@@ -464,6 +476,7 @@ private slots:
         devices->setCurrentRow(0);
         QTRY_VERIFY(tunnel.hasPendingConnections());
         auto *reader = tunnel.nextPendingConnection();
+        QTRY_COMPARE(serverLaunchCount(), 1);
         reader->write(QByteArray(1, '\0'));
         QTRY_COMPARE(reader->bytesAvailable(), 2);
         QCOMPARE(reader->readAll(), QByteArray::fromHex("0800"));
@@ -492,6 +505,7 @@ private slots:
         clipboard->setText("newer local text");
         QTRY_VERIFY(tunnel.hasPendingConnections());
         auto *writer = tunnel.nextPendingConnection();
+        QTRY_COMPARE(serverLaunchCount(), 2);
         writer->write(QByteArray(1, '\0'));
         QTRY_COMPARE(writer->bytesAvailable(), bytes.size() + 14);
         const auto request = writer->readAll();
@@ -513,6 +527,7 @@ private slots:
         receive->trigger();
         QTRY_VERIFY(tunnel.hasPendingConnections());
         auto *cancelled = tunnel.nextPendingConnection();
+        QTRY_COMPARE(serverLaunchCount(), 3);
         cancelled->write(QByteArray(1, '\0'));
         QTRY_COMPARE(cancelled->bytesAvailable(), 2);
         QSignalSpy quit(&window, &MainWindow::exitReady);
@@ -1777,7 +1792,12 @@ private slots:
             // connection must affect the next automatic connection too;
             // the remembered snapshot still represents the old no-ADB run.
             window.findChild<QLineEdit *>("adbExecutable")->setText(testPeerPath());
+#ifdef Q_OS_WIN
+            // Windows keeps the AOA serial and ADB identity separate.
+            adbSerial->setText("USB_ADB_ID");
+#else
             adbSerial->clear(); // Use the AOA serial as the local ADB target.
+#endif
             auto *adbEnabled = window.findChild<QCheckBox *>("adbEnabled");
             auto *audio = window.findChild<QCheckBox *>("audioEnabled");
             QVERIFY(adbEnabled && audio);
@@ -1802,19 +1822,29 @@ private slots:
             const auto commandText = commands.readAll();
             QVERIFY(commandText.contains("--audio"));
             QVERIFY(commandText.contains("--adb"));
+#ifdef Q_OS_WIN
+            QVERIFY(commandText.contains("\"--adb-serial\",\"USB_ADB_ID\""));
+            QVERIFY(!commandText.contains("\"--adb-serial\",\"TEST123\""));
+#else
             QVERIFY(commandText.contains("\"--adb-serial\",\"TEST123\""));
+#endif
             QCOMPARE(width->value(), 1234);
             QCOMPARE(multiplier->value(), 2.0);
             QCOMPARE(window.findChild<QComboBox *>("rightButtonAction")->currentData().toString(), "back");
             window.findChild<QAction *>("trayQuit")->trigger();
             QTRY_COMPARE(session->state(), Session::State::Idle);
         }
-        // Startup with a remembered phone connects without invoking ADB.
+        // Startup restores the updated ADB enhancements and target.
         AutoConnectTestWindow restored;
         auto *session = restored.findChild<Session *>();
         QVERIFY(restored.findChild<QCheckBox *>("autoConnectEnabled")->isChecked());
         QTRY_COMPARE(session->state(), Session::State::Connected);
         QCOMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 1234);
+#ifdef Q_OS_WIN
+        QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), QStringLiteral("USB_ADB_ID"));
+#else
+        QVERIFY(restored.findChild<QLineEdit *>("adbSerial")->text().isEmpty());
+#endif
         restored.findChild<QAction *>("trayQuit")->trigger();
         QTRY_COMPARE(session->state(), Session::State::Idle);
     }
