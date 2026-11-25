@@ -187,13 +187,38 @@ static void directed_refresh(struct otg_ble_hid *b, struct otg_ble_route *r,
     }
 }
 
+static void directed_observe_advertisement(struct otg_ble_hid *b, const struct link_snapshot *links)
+{
+    unsigned peripherals = 0;
+    uint16_t handle = 0;
+    for (unsigned i = 0; i < links->le_count; ++i) {
+        if (links->entries[i].peripheral) {
+            ++peripherals;
+            handle = links->entries[i].handle;
+        }
+    }
+    if (peripherals == b->adv_peripherals && (peripherals != 1 || handle == b->adv_last_handle)) return;
+    b->adv_peripherals = peripherals;
+    b->adv_last_handle = handle;
+    if (!b->session_enabled) return;
+
+    /* A peripheral connection can consume the controller's advertisement.
+     * BlueZ can still list that instance as registered. Re-arm once per
+     * topology change while there is room for another phone. */
+    b->adv_rearm = peripherals < G_N_ELEMENTS(b->routes);
+    b->adv_attempts = BLE_ADV_ATTEMPTS;
+    b->adv_next_ns = monotonic_ns() + BLE_ADV_REARM_DELAY_NS;
+}
+
 static bool directed_poll(struct otg_ble_hid *b)
 {
     char *owner=g_dbus_object_manager_client_get_name_owner(G_DBUS_OBJECT_MANAGER_CLIENT(b->devices));
     bool current=!g_strcmp0(owner,b->directed_owner);
     g_free(owner);
     struct link_snapshot links={0};
-    if (!current || !b->read_links || !b->read_links(b,&links)) links.le_count=0;
+    if (current && b->read_links && b->read_links(b,&links))
+        directed_observe_advertisement(b,&links);
+    else links.le_count=0;
     GList *objects=g_dbus_object_manager_get_objects(b->devices);
     for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++)
         if (b->routes[i]) directed_refresh(b,b->routes[i],objects,&links);

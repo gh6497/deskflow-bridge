@@ -280,6 +280,79 @@ static void expect_report(int fd,const uint8_t expected[8])
     CHECK(recv(fd,data,sizeof(data),MSG_DONTWAIT)==8 && !memcmp(data,expected,8));
 }
 
+static void finish_advertisement_call(struct otg_ble_hid *hid, enum adv_operation operation)
+{
+    CHECK(hid->adv_operation==operation);
+    while (!hid->adv_call.done) g_main_context_iteration(NULL,TRUE);
+    poll_directed_advertisement(hid,monotonic_ns());
+}
+
+static void test_directed_advertisement(GDBusConnection *bus,struct mock_bluez *mock)
+{
+    const char *peer="/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF";
+    struct otg_ble_hid hid={.bus=bus,.adapter_path="/org/bluez/hci0",.read_links=read_fake_links,
+                            .resident=true,.latency_fd=-1};
+    fake_links=(struct link_snapshot){0};
+    observe_devices(&hid,mock,0,0,false);
+    hid.directed_owner=g_strdup(g_dbus_connection_get_unique_name(mock->bus));
+    CHECK(register_objects(&hid) && register_blueZ(&hid));
+    struct otg_ble_route *first=otg_ble_route_bind(&hid,"AA:BB:CC:DD:EE:FF");
+    CHECK(first && otg_ble_hid_set_session(&hid,true));
+    const int started=g_atomic_int_get(&mock->advertised);
+    const int stopped=g_atomic_int_get(&mock->stopped);
+    const int gatt=g_atomic_int_get(&mock->registered);
+    const int gatt_removed=g_atomic_int_get(&mock->unregistered);
+
+    fake_links=(struct link_snapshot){.le_count=1,.entries={{"AA:BB:CC:DD:EE:FF",5,true}}};
+    observe_devices(&hid,mock,1,0,false);
+    int keys=get_report_fd(&hid,mock->bus,peer,0),pointer=get_report_fd(&hid,mock->bus,peer,1);
+    CHECK(keys>=0 && pointer>=0 && directed_poll(&hid) && first->ready && hid.adv_rearm);
+    const uint8_t neutral[8]={0},key[8]={0,0,30};
+    expect_report(keys,neutral);expect_report(pointer,neutral);
+    const uint64_t generation=first->generation;
+
+    g_atomic_int_set(&mock->reject_stop,1);
+    poll_directed_advertisement(&hid,hid.adv_next_ns);
+    finish_advertisement_call(&hid,ADV_REMOVE);
+    CHECK(hid.adv_operation==ADV_NONE && hid.adv_rearm && hid.adv_registered);
+    CHECK(g_atomic_int_get(&mock->advertised)==started && g_atomic_int_get(&mock->stopped)==stopped);
+    g_atomic_int_set(&mock->reject_stop,0);
+    poll_directed_advertisement(&hid,hid.adv_next_ns);
+    otg_ble_route_send(first,1,key);expect_report(keys,key);
+    finish_advertisement_call(&hid,ADV_REMOVE);
+    finish_advertisement_call(&hid,ADV_REGISTER);
+    CHECK(hid.adv_registered && !hid.adv_rearm && first->ready && first->generation==generation);
+    CHECK(g_atomic_int_get(&mock->advertised)==started+1 && g_atomic_int_get(&mock->stopped)==stopped+1);
+    CHECK(g_atomic_int_get(&mock->registered)==gatt && g_atomic_int_get(&mock->unregistered)==gatt_removed);
+
+    struct otg_ble_route *second=otg_ble_route_bind(&hid,"11:22:33:44:55:66");
+    CHECK(second && otg_ble_hid_set_session(&hid,true));
+    fake_links.le_count=2;
+    fake_links.entries[1]=(struct le_link){"11:22:33:44:55:66",9,true};
+    observe_devices(&hid,mock,3,0,false);
+    const char *other="/org/bluez/hci0/dev_11_22_33_44_55_66";
+    int other_keys=get_report_fd(&hid,mock->bus,other,0),other_pointer=get_report_fd(&hid,mock->bus,other,1);
+    CHECK(other_keys>=0 && other_pointer>=0 && directed_poll(&hid) && first->ready && second->ready);
+    expect_report(other_keys,neutral);expect_report(other_pointer,neutral);
+    poll_directed_advertisement(&hid,hid.adv_next_ns);
+    CHECK(!hid.adv_rearm && hid.adv_operation==ADV_NONE);
+
+    fake_links.le_count=1;
+    observe_devices(&hid,mock,1,0,false);
+    CHECK(directed_poll(&hid) && first->ready && !second->ready && hid.adv_rearm);
+    poll_directed_advertisement(&hid,hid.adv_next_ns);
+    CHECK(hid.adv_operation==ADV_REMOVE);
+    otg_ble_route_unbind(first);
+    otg_ble_route_unbind(second);
+    CHECK(otg_ble_hid_set_session(&hid,false));
+    CHECK(hid.adv_operation==ADV_NONE && !hid.adv_rearm && !hid.adv_registered && hid.app_registered);
+    CHECK(g_atomic_int_get(&mock->advertised)==started+1 && g_atomic_int_get(&mock->stopped)==stopped+2);
+    CHECK(g_atomic_int_get(&mock->unregistered)==gatt_removed);
+    close(keys);close(pointer);close(other_keys);close(other_pointer);
+    close_ble(&hid);directed_free(first);directed_free(second);g_free(hid.directed_owner);
+    g_clear_object(&hid.devices);
+}
+
 static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
 {
     const char *a="/org/bluez/hci0/dev_52_00_00_00_00_01",*b="/org/bluez/hci0/dev_11_22_33_44_55_66";
@@ -467,6 +540,7 @@ int main(void)
     g_clear_object(&b.devices);g_free(b.peer_path);
     test_mixed_links(b.bus,&mock);
     test_directed(b.bus,&mock);
+    test_directed_advertisement(b.bus,&mock);
     g_dbus_node_info_unref(node_info);node_info=NULL;
     g_dbus_connection_close_sync(b.bus,NULL,NULL);g_object_unref(b.bus);
     g_main_context_invoke(mock.context,stop_manager,mock.loop);g_thread_join(thread);

@@ -24,6 +24,12 @@
 #define BLE_POINTER_INTERVAL_NS UINT64_C(15000000)
 /* Active BLE sessions pump pending motion on a 1 ms poll timeout. */
 #define BLE_POINTER_POLL_NS UINT64_C(1000000)
+#define BLE_ADV_REARM_DELAY_NS UINT64_C(250000000)
+#define BLE_ADV_RETRY_DELAY_NS UINT64_C(500000000)
+#define BLE_ADV_TIMEOUT_MS 2000
+#define BLE_ADV_ATTEMPTS 3
+#define BLE_ADV_MANAGER "org.bluez.LEAdvertisingManager1"
+#define BLE_ADV_PATH ROOT "/advertisement"
 
 /* Linux HCIGETCONNLIST ABI, also used by hcitool con. This socket is unbound
  * and only used for the read-only ioctl. No libbluetooth dependency. */
@@ -57,6 +63,14 @@ enum ble_kind { BLE_ROOT, BLE_SERVICE, BLE_REPORT, BLE_MAP, BLE_INFO,
 #define BLE_OBJECT_COUNT 12
 struct ble_object { struct otg_ble_hid *b; enum ble_kind kind; int report; };
 
+struct pending_call {
+    bool done;
+    GVariant *result;
+    GError *error;
+};
+
+enum adv_operation { ADV_NONE, ADV_REMOVE, ADV_REGISTER };
+
 struct otg_ble_hid {
     char *directed_owner;
     struct otg_ble_route *routes[2];
@@ -75,6 +89,12 @@ struct otg_ble_hid {
     bool alias_changed;
     guint registrations[BLE_OBJECT_COUNT];
     bool app_registered, adv_registered;
+    struct pending_call adv_call;
+    enum adv_operation adv_operation;
+    unsigned adv_attempts, adv_peripherals;
+    uint16_t adv_last_handle;
+    bool adv_rearm;
+    uint64_t adv_next_ns;
     bool resident, session_enabled;
     bool notifying[2], suspended;
     uint8_t values[2][AOA_ABSOLUTE_MOUSE_REPORT_SIZE];
@@ -105,12 +125,6 @@ static const gchar *xml =
 "</node>";
 
 static GDBusNodeInfo *node_info;
-
-struct pending_call {
-    bool done;
-    GVariant *result;
-    GError *error;
-};
 
 static void call_finished(GObject *source, GAsyncResult *result, gpointer user)
 {
@@ -690,10 +704,95 @@ static bool register_objects(struct otg_ble_hid *b)
 static bool start_advertisement(struct otg_ble_hid *b)
 {
     GError *error=NULL;
-    GVariant *reply=call_wait(b,"org.bluez.LEAdvertisingManager1","RegisterAdvertisement",
-        g_variant_new("(o@a{sv})",ROOT "/advertisement",g_variant_new_array(G_VARIANT_TYPE("{sv}"),NULL,0)),&error);
+    GVariant *reply=call_wait(b,BLE_ADV_MANAGER,"RegisterAdvertisement",
+        g_variant_new("(o@a{sv})",BLE_ADV_PATH,g_variant_new_array(G_VARIANT_TYPE("{sv}"),NULL,0)),&error);
     if(!reply){fprintf(stderr,"ERROR: BlueZ RegisterAdvertisement: %s\n",error?error->message:"unknown error");g_clear_error(&error);return false;}
     g_variant_unref(reply);b->adv_registered=true;return true;
+}
+
+static bool advertisement_absent(const GError *error)
+{
+    if (!error) return false;
+    char *name = g_dbus_error_get_remote_error(error);
+    bool absent = !g_strcmp0(name, "org.bluez.Error.DoesNotExist");
+    g_free(name);
+    return absent;
+}
+
+static bool stop_advertisement(struct otg_ble_hid *b)
+{
+    if (!b->adv_registered) return true;
+    GError *error = NULL;
+    GVariant *reply = call_wait(b, BLE_ADV_MANAGER, "UnregisterAdvertisement",
+                                g_variant_new("(o)", BLE_ADV_PATH), &error);
+    bool stopped = reply || advertisement_absent(error);
+    if (stopped) b->adv_registered = false;
+    else fprintf(stderr, "ERROR: cannot stop BLE advertisement: %s\n", error->message);
+    g_clear_pointer(&reply, g_variant_unref);
+    g_clear_error(&error);
+    return stopped;
+}
+
+static void directed_advertisement_call(struct otg_ble_hid *b, enum adv_operation operation)
+{
+    bool removing = operation == ADV_REMOVE;
+    b->adv_operation = operation;
+    if (!removing) {
+        /* A timeout can precede BlueZ's reply. Treat the advertisement as
+         * potentially registered so retry and teardown remove our instance. */
+        b->adv_registered = true;
+        b->adv_rearm = false;
+    }
+    g_dbus_connection_call(b->bus, b->directed_owner, b->adapter_path, BLE_ADV_MANAGER,
+        removing ? "UnregisterAdvertisement" : "RegisterAdvertisement",
+        removing ? g_variant_new("(o)", BLE_ADV_PATH)
+                 : g_variant_new("(o@a{sv})", BLE_ADV_PATH, g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, BLE_ADV_TIMEOUT_MS, NULL, call_finished, &b->adv_call);
+}
+
+static bool directed_advertisement_result(struct otg_ble_hid *b)
+{
+    struct pending_call *call = &b->adv_call;
+    bool removing = b->adv_operation == ADV_REMOVE;
+    bool ok = call->result || (removing && advertisement_absent(call->error));
+    if (ok) b->adv_registered = !removing;
+    else fprintf(stderr, "WARN: cannot %s BLE advertisement: %s\n",
+                 removing ? "remove" : "re-register", call->error->message);
+    g_clear_pointer(&call->result, g_variant_unref);
+    g_clear_error(&call->error);
+    call->done = false;
+    b->adv_operation = ADV_NONE;
+    return ok;
+}
+
+static void poll_directed_advertisement(struct otg_ble_hid *b, uint64_t now)
+{
+    bool available = b->session_enabled && b->adv_peripherals < G_N_ELEMENTS(b->routes);
+    if (b->adv_operation != ADV_NONE) {
+        if (!b->adv_call.done) return;
+        enum adv_operation operation = b->adv_operation;
+        if (directed_advertisement_result(b)) {
+            if (operation == ADV_REMOVE && available)
+                directed_advertisement_call(b, ADV_REGISTER);
+            else if (operation == ADV_REGISTER)
+                fprintf(stderr, "INFO: BLE advertisement re-registered for another connection\n");
+            return;
+        }
+        b->adv_rearm = available;
+        b->adv_next_ns = now + BLE_ADV_RETRY_DELAY_NS;
+    }
+    if (!available || !b->adv_rearm || !b->adv_attempts || now < b->adv_next_ns) return;
+    --b->adv_attempts;
+    b->adv_rearm = false;
+    directed_advertisement_call(b, b->adv_registered ? ADV_REMOVE : ADV_REGISTER);
+}
+
+static void drain_directed_advertisement(struct otg_ble_hid *b)
+{
+    b->adv_rearm = false;
+    if (b->adv_operation == ADV_NONE) return;
+    while (!b->adv_call.done) g_main_context_iteration(NULL, TRUE);
+    (void)directed_advertisement_result(b);
 }
 
 static bool register_blueZ(struct otg_ble_hid *b)
@@ -728,16 +827,8 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b, bool enabled)
     }
     b->session_enabled=false;b->pointer_interval_ns=0;
     if (!b->directed_owner) update_channel_state(b);
-    bool ok=true;
-    if(b->adv_registered) {
-        GError *error=NULL;
-        GVariant *reply=call_wait(b,"org.bluez.LEAdvertisingManager1","UnregisterAdvertisement",
-            g_variant_new("(o)",ROOT "/advertisement"),&error);
-        ok=reply!=NULL;
-        if(reply){g_variant_unref(reply);b->adv_registered=false;}
-        else fprintf(stderr,"ERROR: cannot stop resident BLE advertisement: %s\n",error?error->message:"unknown error");
-        g_clear_error(&error);
-    }
+    drain_directed_advertisement(b);
+    bool ok=stop_advertisement(b);
     if(!restore_adapter_alias(b))ok=false;
     if(!b->alias_changed)g_clear_pointer(&b->original_alias,g_free);
     fprintf(stderr,"%s: BLE session %s; inputs released, GATT registration retained\n",
@@ -836,7 +927,11 @@ static bool poll_ble(void *ctx)
     while (g_main_context_pending(NULL)) {
         g_main_context_iteration(NULL, FALSE);
     }
-    if (b->directed_owner) return directed_poll(b);
+    if (b->directed_owner) {
+        if (!directed_poll(b)) return false;
+        poll_directed_advertisement(b, monotonic_ns());
+        return true;
+    }
     refresh_peer(b);
     update_channel_state(b);
     latency_poll(b);
@@ -846,7 +941,24 @@ static bool poll_ble(void *ctx)
     return b->app_registered;
 }
 static bool ready_ble(void *ctx){struct otg_ble_hid*b=ctx;return b->channel_ready;}
-static void close_ble(void *ctx){struct otg_ble_hid*b=ctx;if(!b)return;GError*e=NULL;if(b->adv_registered){GVariant*r=call_wait(b,"org.bluez.LEAdvertisingManager1","UnregisterAdvertisement",g_variant_new("(o)",ROOT "/advertisement"),&e);if(r)g_variant_unref(r);g_clear_error(&e);b->adv_registered=false;}if(b->app_registered){GVariant*r=call_wait(b,"org.bluez.GattManager1","UnregisterApplication",g_variant_new("(o)",ROOT),&e);if(r)g_variant_unref(r);g_clear_error(&e);b->app_registered=false;}for(int i=0;i<BLE_OBJECT_COUNT;i++)if(b->registrations[i]){g_dbus_connection_unregister_object(b->bus,b->registrations[i]);b->registrations[i]=0;}}
+static void close_ble(void *ctx)
+{
+    struct otg_ble_hid *b=ctx;
+    if (!b) return;
+    b->session_enabled=false;
+    drain_directed_advertisement(b);
+    (void)stop_advertisement(b);
+    if (b->app_registered) {
+        GVariant *reply=call_wait(b,"org.bluez.GattManager1","UnregisterApplication",
+                                  g_variant_new("(o)",ROOT),NULL);
+        g_clear_pointer(&reply,g_variant_unref);
+        b->app_registered=false;
+    }
+    for (int i=0;i<BLE_OBJECT_COUNT;i++) if (b->registrations[i]) {
+        g_dbus_connection_unregister_object(b->bus,b->registrations[i]);
+        b->registrations[i]=0;
+    }
+}
 static const struct otg_hid_transport_ops OPS={reg,send_report,poll_ble,ready_ble,close_ble};
 const struct otg_hid_transport_ops*otg_ble_hid_ops(void){return &OPS;}
 static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident,bool legacy_handles)
