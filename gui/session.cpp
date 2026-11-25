@@ -6,7 +6,9 @@
 #include "i18n.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
@@ -15,8 +17,28 @@
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <cmath>
+#ifdef Q_OS_LINUX
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
-Session::Session(QObject *parent) : QObject(parent)
+struct SharedBleLaunch {
+    ~SharedBleLaunch()
+    {
+#ifdef Q_OS_LINUX
+        if (writer >= 0) close(writer);
+#endif
+    }
+    QString adapter, detail;
+    QByteArray error;
+    QElapsedTimer elapsed;
+    int writer = -1;
+};
+
+Session::Session(QObject *parent, std::shared_ptr<BleStartupCoordinator> bleStartup) : QObject(parent),
+    m_bleStartup(bleStartup ? std::move(bleStartup) : std::make_shared<BleStartupCoordinator>())
 {
     m_deadline.setSingleShot(true);
     m_killBridge.setSingleShot(true);
@@ -373,8 +395,7 @@ void Session::prepareBle(bool started, int attempts)
         if (generation != m_generation || m_state != State::Starting) return;
         const auto status = QJsonDocument::fromJson(output.toUtf8()).object();
         const auto token = status.value("verifiedInstance").toString();
-        const bool startDirected = !token.isEmpty() &&
-            (m_options.preferDirectedBle || m_options.requireDirectedBle);
+        const bool startDirected = m_options.preferDirectedBle || m_options.requireDirectedBle;
         if (ok && status.value("version").toInt() == 2 && status.value("available").toBool()) {
             m_directedBle = status.value("directed").toBool();
             if (startDirected && !m_directedBle) {
@@ -386,6 +407,10 @@ void Session::prepareBle(bool started, int attempts)
                 fail("otg.multi.directed_required");
                 return;
             }
+            if (m_directedBle && !status.value("bleOnly").toBool()) {
+                fail("otg.ble.stop_unisolated_service");
+                return;
+            }
             if (!m_directedBle && !status.value("idle").toBool()) {
                 fail("otg.ble.busy");
                 return;
@@ -394,11 +419,44 @@ void Session::prepareBle(bool started, int attempts)
                 fail("otg.ble.handle_layout_mismatch");
                 return;
             }
+            if (m_directedBle && !m_bleLaunch) {
+                auto pending = m_bleStartup->pending.lock();
+                if (pending && pending->adapter == m_options.adapter) m_bleLaunch = std::move(pending);
+            }
             startConnection();
             return;
         }
         const auto dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
         const auto logPath = QDir(dir).filePath("ble-" + m_options.adapter + ".log");
+#ifdef Q_OS_LINUX
+        if (startDirected) {
+            if (!m_bleLaunch) {
+                m_bleLaunch = m_bleStartup->pending.lock();
+                if (m_bleLaunch && m_bleLaunch->adapter != m_options.adapter) {
+                    fail("otg.multi.directed_required");
+                    return;
+                }
+                if (!m_bleLaunch) {
+                    if (token.isEmpty()) { fail("otg.ble.verify_directed"); return; }
+                    launchDirectedBle(token, logPath);
+                    if (generation != m_generation || m_state != State::Starting) return;
+                }
+            }
+            if (!m_bleLaunch->error.isEmpty()) {
+                fail(m_bleLaunch->error.constData(), m_bleLaunch->detail);
+                return;
+            }
+            struct pollfd startup{m_bleLaunch->writer, 0, 0};
+            if (poll(&startup, 1, 0) > 0 || m_bleLaunch->elapsed.hasExpired(120000)) {
+                fail("otg.ble.service_unreachable", QDir::toNativeSeparators(logPath));
+                return;
+            }
+            QTimer::singleShot(200, this, [this, generation] {
+                if (generation == m_generation && m_state == State::Starting) prepareBle();
+            });
+            return;
+        }
+#endif
         if (started) {
             if (attempts >= 20) {
                 fail("otg.ble.service_unreachable", QDir::toNativeSeparators(logPath));
@@ -410,7 +468,6 @@ void Session::prepareBle(bool started, int attempts)
             });
             return;
         }
-        if (m_options.requireDirectedBle && !startDirected) {fail("otg.multi.directed_required");return;}
         // Detached, ordinary-user process. No PID-based stop/kill: another GUI
         // or a CLI may reuse it. Its existing private adapter lock wins races.
         if (dir.isEmpty() || !QDir().mkpath(dir)) {
@@ -420,8 +477,6 @@ void Session::prepareBle(bool started, int attempts)
         QProcess service;
         service.setProgram(m_options.bridge);
         QStringList args{"--ble-service", "--adapter", m_options.adapter};
-        // Keep the adapter's mode. Shared BLE-only isolation is started explicitly.
-        if (startDirected) args << "--ble-multi" << token;
         if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
         service.setArguments(args);
         service.setStandardInputFile(QProcess::nullDevice());
@@ -435,6 +490,63 @@ void Session::prepareBle(bool started, int attempts)
         prepareBle(true);
     });
 }
+
+#ifdef Q_OS_LINUX
+void Session::launchDirectedBle(const QString &token, const QString &logPath)
+{
+    auto launch = std::make_shared<SharedBleLaunch>();
+    launch->adapter = m_options.adapter;
+    launch->elapsed.start();
+    m_bleStartup->pending = launch;
+    m_bleLaunch = launch;
+    const auto generation = m_generation;
+    const auto confirm = m_options.confirmSharedBleIsolation;
+    if (confirm && !confirm(launch->adapter)) {
+        launch->error = "otg.ble.shared_isolation_cancelled";
+        return;
+    }
+    if (generation != m_generation || m_state != State::Starting) {
+        launch->error = "otg.ble.shared_isolation_cancelled";
+        return;
+    }
+
+    // A detached supervisor can restore the adapter after GUI exit. Its stdin
+    // sees EOF if every waiting session cancels before the first attachment.
+    QTemporaryDir startup;
+    const auto pipe = startup.filePath("start");
+    const auto nativePath = QFile::encodeName(pipe);
+    int reader = -1;
+    if (startup.isValid() && QDir().mkpath(QFileInfo(logPath).absolutePath()) &&
+        mkfifo(nativePath.constData(), 0600) == 0) {
+        reader = open(nativePath.constData(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+        if (reader >= 0) launch->writer = open(nativePath.constData(), O_WRONLY | O_CLOEXEC | O_NONBLOCK);
+    }
+    if (launch->writer < 0) {
+        if (reader >= 0) close(reader);
+        launch->error = "otg.ble.service_failed";
+        launch->detail = logPath;
+        return;
+    }
+
+    QProcess service;
+    service.setProgram(m_options.blePrivilegeProgram);
+    QStringList args{m_options.bridge, "--ble-service", "--adapter", launch->adapter,
+                     "--ble-multi", token, "--ble-isolate", "--gui"};
+    if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
+    service.setArguments(args);
+    service.setStandardInputFile(pipe);
+    service.setStandardOutputFile(QProcess::nullDevice());
+    service.setStandardErrorFile(logPath, QIODevice::Append);
+    const bool started = service.startDetached();
+    close(reader);
+    if (!started) {
+        launch->error = "otg.ble.service_failed";
+        launch->detail = service.errorString();
+        return;
+    }
+    emit log(qtTrId("otg.ble.starting_shared_isolation").arg(launch->adapter));
+}
+#endif
 
 void Session::startConnection()
 {
@@ -737,6 +849,7 @@ void Session::stop()
     if (m_state == State::Idle || m_state == State::Stopping)
         return;
     ++m_generation;
+    m_bleLaunch.reset();
     m_deadline.stop();
     setState(State::Stopping, "otg.status.disconnecting");
     if (m_shutdown) endBleProvider();

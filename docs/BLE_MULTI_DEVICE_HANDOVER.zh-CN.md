@@ -6,9 +6,9 @@
 
 ## 本轮实现与离线验收
 
-- Linux 常驻服务通过 `--ble-multi TOKEN` 开启双机。核验脚本将已知含上游修复的参考二进制与 `/proc/PID/exe` 比对，把本次系统总线 ID 和 `org.bluez` 唯一所有者记在 `/run`。服务校验该记录，所有者变化即结束。原版 5.72 的常规单机路径和旧 IPC v2 操作继续使用原来的唯一目标门控。
+- Linux 常驻服务通过 `--ble-service --ble-multi TOKEN --ble-isolate` 开启双机。核验脚本将已知含上游修复的参考二进制与 `/proc/PID/exe` 比对，把本次系统总线 ID 和 `org.bluez` 唯一所有者记在 `/run`。服务校验该记录，所有者变化即结束。原版 5.72 的常规单机路径和旧 IPC v2 操作继续使用原来的唯一目标门控。
 - `ble_directed.inc` 按在线 Device1 地址、对象路径和 HCI peripheral 链路核对路由。每个目标各有键盘和指针 FD、输入值、LED、暂停状态与连接代次。重连后先对该手机发送两份中性报告，再接收新输入。BlueZ 对已配对手机保留 CCC 而不重建 FD 时，该手机会停在等待订阅状态。
-- `ble_multi_session.inc` 通过独立的 v2 接入操作一次性预留地址和屏幕名。GUI 读取 `directed` 能力，CLI 为每台运行 `deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 --ble-legacy-handles --ble-peer MAC --name SCREEN`。低句柄与服务保持一致。`--absolute-per-axis` 只需加在需要的桥接上。共享服务可由监督器统一隔离，最后一个客户端退出后恢复。双模使用普通用户运行同一服务命令，省略 `sudo` 和 `--ble-isolate`，空闲时保留 GATT。
+- `ble_multi_session.inc` 通过带仅 BLE 门控的 v2 接入操作一次性预留地址和屏幕名。GUI 核对 `directed` 与 `bleOnly`，两个会话共用一次隔离授权。手动启动服务用 `sudo`，然后为每台运行 `deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 --ble-legacy-handles --ble-peer MAC --name SCREEN`。低句柄与服务保持一致。`--absolute-per-axis` 只需加在需要的桥接上。监督器在验证适配器已切换到仅 BLE 后降权启动服务，最后一个客户端退出后恢复。GUI 在首次接入前取消时，监督器处理启动管道 EOF 并恢复适配器。
 - 私有总线回归使用真实传递的四个 FD，覆盖隔离、掉线、重新订阅、先释放再恢复。真实 Unix socket/fork 回归验证双客户端共享服务、地址和屏幕名冲突、EOF 后另一路继续和最后退出。已重新运行交接基线的 BlueZ 双订阅分发函数实验。K20 Pro 和 R17 的空口、系统模式恢复与手机 CCC 缓存行为仍待真机验收。
 
 - 控制器接入第一台手机时可能停用用于接入的可连接广播，BlueZ 的 `ActiveInstances` 仍可能计入该登记。双机服务观察到 LE peripheral 链路变化而且还有空位时，异步重新登记自身的广播。日志 `BLE advertisement re-registered for another connection` 确认 BlueZ 已接受登记。私有 D-Bus 回归验证登记、失败重试、键鼠报告继续投递和会话退出清理。

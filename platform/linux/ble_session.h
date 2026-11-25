@@ -9,7 +9,8 @@
 struct otg_ble_session;
 int otg_ble_service_run(const char *adapter, bool legacy_handles, volatile sig_atomic_t *stop);
 int otg_ble_multi_service_run(const char *adapter,bool legacy_handles,const char *instance,
-                              bool exit_idle,volatile sig_atomic_t *stop);
+                              int supervisor_fd,bool watch_startup,volatile sig_atomic_t *stop);
+int otg_ble_supervisor_fd(void);
 struct otg_ble_session *otg_ble_directed_session_open(const char *adapter,bool legacy_handles,
                                                       const char *peer,const char *screen);
 struct otg_ble_session *otg_ble_session_open(const char *adapter, bool legacy_handles);

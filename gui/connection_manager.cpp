@@ -22,7 +22,7 @@ ConnectionManager::ConnectionManager(QObject *parent) : QObject(parent)
 Session *ConnectionManager::addDevice(const QString &id)
 {
     if (m_devices.contains(id)) return session(id);
-    auto *child = new Session(this);
+    auto *child = new Session(this, m_bleStartup);
     m_devices.insert(id, {child, {}, false, {}, {}});
     connect(child, &Session::changed, this, [this, id] { update(id); });
     connect(child, &Session::bleProviderChanged, this, [this, id] { update(id); });

@@ -11,6 +11,7 @@ reject(--ble-directed-session)
 reject(--transport ble --ble-session --ble-directed-session)
 reject(--transport ble --ble-session --ble-directed-session --ble-peer AA:BB:CC:DD:EE:FF --ble-isolate)
 reject(--ble-multi invalid)
+reject(--ble-service --ble-multi invalid --ble-isolate --gui)
 reject(--adb-serial 192.168.1.20:5555)
 # The internal PIN-file hand-off authorizes a BLE bridge to use an explicit
 # ADB target; standalone BLE service operations must still reject it.

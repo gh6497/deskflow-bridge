@@ -292,7 +292,7 @@ static void usage(const char *prog)
              "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
              "      --ble-service     Linux: resident user GATT service (keep running)\n"
-             "      --ble-multi TOKEN Linux: two-phone service, verified running bluetoothd instance\n"
+             "      --ble-multi TOKEN Linux: two-phone service, requires verified BlueZ and --ble-isolate\n"
              "      --ble-directed-session  Attach --ble-session by explicit peer and screen name\n"
              "      --ble-legacy-handles  Linux: 8-bit HID handles for older Android (on service and session)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
@@ -1156,7 +1156,7 @@ int main(int argc, char **argv)
     }
     if (opts.ble_multi_instance || opts.ble_directed_session) {
 #ifdef OTG_HAVE_BLE
-        if ((opts.ble_multi_instance && (!opts.ble_service || g_gui || opts.ble_session || opts.ble_restore ||
+        if ((opts.ble_multi_instance && (!opts.ble_service || (g_gui && !opts.ble_isolate) || opts.ble_session || opts.ble_restore ||
              opts.ble_status || opts.ble_stop_service || opts.serial || opts.adb_serial || opts.ble_peer ||
              !otg_ble_instance_matches(opts.ble_multi_instance))) ||
             (opts.ble_directed_session && (!opts.ble_session || !opts.ble_peer || opts.ble_isolate))) {
@@ -1164,8 +1164,13 @@ int main(int argc, char **argv)
         }
         if (opts.ble_multi_instance) {
             if (opts.ble_isolate) return otg_ble_supervise(argc,argv,opts.adapter,0,&g_stop);
+            int supervisor_fd = otg_ble_supervisor_fd();
+            if (supervisor_fd < 0) {
+                fprintf(stderr,"ERROR: --ble-multi requires --ble-isolate under a privileged supervisor\n");
+                return 2;
+            }
             return otg_ble_multi_service_run(opts.adapter,opts.ble_legacy_handles,opts.ble_multi_instance,
-                                             getenv("OTG_BLE_EXIT_IDLE")!=NULL,&g_stop);
+                                             supervisor_fd,getenv("OTG_BLE_GUI_STARTUP")!=NULL,&g_stop);
         }
 #else
         fprintf(stderr,"ERROR: directed BLE requires Linux with BUILD_BLE=ON\n");return 2;

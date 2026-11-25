@@ -8,9 +8,16 @@
 #include <QTimer>
 #include <QSize>
 #include <QTemporaryFile>
+#include <functional>
+#include <memory>
 #include "deskflow_server.h"
 #include "companion_status_sync.h"
 class QJsonObject;
+
+struct SharedBleLaunch;
+struct BleStartupCoordinator {
+    std::weak_ptr<SharedBleLaunch> pending;
+};
 
 struct ConnectionOptions {
     QString deskflow;
@@ -48,6 +55,8 @@ struct ConnectionOptions {
     bool bleLegacyHandles = false;
     bool requireDirectedBle = false;
     bool preferDirectedBle = false;
+    QString blePrivilegeProgram = "/usr/bin/pkexec";
+    std::function<bool(const QString &)> confirmSharedBleIsolation;
     int port = 24800;
     int width = 1080;
     int height = 1920;
@@ -72,7 +81,7 @@ class Session : public QObject {
     Q_OBJECT
 public:
     enum class State { Idle, Starting, Connected, Stopping };
-    explicit Session(QObject *parent = nullptr);
+    explicit Session(QObject *parent = nullptr, std::shared_ptr<BleStartupCoordinator> bleStartup = {});
     ~Session() override;
     State state() const { return m_state; }
     QString statusMessage() const;
@@ -98,6 +107,9 @@ private:
     void fail(const char *id, const QString &detail = {});
     void launchBridge();
     void prepareBle(bool started = false, int attempts = 0);
+#ifdef Q_OS_LINUX
+    void launchDirectedBle(const QString &token, const QString &logPath);
+#endif
     void startConnection();
     void stopServer();
     void finishStop();
@@ -120,6 +132,8 @@ private:
     bool m_bleActive = false, m_shutdown = false, m_stoppingBleProvider = false;
     bool m_audioReady = false;
     bool m_directedBle = false;
+    std::shared_ptr<BleStartupCoordinator> m_bleStartup;
+    std::shared_ptr<SharedBleLaunch> m_bleLaunch;
     bool m_adbServerStarted = false, m_adbTargetPrepared = false;
     int m_adbTargetAttempts = 0;
     QByteArray m_failureId, m_statusId;
