@@ -117,6 +117,7 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
     if (options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
         return reject(id, "otg.error.screen_names");
     if (options.manageServer && layout.isEmpty()) return reject(id, "otg.multi.invalid_layout");
+    bool requireDirected = false;
     for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {
         if (it.key() == id) continue;
         const bool reserved = state(it.key()) != Session::State::Idle;
@@ -125,9 +126,19 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
             (options.transport == "uhid" && it->options.transport == "uhid" &&
              options.adbSerial.trimmed() == it->options.adbSerial.trimmed())))
             return reject(id, "otg.multi.duplicate_device");
-        // Keep one BLE target, including a Windows provider parked while idle.
         if (options.transport == "ble" && ((reserved && it->options.transport == "ble") ||
-            it->session->hasBleProvider())) return reject(id, "otg.multi.ble_limit");
+            it->session->hasBleProvider())) {
+#ifdef Q_OS_LINUX
+            if (requireDirected || options.adapter != it->options.adapter || options.bleIsolate ||
+                it->options.bleIsolate || options.blePeer.isEmpty() || it->options.blePeer.isEmpty())
+                return reject(id, "otg.multi.directed_required");
+            if (!options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
+                return reject(id, "otg.multi.duplicate_device");
+            requireDirected = true;
+#else
+            return reject(id, "otg.multi.ble_limit");
+#endif
+        }
     }
     if (busy() || m_server.state() != DeskflowServer::State::Idle) {
         if (options.manageServer != m_shared.manageServer || options.port != m_shared.port ||
@@ -146,6 +157,7 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
     }
     auto &entry = m_devices[id];
     entry.options = options;
+    entry.options.requireDirectedBle = requireDirected;
     entry.errorId.clear();
     entry.errorDetail.clear();
     entry.pending = true;

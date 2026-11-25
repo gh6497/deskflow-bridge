@@ -1,0 +1,141 @@
+/* Directed extension of the resident seqpacket protocol. The attach packet
+ * reserves both identities before any descriptor or input can be accepted. */
+struct directed_client {
+    int fd;
+    gint64 last_request;
+    char screen[256];
+    struct otg_ble_route *route;
+    uint64_t generation;
+    struct message descriptors[2];
+    bool active;
+};
+
+struct directed_service {
+    struct directed_client client[2];
+    bool exit_idle;
+};
+
+static unsigned multi_count(const struct directed_service *multi)
+{
+    return (unsigned)(multi->client[0].fd>=0)+(unsigned)(multi->client[1].fd>=0);
+}
+
+static bool multi_reply(int fd,bool ok,uint8_t flags,bool idle)
+{
+    uint8_t status[]={flags,idle};
+    return send_message(fd,REPLY,ok?0:1,status,sizeof(status));
+}
+
+static void multi_drop(struct service *s,struct directed_client *c,bool ack)
+{
+    int fd=c->fd;
+    otg_ble_route_unbind(c->route);
+    *c=(struct directed_client){.fd=-1};
+    bool last=multi_count(s->directed)==0;
+    if (last) {
+        s->clean=otg_ble_hid_set_session(s->hid,false);
+        s->shutdown=s->directed->exit_idle;
+    }
+    if (ack) multi_reply(fd,s->clean,0,last && s->clean);
+    close(fd);
+}
+
+static bool multi_register(struct service *s,struct directed_client *c,const struct message *m)
+{
+    if (c->active || m->size<6 || (m->id!=AOA_HID_ID_KEYBOARD && m->id!=AOA_HID_ID_MOUSE)) {
+        fprintf(stderr,"WARN: directed BLE rejected report descriptor id=%u size=%u active=%d\n",
+                m->id,m->size,c->active);
+        return false;
+    }
+    c->descriptors[m->id==AOA_HID_ID_MOUSE]=*m;
+    if (!c->descriptors[0].size || !c->descriptors[1].size) return true;
+    for (unsigned i=0;i<2;i++) {
+        const struct message *desc=&c->descriptors[i];
+        if (!otg_ble_hid_ops()->register_report(s->hid,desc->id,desc->data,desc->size)) {
+            fprintf(stderr,"ERROR: directed BLE GATT report registration failed id=%u\n",desc->id);
+            return false;
+        }
+    }
+    c->active=otg_ble_hid_set_session(s->hid,true);
+    fprintf(stderr,"INFO: directed BLE client %s registered keyboard and pointer, session=%s\n",
+            c->screen,c->active?"active":"failed");
+    return c->active;
+}
+
+static void multi_tick(struct service *s)
+{
+    for (unsigned i=0;i<G_N_ELEMENTS(s->directed->client);i++) {
+        struct directed_client *c=&s->directed->client[i];
+        if (c->fd<0) continue;
+        struct message m;
+        int n=receive_message(c->fd,&m);
+        gint64 now=g_get_monotonic_time();
+        if (n<0 || (!n && now-c->last_request>=5000000)) {multi_drop(s,c,false);continue;}
+        if (!n) continue;
+        c->last_request=now;
+        if (m.operation==DETACH && !m.size && !m.id) {multi_drop(s,c,true);continue;}
+        uint64_t generation;
+        bool ready=otg_ble_route_ready(c->route,&generation) && c->active;
+        /* Even a complete reconnect between two RPCs must be observed as a
+         * disconnect. The false reply drops the bridge's old bounded FIFO. */
+        if (generation!=c->generation) {ready=false;c->generation=generation;}
+        bool ok=false;
+        switch (m.operation) {
+        case REGISTER: ok=multi_register(s,c,&m);break;
+        case POLL_SESSION: ok=!m.size && !m.id;break;
+        case REPORT:
+            ok=c->active && m.size==8 && (m.id==AOA_HID_ID_KEYBOARD || m.id==AOA_HID_ID_MOUSE);
+            if (ok && ready) {
+                otg_ble_route_send(c->route,m.id,m.data);
+                ready=otg_ble_route_ready(c->route,&c->generation);
+            }
+            break;
+        }
+        if (!multi_reply(c->fd,ok,ready?STATUS_READY:0,false) || !ok) multi_drop(s,c,false);
+    }
+}
+
+static bool multi_request(struct service *s,int fd,bool owner,const struct message *m)
+{
+    struct directed_service *multi=s->directed;
+    bool idle=!multi_count(multi) && s->clean;
+    if (!m->size && !m->id && (m->operation==STATUS || m->operation==STATUS_WITH_LAYOUT)) {
+        uint8_t flags=m->operation==STATUS_WITH_LAYOUT ? STATUS_DIRECTED |
+            (s->legacy_handles?STATUS_LEGACY_HANDLES:0) : 0;
+        for (unsigned i=0;i<G_N_ELEMENTS(multi->client);i++) {
+            uint64_t gen;
+            if (multi->client[i].active && otg_ble_route_ready(multi->client[i].route,&gen)) flags|=STATUS_READY;
+        }
+        multi_reply(fd,true,flags,idle);
+        return false;
+    }
+    if (owner && !m->size && !m->id && m->operation==STOP_SERVICE) {
+        if (multi_reply(fd,idle,0,idle) && idle) s->shutdown=true;
+        return false;
+    }
+    if (!owner || s->shutdown || !s->clean || m->operation!=ATTACH_DIRECTED ||
+        m->id!=(unsigned)s->legacy_handles || m->size<=17 || m->size>17+255) goto reject;
+    char addr[18]={0},screen[256]={0};
+    for (unsigned i=0;i<17;i++) {
+        if (i%3==2 ? m->data[i]!=':' : !g_ascii_isxdigit(m->data[i])) goto reject;
+        addr[i]=g_ascii_toupper(m->data[i]);
+    }
+    memcpy(screen,m->data+17,m->size-17);
+    for (unsigned i=17;i<m->size;i++) if (m->data[i]<=0x20 || m->data[i]==127) goto reject;
+    struct directed_client *slot=NULL;
+    for (unsigned i=0;i<G_N_ELEMENTS(multi->client);i++) {
+        struct directed_client *c=&multi->client[i];
+        if (c->fd<0) slot=c;
+        else if (!g_ascii_strcasecmp(c->screen,screen)) goto reject;
+    }
+    if (!slot) goto reject;
+    struct otg_ble_route *route=otg_ble_route_bind(s->hid,addr);
+    if (!route) goto reject;
+    *slot=(struct directed_client){.fd=fd,.route=route,.last_request=g_get_monotonic_time()};
+    g_strlcpy(slot->screen,screen,sizeof(slot->screen));
+    if (!multi_reply(fd,true,0,false)) multi_drop(s,slot,false);
+    return true;
+reject:
+    multi_reply(fd,false,0,idle);
+    return false;
+}

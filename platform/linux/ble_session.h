@@ -8,6 +8,10 @@
 #include <sys/types.h>
 struct otg_ble_session;
 int otg_ble_service_run(const char *adapter, bool legacy_handles, volatile sig_atomic_t *stop);
+int otg_ble_multi_service_run(const char *adapter,bool legacy_handles,const char *instance,
+                              bool exit_idle,volatile sig_atomic_t *stop);
+struct otg_ble_session *otg_ble_directed_session_open(const char *adapter,bool legacy_handles,
+                                                      const char *peer,const char *screen);
 struct otg_ble_session *otg_ble_session_open(const char *adapter, bool legacy_handles);
 bool otg_ble_session_set_peer(struct otg_ble_session *session, const char *address);
 /* Read-only, same UID status; never attaches or changes Bluetooth settings. */
@@ -17,4 +21,5 @@ const struct otg_hid_transport_ops *otg_ble_session_ops(void);
 void otg_ble_session_destroy(struct otg_ble_session *session);
 /* Supervisor's read-only barrier before restoring modes after a child exits. */
 bool otg_ble_service_wait_idle(uid_t uid, const char *adapter);
+bool otg_ble_service_single_idle(uid_t uid,const char *adapter);
 #endif

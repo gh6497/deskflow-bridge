@@ -4,6 +4,8 @@
 
 bool otg_ble_service_wait_idle(uid_t uid,const char *adapter)
 {(void)uid;(void)adapter;return true;}
+bool otg_ble_service_single_idle(uid_t uid,const char *adapter)
+{return otg_ble_service_wait_idle(uid,adapter);}
 
 #define CHECK(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}} while(0)
 static uint32_t flags;

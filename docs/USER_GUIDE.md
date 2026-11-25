@@ -319,7 +319,20 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 3. For automatic startup, select each device and open **Device settings → Screen and display**. For example, set `computer` as the first phone's **Adjacent screen** and `android` as the second phone's. Choose **Right** for both. For an existing server, arrange the screens in Deskflow.
 4. Configure Deskflow once under **Shared server**, then connect individually or click **Connect all**.
 
-Multiple AOA/UHID devices can connect, optionally with at most one BLE device. Input goes to the screen containing the pointer; it is not broadcast to all phones. Disconnecting one device does not deliberately stop the others.
+Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. On Linux, the experimental two-phone service supports two BLE phones on one adapter, each with its own screen. Input follows the pointer. Disconnecting one phone leaves the other usable.
+
+**Connecting two BLE phones on Linux**
+
+1. Use a BlueZ build with directed notifications (upstream 5.76+ or a verified backport). Stock Ubuntu `5.72-0ubuntu5.8` supports the single-phone workflow. In the command below, set `FIXED_DAEMON` to a reference executable from a build known to include the fix. The helper compares it byte for byte with the running daemon. Repeat verification after restarting BlueZ.
+2. If the ordinary service is running, disconnect its sessions and click **Stop idle Bluetooth service**. After verification, save both device profiles as described below. Connecting the first phone in the GUI starts the two-phone service and keeps the adapter in its current mode. If the R17 only establishes a classic Bluetooth link, first run the following command from the source directory to share the low handle layout and BLE-only mode with the K20 Pro. Changing modes disconnects every Bluetooth link on the adapter.
+
+   ```sh
+   TOKEN=$(sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON") &&
+     sudo ./build/deskflow-bridge --ble-service --ble-multi "$TOKEN" --adapter hci0 --ble-legacy-handles --ble-isolate
+   ```
+
+3. In the GUI, set both devices to Bluetooth on `hci0`. Give each a distinct phone identity address and screen name. Enable older Android keyboard and mouse compatibility for both, and turn off **per-device Bluetooth isolation**. The service manages the adapter for both phones. Enable per-axis absolute scaling for the R17. Click **Connect** for each screen, then connect to **Deskflow Bridge** from each phone's Bluetooth settings.
+4. `directed: true` in `deskflow-bridge --ble-status --adapter hci0` identifies the two-phone service. Each phone needs a keyboard and a pointer subscription. If the service logs `waiting for fresh keyboard and pointer subscriptions` after a reconnect, try toggling Bluetooth on the affected phone and connecting again. When the last bridge exits, the BLE-only service above exits and restores the adapter. Two-phone over-the-air input and cached-subscription reconnection still await hardware validation.
 
 Before adding/removing devices or changing screen names, layout or the shared server, disconnect all and wait for shutdown to finish. Connected-device parameters are locked, while connection targets and dimensions for other idle devices remain editable.
 
@@ -329,7 +342,7 @@ Before adding/removing devices or changing screen names, layout or the shared se
 
 BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB debugging for basic input. Adapter and phone compatibility matter, so try wired control first to learn the basics.
 
-- On **Linux**, select Bluetooth Low Energy, set the adapter (usually `hci0`) and screen dimensions, and click **Connect**. Open the phone's Bluetooth settings and pair or connect to **Deskflow Bridge**. Keep the phone as the adapter's only LE connection. Classic Bluetooth connections can coexist when Linux can verify that both input subscriptions belong to the phone's LE link. Leave Bluetooth isolation off initially because it can disconnect other devices on that adapter.
+- In **Linux single-phone mode**, select Bluetooth Low Energy, set the adapter (usually `hci0`) and screen dimensions, and click **Connect**. Open the phone's Bluetooth settings and pair or connect to **Deskflow Bridge**. Keep the phone as the adapter's only LE connection. Classic Bluetooth connections can coexist when Linux can verify that both input subscriptions belong to the phone's LE link. Leave Bluetooth isolation off initially because it can disconnect other devices on that adapter.
 - On **Windows**, select Bluetooth Low Energy in a build with experimental BLE, set the screen dimensions and click **Connect**. Pair or connect to the PC from the phone's Bluetooth settings. Pairing and control depend on the adapter and phone.
 - **macOS**: no BLE backend currently; consider wireless ADB + UHID for wireless control.
 

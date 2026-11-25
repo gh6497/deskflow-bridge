@@ -284,6 +284,7 @@ void Session::start(const ConnectionOptions &options)
     m_shutdown = false;
     m_options = options;
     m_audioReady = false;
+    m_directedBle = false;
     m_adbServerStarted = false;
     m_adbTargetPrepared = false;
     m_adbTargetAttempts = 0;
@@ -371,8 +372,21 @@ void Session::prepareBle(bool started, int attempts)
                [this, generation, started, attempts](bool ok, const QString &output) {
         if (generation != m_generation || m_state != State::Starting) return;
         const auto status = QJsonDocument::fromJson(output.toUtf8()).object();
+        const auto token = status.value("verifiedInstance").toString();
+        const bool startDirected = !token.isEmpty() &&
+            (m_options.preferDirectedBle || m_options.requireDirectedBle);
         if (ok && status.value("version").toInt() == 2 && status.value("available").toBool()) {
-            if (!status.value("idle").toBool()) {
+            m_directedBle = status.value("directed").toBool();
+            if (startDirected && !m_directedBle) {
+                fail("otg.multi.stop_single_service");
+                return;
+            }
+            if ((m_options.requireDirectedBle && !m_directedBle) ||
+                (m_directedBle && (m_options.blePeer.isEmpty() || m_options.bleIsolate))) {
+                fail("otg.multi.directed_required");
+                return;
+            }
+            if (!m_directedBle && !status.value("idle").toBool()) {
                 fail("otg.ble.busy");
                 return;
             }
@@ -394,6 +408,7 @@ void Session::prepareBle(bool started, int attempts)
             });
             return;
         }
+        if (m_options.requireDirectedBle && !startDirected) {fail("otg.multi.directed_required");return;}
         // Detached, ordinary-user process. No PID-based stop/kill: another GUI
         // or a CLI may reuse it. Its existing private adapter lock wins races.
         const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
@@ -402,9 +417,19 @@ void Session::prepareBle(bool started, int attempts)
             return;
         }
         QProcess service;
-        service.setProgram(m_options.bridge);
         QStringList args{"--ble-service", "--adapter", m_options.adapter};
+        if (startDirected) args << "--ble-multi" << token;
         if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
+        if (startDirected) {
+            /* A directed service must own the adapter-wide BLE-only mode.
+             * Starting it as an ordinary resident process leaves classic
+             * HFP/HSP profiles visible and older phones choose HEADSET. */
+            args << "--ble-isolate";
+            args.prepend(m_options.bridge);
+            service.setProgram("/usr/bin/pkexec");
+        } else {
+            service.setProgram(m_options.bridge);
+        }
         service.setArguments(args);
         service.setStandardInputFile(QProcess::nullDevice());
         service.setStandardOutputFile(QProcess::nullDevice());
@@ -575,6 +600,7 @@ void Session::launchBridge()
         setState(State::Starting, "otg.ble.waiting");
 #ifdef Q_OS_LINUX
         args << "--ble-session" << "--adapter" << m_options.adapter;
+        if (m_directedBle) args << "--ble-directed-session";
         if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
         if (m_options.bleIsolate) {
             args.prepend(m_options.bridge);

@@ -11,6 +11,32 @@ struct otg_ble_hid {
     uint8_t report[2][8];
     uint64_t interval;
 };
+struct otg_ble_route { bool bound; char address[18]; uint64_t gen; unsigned sent; };
+bool otg_ble_verified_instance(char *token,size_t capacity) {(void)token;(void)capacity;return false;}
+static struct otg_ble_route fake_routes[2];
+struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter,bool legacy,const char *instance)
+{
+    CHECK(!strcmp(instance,"fixture"));
+    return otg_ble_hid_create_resident(adapter,legacy);
+}
+struct otg_ble_route *otg_ble_route_bind(struct otg_ble_hid *b,const char *addr)
+{
+    (void)b;
+    for (unsigned i=0;i<2;i++) if (fake_routes[i].bound && !g_ascii_strcasecmp(fake_routes[i].address,addr)) return NULL;
+    for (unsigned i=0;i<2;i++) if (!fake_routes[i].bound) {
+        fake_routes[i].bound=true;
+        g_strlcpy(fake_routes[i].address,addr,18);
+        return &fake_routes[i];
+    }
+    return NULL;
+}
+void otg_ble_route_unbind(struct otg_ble_route *r) {r->bound=false;}
+bool otg_ble_route_ready(const struct otg_ble_route *r,uint64_t *gen) {*gen=r->gen;return r->bound;}
+void otg_ble_route_send(struct otg_ble_route *r,uint16_t id,const uint8_t data[8])
+{
+    CHECK(r->bound && id==1 && data[2]==(uint8_t)(r-fake_routes+4));
+    r->sent++;
+}
 static int created,destroyed,activated,deactivated;
 static bool fail_idle;
 static bool fake_register(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
@@ -31,7 +57,7 @@ static bool fake_send(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
     if(!fake_ready(ctx))return false;
     memcpy(((struct otg_ble_hid *)ctx)->report[id-1],data,size);return true;
 }
-static bool fake_poll(void *ctx){return ((struct otg_ble_hid *)ctx)->application;}
+static bool fake_poll(void *ctx){(void)ctx;return true;}
 static const struct otg_hid_transport_ops FAKE_OPS={fake_register,fake_send,fake_poll,fake_ready,NULL};
 const struct otg_hid_transport_ops *otg_ble_hid_ops(void){return &FAKE_OPS;}
 static bool last_created_legacy_handles;
@@ -317,6 +343,7 @@ static void test_service_process(bool legacy_handles)
         g_usleep(10000);
     }
     CHECK(listening);
+    CHECK(otg_ble_service_single_idle(getuid(),"hci0"));
     int fd=connect_service(getuid(),"hci0");CHECK(fd>=0);
     struct message status_reply;
     CHECK(request(fd,STATUS_WITH_LAYOUT,0,NULL,0,&status_reply));
@@ -345,10 +372,74 @@ static void test_service_process(bool legacy_handles)
     g_free(lock);g_free(user_dir);runtime_base="/run/user";g_free(tmp);
 }
 
+static void test_multi_process(void)
+{
+    if (!geteuid()) return;
+    char *dir=g_dir_make_tmp("otg-multi-session-XXXXXX",NULL);CHECK(dir);
+    runtime_base=dir;
+    char *user=g_strdup_printf("%s/%u",dir,(unsigned)getuid());CHECK(!mkdir(user,0700));
+    pid_t pid=fork();CHECK(pid>=0);
+    if (!pid) {
+        alarm(10);
+        CHECK(!otg_ble_multi_service_run("hci0",true,"fixture",true,&stop_service));
+        CHECK(fake_routes[0].sent==1 && fake_routes[1].sent==2);
+        _exit(0);
+    }
+    for (int i=0;i<200 && !otg_ble_service_wait_idle(getuid(),"hci0");i++) g_usleep(5000);
+    const char *a="AA:BB:CC:DD:EE:01", *b="AA:BB:CC:DD:EE:02";
+    CHECK(!otg_ble_service_single_idle(getuid(),"hci0"));
+    CHECK(!otg_ble_session_open("hci0",true));
+    CHECK(!otg_ble_directed_session_open("hci0",false,a,"left"));
+    struct otg_ble_session *first=otg_ble_directed_session_open("hci0",true,a,"left");CHECK(first);
+    CHECK(!otg_ble_directed_session_open("hci0",true,"aa:bb:cc:dd:ee:01","right"));
+    CHECK(!otg_ble_directed_session_open("hci0",true,b,"LEFT"));
+    struct otg_ble_session *second=otg_ble_directed_session_open("hci0",true,b,"right");CHECK(second);
+    for (unsigned i=1;i<=2;i++) {
+        struct message m=descriptor(i);
+        CHECK(session_register(first,i,m.data,m.size));
+        CHECK(session_register(second,i,m.data,m.size));
+    }
+    uint8_t keys[8]={0,0,4};
+    CHECK(session_rpc(first,POLL_SESSION,0,NULL,0) && first->ready);
+    CHECK(session_rpc(first,REPORT,1,keys,8));
+    keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8));
+    close(first->fd);first->fd=-1;otg_ble_session_destroy(first);
+    CHECK(otg_ble_service_stop("hci0")!=0);
+    CHECK(session_rpc(second,REPORT,1,keys,8) && second->ready);
+    otg_ble_session_destroy(second);
+    int status;CHECK(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
+    char *service=g_build_filename(user,"deskflow-bridge",NULL);
+    char *lock=g_build_filename(service,"ble-hci0.lock",NULL);
+    CHECK(!unlink(lock) && !rmdir(service) && !rmdir(user) && !rmdir(dir));
+    g_free(lock);g_free(service);g_free(user);g_free(dir);runtime_base="/run/user";
+}
+
+static void test_multi_stale_reports(void)
+{
+    int a[2],b[2];pair_socket(a);pair_socket(b);
+    struct otg_ble_route first={.bound=true,.gen=42},second={.bound=true,.gen=9};
+    struct directed_service multi={.client={{.fd=a[0],.active=true,.route=&first,.generation=41},
+                                           {.fd=b[0],.active=true,.route=&second,.generation=9}}};
+    struct service s={.directed=&multi,.clean=true};
+    const uint8_t old_key[8]={0,0,30};
+    CHECK(send_message(a[1],REPORT,1,old_key,8));
+    CHECK(send_message(b[1],POLL_SESSION,0,NULL,0));
+    multi_tick(&s);
+    struct message reply;
+    CHECK(receive_message(a[1],&reply)==1 && valid_reply(&reply) && !reply.data[0]);
+    CHECK(receive_message(b[1],&reply)==1 && valid_reply(&reply) && reply.data[0]==STATUS_READY);
+    CHECK(!first.sent && multi.client[0].generation==42);
+    CHECK(send_message(a[1],POLL_SESSION,0,NULL,0));multi_tick(&s);
+    CHECK(receive_message(a[1],&reply)==1 && valid_reply(&reply) && reply.data[0]==STATUS_READY);
+    close(a[0]);close(a[1]);close(b[0]);close(b[1]);
+}
+
 int main(void)
 {
     test_packets();test_sessions();test_client_rpc(false);test_client_rpc(true);
     test_async_reports();test_service_process(false);test_service_process(true);
+    test_multi_process();
+    test_multi_stale_reports();
     puts("PASS: resident GATT sessions, EOF release, retained CCCs, schema/busy/UID guards and real seqpacket framing");
     return 0;
 }
