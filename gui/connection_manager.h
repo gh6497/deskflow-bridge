@@ -22,6 +22,7 @@ public:
     bool start(const QString &id, const ConnectionOptions &options, const QString &layout);
     void stop(const QString &id);
     void stopAll();
+    void stopIdleBleProvider();
     void shutdown();
 signals:
     void changed(const QString &id);

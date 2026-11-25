@@ -420,8 +420,9 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   在线对象路径，多连接继续关闭输入。服务日志的 `BLE waiting:` 会区分身份、配对和订阅等待。
   旧版 AOSP HID Host 会将 CCCD 查找用的特征句柄截成 8 位。Linux `--ble-legacy-handles` 使用
   `0x0040..0x0051`，默认布局为 `0x0100..0x0111`。常驻服务和桥接会话须使用相同布局，IPC v2
-  用独立接入操作核对兼容模式，保留旧版标准模式和状态查询。GUI 按设备保存，切换时显式停止
-  空闲服务。仅 BLE 隔离单独控制经典蓝牙链路。2026-11-24，OPPO R17 在 BlueZ 5.72、低句柄
+  用独立接入操作核对兼容模式，保留旧版标准模式和状态查询。GUI 在「共享服务 → 蓝牙服务」
+  统一设置适配器、仅 BLE 模式和低句柄布局，切换前显式停止空闲服务。连接方式和手机地址按设备保存。
+  仅 BLE 隔离单独控制经典蓝牙链路。2026-11-24，OPPO R17 在 BlueZ 5.72、低句柄
   与仅 BLE 模式组合下，已由用户确认键盘和鼠标工作正常。
 
 - `-DBUILD_GUI=ON` 启用 Qt Widgets 桌面端；默认 OFF 保留纯 C 构建。GUI 支持 Linux、macOS、Windows。

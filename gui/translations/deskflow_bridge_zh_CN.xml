@@ -47,7 +47,7 @@
   <message id="otg.transport.ble_windows"><source>Bluetooth LE (Windows, experimental)</source><translation>低功耗蓝牙（Windows，实验性）</translation></message>
   <message id="otg.ble.windows_setup_hint"><source>Set the screen dimensions, click Connect, then pair or connect from the phone's Bluetooth settings. Windows BLE uses the default adapter. Disconnect keeps the service while the app is running.</source><translation>设置屏幕尺寸，点击「连接」，再从手机蓝牙设置中配对或连接。Windows BLE 使用默认适配器，应用运行期间「断开」会保留服务。</translation></message>
   <message id="otg.ble.windows_peer_hint"><source>Leave blank to use the first paired phone that connects and subscribes to both reports. To restrict the target, enter the phone's Bluetooth LE address as reported by Windows.</source><translation>留空时自动选定第一台已配对、已连接且订阅键鼠报告的手机。要限定目标，请填写 Windows 报告的手机 BLE 地址。</translation></message>
-  <message id="otg.ble.setup_hint"><source>Set the screen dimensions, click Connect, then pair or connect to Deskflow Bridge from the phone's Bluetooth settings. Disconnect keeps the Bluetooth service.</source><translation>设置屏幕尺寸，点击「连接」，再从手机蓝牙设置中配对或连接 Deskflow Bridge。「断开」会保留蓝牙服务。</translation></message>
+  <message id="otg.ble.setup_hint"><source>Set the adapter under Shared server → Bluetooth service. Set the screen dimensions, click Connect, then pair or connect to Deskflow Bridge from the phone's Bluetooth settings.</source><translation>在「共享服务 → 蓝牙服务」设置适配器。设置屏幕尺寸并点击「连接」，再从手机蓝牙设置中配对或连接 Deskflow Bridge。</translation></message>
   <message id="otg.ble.stop_service"><source>Stop idle Bluetooth service</source><translation>停止空闲蓝牙服务</translation></message>
   <message id="otg.ble.stop_confirm"><source>This unregisters GATT and loses subscription continuity. The phone may need a Bluetooth reconnect or cache recovery afterward. Other active sessions cannot be stopped here. Continue?</source><translation>这会注销 GATT 并失去订阅连续性，之后手机可能需要重新连接蓝牙或恢复缓存。此操作不会停止其他活动会话。是否继续？</translation></message>
   <message id="otg.ble.stopped"><source>Idle Bluetooth service stop acknowledged.</source><translation>空闲蓝牙服务已确认停止请求。</translation></message>
@@ -66,6 +66,8 @@
   <message id="otg.uhid.unsupported"><source>UHID is unavailable in this build. Enable BUILD_UHID.</source><translation>当前构建未提供 UHID，请启用 BUILD_UHID。</translation></message>
   <message id="otg.transport.ble"><source>Bluetooth LE (Linux)</source><translation>低功耗蓝牙（Linux）</translation></message>
   <message id="otg.label.transport"><source>Connection type</source><translation>连接方式</translation></message>
+  <message id="otg.ble.shared_title"><source>Bluetooth service</source><translation>蓝牙服务</translation></message>
+  <message id="otg.ble.default_adapter"><source>Uses the system's default Bluetooth adapter.</source><translation>使用系统默认蓝牙适配器。</translation></message>
   <message id="otg.ble.adapter"><source>Bluetooth adapter</source><translation>蓝牙适配器</translation></message>
   <message id="otg.ble.peer"><source>Phone address (optional)</source><translation>手机地址（选填）</translation></message>
   <message id="otg.ble.peer_placeholder"><source>Leave blank to select automatically</source><translation>留空时自动选择</translation></message>

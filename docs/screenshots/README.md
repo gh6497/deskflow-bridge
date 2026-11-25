@@ -11,11 +11,12 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Refreshed both languages of all main-window views for **Manual clipboard**, from the worktree based on `f473676` (base version `0.1.10`). The UHID demo shows the button available with automatic sharing off, and the AOA demo shows it disabled with ADB enhancements off.
 - Refreshed both languages of all main-window views for version `0.1.12` from the worktree based on `d802a99`. The GUI has two tabs, and the input and multiple-device views show the screen position controls under **Screen and display**.
 - Refreshed both `input` views from the worktree based on `d997011` to show the older Android pointer compatibility option. Capture used `OTG_TEST_POINTER_SCREENSHOTS` with `gui/test_window guidePointerScreenshot` on the offscreen platform.
+- Refreshed both `server` views from the worktree based on `91f5c7c` to show the Bluetooth service settings. Capture used `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` with `gui/test_window guideSharedServiceScreenshot` on the offscreen platform.
 - Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
-- Main window: 1100 × 880 (1100 × 955 for `input`); file window: 760 × 460.
+- Main window at 1100 × 880, with `input` at 1100 × 955 and `server` at 1100 × 1080. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions, placement and button settings.
-  `server` shows shared Deskflow setup. `aoa` shows USB without ADB.
+  `server` shows shared Deskflow and Bluetooth service setup. `aoa` shows USB without ADB.
   `multiple-devices` shows screen settings for the second device. `files` shows pending phone shares.
 
 Capture used an isolated temporary `QSettings` profile and the production
@@ -40,4 +41,5 @@ update both guides when controls move or change.
 本次基于 `f473676` 更新中英文主窗口截图。UHID 示例关闭了自动共享，仍可点击「手动剪贴板」。未启用 ADB 增强的 AOA 示例中，该按钮不可用。
 版本 `0.1.12` 基于 `d802a99` 的工作区重新采集中英文主窗口截图。主窗口保留两个页签，输入与多设备截图展示「屏幕与显示」中的位置设置。
 基于 `d997011` 的工作区更新两张输入页截图，显示「兼容旧版 Android 指针」。使用 Qt 离屏测试 `gui/test_window guidePointerScreenshot` 和 `OTG_TEST_POINTER_SCREENSHOTS` 采集。
+基于 `91f5c7c` 的工作区更新两张共享服务页截图，显示新增的「蓝牙服务」一栏。使用 Qt 离屏测试 `gui/test_window guideSharedServiceScreenshot` 和 `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` 采集。
 更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。
