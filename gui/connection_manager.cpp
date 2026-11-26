@@ -4,7 +4,10 @@
 
 ConnectionManager::ConnectionManager(QObject *parent) : QObject(parent)
 {
-    connect(&m_server, &DeskflowServer::ready, this, &ConnectionManager::launchPending);
+    connect(&m_server, &DeskflowServer::ready, this, [this] {
+        launchPending();
+        configureWaitingBle();
+    });
     connect(&m_server, &DeskflowServer::changed, this, [this] { emit changed({}); });
     connect(&m_server, &DeskflowServer::log, this, [this](const QString &message) { emit log({}, message); });
     connect(&m_server, &DeskflowServer::failed, this, [this](const QString &id, const QString &detail) {
@@ -23,16 +26,43 @@ Session *ConnectionManager::addDevice(const QString &id)
 {
     if (m_devices.contains(id)) return session(id);
     auto *child = new Session(this, m_bleStartup);
-    m_devices.insert(id, {child, {}, false, {}, {}});
+    m_devices.insert(id, {child, {}, false, false, {}, {}});
+    connectSession(child, id);
+    return child;
+}
+
+void ConnectionManager::connectSession(Session *child, const QString &id)
+{
     connect(child, &Session::changed, this, [this, id] { update(id); });
     connect(child, &Session::bleProviderChanged, this, [this, id] { update(id); });
+    connect(child, &Session::bleIdentityDetected, this, [this, id](const QString &identity) {
+        emit bleIdentityDetected(id, identity);
+    });
     connect(child, &Session::clipboardChanged, this, [this, id] { emit changed(id); });
     connect(child, &Session::log, this, [this, id](const QString &message) { emit log(id, message); });
     connect(child, &Session::usbAttached, this, &ConnectionManager::usbAttached);
     connect(child, &Session::displaySizeChanged, this, [this, id](const QSize &size) {
         emit displaySizeChanged(id, size);
     });
-    return child;
+}
+
+bool ConnectionManager::bindBleDiscovery(const QString &sourceId, const QString &deviceId)
+{
+    if (!m_devices.contains(sourceId) || !m_devices[sourceId].waitingForBleAttach) return false;
+    if (sourceId == deviceId) return true;
+    if (state(deviceId) != Session::State::Idle || (session(deviceId) && session(deviceId)->hasBleProvider()))
+        return false;
+    addDevice(deviceId);
+    // Route the running listener's signals to the identified device. Profiles and
+    // their stable IDs stay in place, including whichever one the user is editing.
+    auto &source = m_devices[sourceId];
+    auto &target = m_devices[deviceId];
+    source.session->disconnect(this);
+    target.session->disconnect(this);
+    std::swap(source, target);
+    connectSession(source.session, sourceId);
+    connectSession(target.session, deviceId);
+    return true;
 }
 
 ConnectionManager::~ConnectionManager()
@@ -162,7 +192,7 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
     entry.errorDetail.clear();
     entry.pending = true;
     emit changed(id);
-    if (!options.manageServer || m_server.state() == DeskflowServer::State::Running) launchPending();
+    if (options.bleDiscovery || !options.manageServer || m_server.state() == DeskflowServer::State::Running) launchPending();
     else if (m_server.state() == DeskflowServer::State::Idle)
         m_server.start({options.deskflow, options.computer, layout, options.port,
                         options.tls, options.tlsCertificate});
@@ -177,8 +207,55 @@ void ConnectionManager::launchPending()
         options.host = options.manageServer ? "127.0.0.1" : options.host;
         options.manageServer = false; // The manager, never a child session, owns the shared server.
         it->pending = false;
+        if (options.transport == "ble" && options.bleDiscovery)
+            it->waitingForBleAttach = true;
         it->session->start(options);
     }
+}
+
+void ConnectionManager::configureWaitingBle()
+{
+    if (m_server.state() == DeskflowServer::State::Starting ||
+        m_server.state() == DeskflowServer::State::Stopping)
+        return;
+    for (auto it = m_devices.begin(); it != m_devices.end(); ++it) {
+        if (!it->waitingForBleAttach || it->options.bleDiscovery || it->session->state() != Session::State::Starting) continue;
+        auto options = it->options;
+        options.bleDiscovery = false;
+        if (options.manageServer) {
+            options.host = "127.0.0.1";
+            options.manageServer = false;
+        }
+        if (it->session->configureBle(options)) {
+            it->waitingForBleAttach = false;
+            emit changed(it.key());
+        }
+    }
+}
+
+bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &options, const QString &layout)
+{
+    if (!m_devices.contains(id) || options.transport != "ble" ||
+        state(id) != Session::State::Starting || !m_devices[id].waitingForBleAttach)
+        return false;
+    if (options.manageServer) {
+        if (m_server.state() != DeskflowServer::State::Idle)
+            return false;
+        m_shared = options;
+        m_layout = layout;
+        m_devices[id].options = options;
+        m_devices[id].waitingForBleAttach = true;
+        m_server.start({options.deskflow, options.computer, layout, options.port,
+                        options.tls, options.tlsCertificate});
+        return true;
+    }
+    if (m_server.state() != DeskflowServer::State::Idle &&
+        m_server.state() != DeskflowServer::State::Running)
+        return false;
+    m_devices[id].options = options;
+    m_devices[id].waitingForBleAttach = true;
+    configureWaitingBle();
+    return !m_devices[id].waitingForBleAttach;
 }
 
 void ConnectionManager::update(const QString &id)
@@ -192,6 +269,7 @@ void ConnectionManager::stop(const QString &id)
     if (!m_devices.contains(id)) return;
     auto &entry = m_devices[id];
     entry.pending = false;
+    entry.waitingForBleAttach = false;
     entry.session->stop();
     update(id);
 }

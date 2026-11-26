@@ -127,7 +127,7 @@ bool otg_uhid_wake(struct otg_uhid *hid)
 const struct otg_hid_transport_ops *otg_uhid_ops(void)
 {
     static const struct otg_hid_transport_ops ops = {
-        register_report, send_report, poll_transport, ready, close_transport
+        register_report, send_report, poll_transport, ready, close_transport, NULL
     };
     return &ops;
 }

@@ -58,7 +58,7 @@ static bool fake_send(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
     memcpy(((struct otg_ble_hid *)ctx)->report[id-1],data,size);return true;
 }
 static bool fake_poll(void *ctx){(void)ctx;return true;}
-static const struct otg_hid_transport_ops FAKE_OPS={fake_register,fake_send,fake_poll,fake_ready,NULL};
+static const struct otg_hid_transport_ops FAKE_OPS={fake_register,fake_send,fake_poll,fake_ready,NULL,NULL};
 const struct otg_hid_transport_ops *otg_ble_hid_ops(void){return &FAKE_OPS;}
 static bool last_created_legacy_handles;
 struct otg_ble_hid *otg_ble_hid_create_resident(const char *adapter,bool legacy_handles)
@@ -77,6 +77,8 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b,bool enabled)
     return enabled || !fail_idle;
 }
 void otg_ble_hid_set_interval(struct otg_ble_hid *b,uint64_t us){b->interval=us;}
+const char *otg_ble_hid_identity(const struct otg_ble_hid *b)
+{return b && fake_ready((void *)b) ? "AA:BB:CC:DD:EE:FF" : NULL;}
 bool otg_ble_hid_set_peer(struct otg_ble_hid *b,const char *address)
 {(void)b;return strlen(address)==17;}
 

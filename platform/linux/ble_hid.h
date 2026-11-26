@@ -24,6 +24,7 @@ void otg_ble_route_unbind(struct otg_ble_route *route);
 bool otg_ble_route_ready(const struct otg_ble_route *route, uint64_t *generation);
 void otg_ble_route_send(struct otg_ble_route *route, uint16_t id, const uint8_t data[8]);
 bool otg_ble_hid_set_peer(struct otg_ble_hid *b, const char *address);
+const char *otg_ble_hid_identity(const struct otg_ble_hid *b);
 bool otg_ble_hid_set_session(struct otg_ble_hid *b, bool enabled);
 void otg_ble_hid_set_interval(struct otg_ble_hid *b, uint64_t us);
 void otg_ble_hid_destroy(struct otg_ble_hid *b);

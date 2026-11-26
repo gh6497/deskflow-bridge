@@ -31,17 +31,16 @@ Windows CI 也编译此 CLI 后端并执行不访问蓝牙的回归测试。
 ### GUI 构建与使用
 
 安装 Qt 6.8+ 后，在上述配置中改用 `-DBUILD_GUI=ON`，并通过 `-DCMAKE_PREFIX_PATH`
-指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，选择
-「低功耗蓝牙（Windows，实验性）」，填写屏幕尺寸后点击「连接」，再从手机蓝牙设置配对或连接电脑。GUI 可自动配置并
+指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，在「共享服务 → 蓝牙服务」点击「启动蓝牙服务」，再从手机蓝牙设置配对或连接电脑。自动发现的设备配置中，连接方式固定为低功耗蓝牙。GUI 可自动配置并
 启动自己管理的 Deskflow server，也可使用已有的明文 server；蓝牙模式不调用 ADB、不自动连接 USB。
 
-GUI 使用 `--gui --gui-ble-control --transport ble` 前台子进程，填写手机地址时追加 `--ble-peer MAC`。子进程不接收 `--adapter`、
+GUI 使用 `--gui --gui-ble-control --gui-ble-auto --transport ble` 前台子进程。蓝牙身份由 provider 自动发现，GUI 根据身份选择或创建设备配置。子进程不接收 `--adapter`、
 `--ble-session`、隔离/提权或 `--background` 参数。等待配对无固定超时，可随时点「断开」取消；
 身份/订阅就绪并完成 Deskflow DSOP 后才显示已连接，手机掉线时显示等待重连。
 「断开」通过 stdin 发 `pause`：先关闭 Deskflow TCP，再丢弃未发动作，把键盘、按钮与范围
 释放排在已有在途通知后面。确认队列/在途通知处理完（或手机已失联）才回 `ble-idle`，GUI 才恢复空闲。
 同一 GATT provider、特征和订阅一直保留；空闲时不重连 Deskflow、不接受新输入。
-下次「连接」发 `resume<TAB>host<TAB>port<TAB>screen<TAB>width<TAB>height`（换行结束），
+发现手机后，GUI 发送 `attach<TAB>host<TAB>port<TAB>screen<TAB>width<TAB>height`（换行结束），
 复用该进程，并可更新服务器/屏幕名/尺寸，不重新注册 HID。协议有长度、状态与数值校验，
 只通过 GUI 私有的子进程 stdin 使用，不能改变目标手机或 HID 描述符。普通 `--gui` 仍为任意字节停止。
 释放/控制超时（8 秒）会失败关闭自己的 provider，日志明确提示 GATT 连续性丢失，不假报成功保留。
@@ -66,10 +65,7 @@ GUI 参数、状态和停止流程有离线模拟测试；真实 `main.c` + brid
 
 ## 运行
 
-省略 `--ble-peer` 时，服务广播并等待手机发起连接。首次选定须满足两路报告各有一个订阅者，
-且订阅者是同一个已配对的在线设备。选定后在 provider 的生命周期内保持该地址。
-也可使用 `--ble-peer` 指定 Windows 报告的手机 BLE 地址。在
-`BluetoothLE#BluetoothLE<电脑地址>-<手机地址>` 中取最后一段手机地址。
+服务广播并等待手机发起连接。首次选定须满足两路报告各有一个订阅者，且订阅者是同一个已配对的在线设备。GUI 使用该设备身份复用或创建配置，用户无需查询或填写手机地址。
 
 ```powershell
 .\build-win-ble\Release\deskflow-bridge.exe --transport ble `

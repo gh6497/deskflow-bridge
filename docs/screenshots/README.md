@@ -13,6 +13,7 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Refreshed both `input` views from the worktree based on `d997011` to show the older Android pointer compatibility option. Capture used `OTG_TEST_POINTER_SCREENSHOTS` with `gui/test_window guidePointerScreenshot` on the offscreen platform.
 - Refreshed both `server` views from the worktree based on `91f5c7c` to show the Bluetooth service settings. Capture used `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` with `gui/test_window guideSharedServiceScreenshot` on the offscreen platform.
 - Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
+- Both `server` screenshots were refreshed with `guideSharedServiceScreenshot` to show **Start Bluetooth service** in the shared settings.
 - Main window at 1100 × 880, with `input` at 1100 × 955 and `server` at 1100 × 1080. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions, placement and button settings.
@@ -43,3 +44,4 @@ update both guides when controls move or change.
 基于 `d997011` 的工作区更新两张输入页截图，显示「兼容旧版 Android 指针」。使用 Qt 离屏测试 `gui/test_window guidePointerScreenshot` 和 `OTG_TEST_POINTER_SCREENSHOTS` 采集。
 基于 `91f5c7c` 的工作区更新两张共享服务页截图，显示新增的「蓝牙服务」一栏。使用 Qt 离屏测试 `gui/test_window guideSharedServiceScreenshot` 和 `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` 采集。
 更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。
+本次用 `guideSharedServiceScreenshot` 重新采集了两张共享服务页截图，展示「启动蓝牙服务」入口。

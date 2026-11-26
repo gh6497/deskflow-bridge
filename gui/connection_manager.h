@@ -20,6 +20,8 @@ public:
     bool hasBleProvider() const;
     DeskflowServer::State serverState() const { return m_server.state(); }
     bool start(const QString &id, const ConnectionOptions &options, const QString &layout);
+    bool attachBle(const QString &id, const ConnectionOptions &options, const QString &layout);
+    bool bindBleDiscovery(const QString &sourceId, const QString &deviceId);
     void stop(const QString &id);
     void stopAll();
     void stopIdleBleProvider();
@@ -29,14 +31,18 @@ signals:
     void log(const QString &id, const QString &message);
     void usbAttached(const QString &id, const QString &serial);
     void displaySizeChanged(const QString &id, const QSize &size);
+    void bleIdentityDetected(const QString &id, const QString &identity);
 private:
     struct Entry {
         Session *session = nullptr;
         ConnectionOptions options;
         bool pending = false;
+        bool waitingForBleAttach = false;
         QString errorId, errorDetail;
     };
     void launchPending();
+    void configureWaitingBle();
+    void connectSession(Session *session, const QString &id);
     void update(const QString &id);
     bool reject(const QString &id, const char *message);
     QMap<QString, Entry> m_devices;

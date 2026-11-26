@@ -41,7 +41,7 @@ struct otg_ble_win *otg_ble_win_create(const char *peer)
 { (void)peer; memset(&provider, 0, sizeof(provider)); trace("provider-created"); return &provider; }
 const struct otg_hid_transport_ops *otg_ble_win_ops(void)
 {
-    static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report};
+    static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report, NULL};
     return &ops;
 }
 void otg_ble_win_destroy(struct otg_ble_win *b) { (void)b; trace("provider-closed"); }

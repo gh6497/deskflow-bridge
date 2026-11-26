@@ -81,12 +81,19 @@ static void usb_close(void *ctx)
     aoa_hid_destroy(ctx);
 }
 
+static const char *usb_identity(void *ctx)
+{
+    (void)ctx;
+    return NULL;
+}
+
 static const struct otg_hid_transport_ops USB_TRANSPORT = {
     .register_report = usb_register_report,
     .send = usb_send,
     .poll = usb_poll,
     .ready = usb_ready,
     .close = usb_close,
+    .identity = usb_identity,
 };
 
 /* scrcpy SC_HID_KEYBOARD_REPORT_DESC (8-byte report: 1 modifier + 1 reserved
@@ -697,6 +704,12 @@ bool otg_bridge_check(struct otg_bridge *b)
 bool otg_bridge_ready(const struct otg_bridge *b)
 {
     return b->transport_ops && b->transport_ops->ready(b->transport_ctx);
+}
+
+const char *otg_bridge_identity(const struct otg_bridge *b)
+{
+    return b->transport_ops && b->transport_ops->identity ?
+        b->transport_ops->identity(b->transport_ctx) : NULL;
 }
 
 void otg_bridge_reset_input(struct otg_bridge *b)

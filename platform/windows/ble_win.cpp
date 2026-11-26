@@ -850,6 +850,19 @@ static void close_transport(void *ctx)
     b->thread.join();
 }
 
+static const char *identity_transport(void *ctx)
+{
+    auto s = static_cast<otg_ble_win *>(ctx)->state;
+    static thread_local std::string text;
+    uint64_t address;
+    {
+        std::lock_guard<std::mutex> lock(s->mutex);
+        address = s->ready ? s->peer_address : 0;
+    }
+    text = address ? address_text(address) : std::string();
+    return text.empty() ? nullptr : text.c_str();
+}
+
 extern "C" void otg_ble_win_release_inputs(otg_ble_win *b)
 {
     auto s = b->state;
@@ -889,8 +902,12 @@ extern "C" otg_ble_win *otg_ble_win_create(const char *peer)
 }
 extern "C" const otg_hid_transport_ops *otg_ble_win_ops(void)
 {
-    static const otg_hid_transport_ops ops = {register_report, send_report, poll_transport, ready, close_transport};
+    static const otg_hid_transport_ops ops = {register_report, send_report, poll_transport, ready, close_transport, identity_transport};
     return &ops;
+}
+extern "C" const char *otg_ble_win_identity(otg_ble_win *b)
+{
+    return b ? identity_transport(b) : nullptr;
 }
 extern "C" void otg_ble_win_destroy(otg_ble_win *b)
 {

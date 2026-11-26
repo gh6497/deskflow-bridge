@@ -50,7 +50,7 @@ int main()
     Fake f;
     const uint16_t cornerX = static_cast<uint16_t>(1079U * 32767U / 2339U);
     otg_bridge bridge;
-    const otg_hid_transport_ops ops = {register_report, send, poll, ready, close};
+    const otg_hid_transport_ops ops = {register_report, send, poll, ready, close, nullptr};
     CHECK(otg_bridge_open_transport(&bridge, &ops, &f, 1080, 2340, OTG_MOUSE_ABSOLUTE) == 0);
     CHECK(f.registered == 2 && f.map[6] == 0x85 && f.map[7] == 1);
     CHECK(!otg_bridge_ready(&bridge));

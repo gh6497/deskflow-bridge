@@ -29,6 +29,7 @@ struct otg_hid_transport_ops {
     bool (*poll)(void *ctx);
     bool (*ready)(void *ctx);
     void (*close)(void *ctx);
+    const char *(*identity)(void *ctx);
 };
 
 enum otg_mouse_mode {
@@ -184,6 +185,7 @@ bool otg_bridge_check(struct otg_bridge *b);
 
 /* Whether the transport can currently accept input reports. */
 bool otg_bridge_ready(const struct otg_bridge *b);
+const char *otg_bridge_identity(const struct otg_bridge *b);
 /* Drop input state without reopening HID; best-effort release if still ready. */
 void otg_bridge_reset_input(struct otg_bridge *b);
 

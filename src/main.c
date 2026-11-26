@@ -15,6 +15,7 @@
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <io.h>
 #else
 #include <poll.h>
 #include <unistd.h>
@@ -45,6 +46,18 @@
 static int g_ble_control = 0;
 static struct otg_ble_control g_control;
 #endif
+static int g_ble_auto = 0;
+struct ble_auto_command {
+    bool attached;
+    char host[1025];
+    char name[256];
+    unsigned port, width, height;
+    bool absolute_per_axis;
+};
+static struct ble_auto_command g_ble_command;
+static char g_ble_command_line[2048];
+static size_t g_ble_command_used;
+static char g_ble_identity[64];
 
 #define DEFAULT_PORT   24800
 #define DEFAULT_HOST   "127.0.0.1"
@@ -113,6 +126,48 @@ static HANDLE g_ble_stop_event = NULL;
 static HANDLE g_ble_instance_mutex = NULL;
 #endif
 
+static bool ble_auto_command(const char *line)
+{
+    if (!strcmp(line, "stop")) {
+        g_stop = 1;
+        return true;
+    }
+    if (strncmp(line, "attach\t", 7)) return true;
+    char host[sizeof(g_ble_command.host)], name[sizeof(g_ble_command.name)];
+    unsigned port, width, height;
+    char axis[16] = {0};
+    const int fields = sscanf(line + 7, "%1024[^\t]\t%u\t%255[^\t]\t%u\t%u\t%15s",
+               host, &port, name, &width, &height, axis);
+    if ((fields != 5 && fields != 6) || (fields == 6 && strcmp(axis, "per-axis")) ||
+        !host[0] || !name[0] || !port || port > 65535 || !width || width > 32767 ||
+        !height || height > 32767) return false;
+    strcpy(g_ble_command.host, host);
+    strcpy(g_ble_command.name, name);
+    g_ble_command.port = port;
+    g_ble_command.width = width;
+    g_ble_command.height = height;
+    g_ble_command.absolute_per_axis = fields == 6;
+    g_ble_command.attached = true;
+    return true;
+}
+
+static bool ble_auto_feed(const char *bytes, size_t size)
+{
+    for (size_t i = 0; i < size; ++i) {
+        const unsigned char byte = (unsigned char)bytes[i];
+        if (byte == '\n') {
+            g_ble_command_line[g_ble_command_used] = 0;
+            if (!ble_auto_command(g_ble_command_line)) return false;
+            g_ble_command_used = 0;
+        } else {
+            if ((byte < 32 && byte != '\t') || byte == 127 || g_ble_command_used + 1 >= sizeof(g_ble_command_line))
+                return false;
+            g_ble_command_line[g_ble_command_used++] = (char)byte;
+        }
+    }
+    return true;
+}
+
 /* GUI owns stdin. A byte or EOF requests graceful shutdown, including when
  * the parent crashes. PeekNamedPipe avoids blocking on Windows console stdin. */
 static int gui_stop_check(void)
@@ -127,22 +182,36 @@ static int gui_stop_check(void)
         g_stop = 1;
     }
 #ifdef OTG_HAVE_BLE_WIN
-    else if (g_ble_control && available) {
+    else if ((g_ble_control || g_ble_auto) && available) {
         char bytes[1536];
         DWORD read = 0;
-        if (!ReadFile(input, bytes, available < sizeof(bytes) ? available : (DWORD)sizeof(bytes), &read, NULL) ||
-            !read || !otg_ble_control_feed(&g_control, bytes, read)) {
+        if (!ReadFile(input, bytes, available < sizeof(bytes) ? available : (DWORD)sizeof(bytes), &read, NULL) || !read ||
+            (g_ble_control && !otg_ble_control_feed(&g_control, bytes, read)) ||
+            (g_ble_auto && !ble_auto_feed(bytes, read))) {
             fprintf(stderr, "ERROR: invalid Windows BLE GUI control stream\n");
             g_stop = 1;
         }
         if (g_control.stop) g_stop = 1;
     }
 #endif
+#ifdef OTG_HAVE_BLE
+    else if (g_ble_auto && available) {
+        char bytes[1536];
+        ssize_t read = _read(_fileno(stdin), bytes, sizeof(bytes));
+        if (read <= 0 || !ble_auto_feed(bytes, (size_t)read)) g_stop = 1;
+    }
+#endif
     else if (available) g_stop = 1;
 #else
     struct pollfd input = { .fd = STDIN_FILENO, .events = POLLIN };
     if (poll(&input, 1, 0) > 0) {
-        g_stop = 1;
+        if (g_ble_auto) {
+            char bytes[1536];
+            const ssize_t count = read(STDIN_FILENO, bytes, sizeof(bytes));
+            if (count <= 0 || !ble_auto_feed(bytes, (size_t)count)) g_stop = 1;
+        } else {
+            g_stop = 1;
+        }
     }
 #endif
 #ifdef OTG_HAVE_BLE_WIN
@@ -158,6 +227,16 @@ static void gui_event(const char *event)
         fflush(stdout);
     }
 }
+
+#if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
+static void gui_identity_event(const char *identity)
+{
+    if (g_gui) {
+        printf("{\"event\":\"ble-device\",\"identity\":\"%s\"}\n", identity);
+        fflush(stdout);
+    }
+}
+#endif
 
 static int app_stop_requested(void)
 {
@@ -326,7 +405,8 @@ static void usage(const char *prog)
               "      --adb-serial SERIAL ADB transport (default USB serial; may be host:port)\n"
               "      --scrcpy-server PATH  Matching scrcpy-server jar/apk for ADB features\n"
              "      --scrcpy-version VER  Matching scrcpy server version\n"
-             "      --gui             JSON status on stdout; stdin byte/EOF stops\n"
+              "      --gui             JSON status on stdout; stdin byte/EOF stops\n"
+             "      --gui-ble-auto    Discover BLE identity before accepting Deskflow configuration\n"
             "      --gui-ble-control Windows GUI: pause/resume sessions without recreating GATT\n"
             "      --usb-scan        List USB attachments as JSON (no ADB or HID)\n"
             "      --usb-watch       Watch USB hotplug as JSON lines; stdin/EOF stops\n"
@@ -401,6 +481,44 @@ struct app_state {
     unsigned held_key_count;
     struct keyboard_event held_keys[64];
 };
+
+#if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
+static bool ble_auto_wait(app_state *s, struct app_options *opts)
+{
+    if (!g_ble_auto) return true;
+    const char *identity = otg_bridge_identity(&s->bridge);
+    if (!identity) return false;
+    if (strcmp(g_ble_identity, identity)) {
+        strncpy(g_ble_identity, identity, sizeof(g_ble_identity) - 1);
+        g_ble_identity[sizeof(g_ble_identity) - 1] = 0;
+        gui_identity_event(identity);
+    }
+    while (!g_stop && !g_ble_command.attached) {
+        if (gui_stop_check() || !otg_bridge_check(&s->bridge)) return false;
+#ifdef _WIN32
+        Sleep(5);
+#else
+        g_usleep(5000);
+#endif
+    }
+    if (g_stop) return false;
+    if (strcmp(opts->host, g_ble_command.host) || opts->port != g_ble_command.port) {
+        opts->host = g_ble_command.host;
+        opts->port = g_ble_command.port;
+    }
+    opts->name = g_ble_command.name;
+    if (opts->width != (int)g_ble_command.width || opts->height != (int)g_ble_command.height) {
+        if (!otg_bridge_resize(&s->bridge, (int32_t)g_ble_command.width,
+                               (int32_t)g_ble_command.height)) return false;
+        opts->width = (int)g_ble_command.width;
+        opts->height = (int)g_ble_command.height;
+    }
+    opts->absolute_per_axis = g_ble_command.absolute_per_axis;
+    otg_bridge_set_absolute_per_axis(&s->bridge, opts->absolute_per_axis);
+    g_ble_command.attached = false;
+    return true;
+}
+#endif
 
 static void send_keyboard_event(app_state *s, struct keyboard_event key)
 {
@@ -865,6 +983,11 @@ int main(int argc, char **argv)
             opts.height = parse_screen_size(argv[++i]);
         } else if (strcmp(a, "--gui") == 0) {
             g_gui = 1;
+#if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
+        } else if (strcmp(a, "--gui-ble-auto") == 0) {
+            g_gui = 1;
+            g_ble_auto = 1;
+#endif
 #ifdef OTG_HAVE_BLE_WIN
         } else if (strcmp(a, "--gui-ble-control") == 0) {
             g_ble_control = 1;
@@ -1216,6 +1339,12 @@ int main(int argc, char **argv)
     }
 #endif
 #endif
+#if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
+    if (g_ble_auto && (!g_gui || strcmp(opts.transport, "ble"))) {
+        fprintf(stderr, "ERROR: --gui-ble-auto requires foreground --gui --transport ble\n");
+        return 2;
+    }
+#endif
     if(opts.ble_status || opts.ble_stop_service) {
         if((opts.ble_status && opts.ble_stop_service) || opts.ble_service || opts.ble_session || opts.ble_isolate || opts.ble_restore || g_gui || opts.serial || opts.adb_serial)return 2;
 #ifdef OTG_HAVE_BLE
@@ -1438,6 +1567,10 @@ int main(int argc, char **argv)
             if (!g_stop) ret = 1;
             break;
         }
+        if (state.transport_owner && !ble_auto_wait(&state, &opts)) {
+            if (!g_stop) ret = 1;
+            break;
+        }
 #endif
         state.clipboard_error = false;
         state.audio_ready_reported = false;
@@ -1491,6 +1624,8 @@ int main(int argc, char **argv)
         otg_bridge_leave(&state.bridge);
         otg_bridge_reset_input(&state.bridge);
         state.deskflow_connected=state.input_ready_reported=false;
+        g_ble_command.attached = false;
+        g_ble_identity[0] = 0;
         gui_event("disconnected");
         fprintf(stderr,"INFO: BLE service retained; reconnect phone without removing pairing; retrying Deskflow when ready\n");
 #if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
