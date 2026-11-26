@@ -79,6 +79,7 @@ struct app_options {
     const char *transport;
     const char *adapter;
     const char *ble_peer;
+    const char *ble_win_session;
     int ble_isolate;
     int ble_restore;
     int ble_service;
@@ -996,6 +997,10 @@ int main(int argc, char **argv)
         return otg_usb_watch(gui_stop_check);
     }
 
+#ifdef OTG_HAVE_BLE_WIN
+    if (argc == 3 && strcmp(argv[1], "--ble-win-multi-service") == 0)
+        return otg_ble_win_multi_service_run(argv[2]);
+#endif
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
         if (strcmp(a, "-v") == 0 || strcmp(a, "--version") == 0) {
@@ -1037,6 +1042,8 @@ int main(int argc, char **argv)
             opts.ble_stop_service = 1;
         } else if (strcmp(a, "--ble-peer") == 0 && i + 1 < argc) {
             opts.ble_peer = argv[++i];
+        } else if (strcmp(a, "--ble-win-session") == 0 && i + 1 < argc) {
+            opts.ble_win_session = argv[++i];
 #ifdef _WIN32
         } else if (strcmp(a, "--background") == 0) {
             opts.background = 1;
@@ -1212,6 +1219,15 @@ int main(int argc, char **argv)
         return 2;
     }
     const bool uhid = strcmp(opts.transport, "uhid") == 0;
+    if (opts.ble_win_session) {
+#ifdef OTG_HAVE_BLE_WIN
+        if (strcmp(opts.transport, "ble") || !g_gui || !g_ble_control || opts.background)
+#endif
+        {
+            fprintf(stderr, "ERROR: --ble-win-session requires Windows foreground GUI BLE control\n");
+            return 2;
+        }
+    }
     const int adb_features = uhid || opts.audio || opts.clipboard || opts.unlock_adb_gate;
 #ifndef OTG_HAVE_UHID
     if (uhid) {
@@ -1521,7 +1537,8 @@ int main(int argc, char **argv)
         otg_bridge_set_side_swipe_distance(&state.bridge, (uint8_t)opts.side_swipe_distance_percent);
         fprintf(stderr, "INFO:  BLE HID advertisement started on %s; waiting for phone subscriptions\n", opts.adapter);
 #elif defined(OTG_HAVE_BLE_WIN)
-        state.transport_owner = otg_ble_win_create(opts.ble_peer);
+        state.transport_owner = opts.ble_win_session ?
+            otg_ble_win_create_session(opts.ble_peer, opts.ble_win_session) : otg_ble_win_create(opts.ble_peer);
         if (!state.transport_owner || otg_bridge_open_transport(&state.bridge,
                 otg_ble_win_ops(), state.transport_owner, opts.width, opts.height, opts.mouse_mode) != 0) {
             destroy_transport_owner(&state);

@@ -2,7 +2,7 @@
 #ifndef OTG_BLE_LIMITS_H
 #define OTG_BLE_LIMITS_H
 
-/* Software capacity of the Linux service. The controller may support fewer links. */
+/* Software capacity of shared BLE services. The controller may support fewer links. */
 #define OTG_BLE_MAX_PHONES 8
 
 #endif

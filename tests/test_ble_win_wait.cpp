@@ -1,5 +1,6 @@
 /* Fake operations only; no Bluetooth or sleeps. SPDX-License-Identifier: Apache-2.0 */
 #include "ble_win_wait.h"
+#include "ble_win_metadata.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +35,34 @@ int main()
     } catch (const WaitAborted& e) { CHECK(e.reason == WaitReason::session_changed && results == 0); }
     CHECK(wait_operation("already complete", [] { return false; }, [] {}, [] { return 7; },
         [](bool pending) { return pending ? WaitReason::timed_out : WaitReason::none; }, [] {}) == 7);
+    using namespace std::chrono_literals;
+    const auto now = std::chrono::steady_clock::time_point{};
+    MetadataRequest metadata;
+    int cancelled = 0;
+    metadata.start(now, 7);
+    CHECK(metadata.step(now + 100ms, 7, true, [&] { ++cancelled; }) == MetadataResult::pending);
+    CHECK(metadata.step(now + 1500ms, 7, true, [&] { ++cancelled; }) == MetadataResult::timed_out);
+    CHECK(metadata.active() && cancelled == 1);
+    CHECK(metadata.step(now + 5s, 7, true, [&] { ++cancelled; }) == MetadataResult::pending);
+    CHECK(metadata.active() && cancelled == 1); // No stacked lookup behind an unsettled cancellation.
+    CHECK(metadata.step(now + 6s, 7, false, [&] { ++cancelled; }) == MetadataResult::discarded);
+    CHECK(!metadata.active());
+    metadata.start(now + 7s, 8);
+    CHECK(metadata.step(now + 7100ms, 8, false, [&] { ++cancelled; }) == MetadataResult::complete);
+    metadata.start(now, 9);
+    CHECK(metadata.step(now, 10, false, [&] { ++cancelled; }) == MetadataResult::discarded);
+    metadata.start(now, 11);
+    metadata.abandon([&] { ++cancelled; });
+    metadata.abandon([&] { ++cancelled; });
+    CHECK(cancelled == 2 && metadata.active());
+    CHECK(metadata.step(now, 11, false, [&] { ++cancelled; }) == MetadataResult::discarded);
+    MetadataLease lease;
+    CHECK(!lease.valid(now, 1));
+    lease.renew(now, 1);
+    CHECK(lease.valid(now + 2999ms, 1));
+    CHECK(!lease.valid(now + 3s, 1) && !lease.valid(now, 2));
+    lease.clear(); CHECK(!lease.valid(now, 1));
     std::puts("PASS: named operation completion, stop, timeout, session cancellation and completion/disconnect race");
+    std::puts("PASS: non-blocking metadata timeout/retry, epoch rejection and finite pairing lease");
     return 0;
 }

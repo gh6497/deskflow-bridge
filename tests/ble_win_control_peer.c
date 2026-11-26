@@ -40,6 +40,9 @@ static const char *identity(void *ctx) { return ready(ctx) ? "AA:BB:CC:DD:EE:FF"
 static void close_report(void *ctx) { (void)ctx; }
 struct otg_ble_win *otg_ble_win_create(const char *peer)
 { (void)peer; memset(&provider, 0, sizeof(provider)); trace("provider-created"); return &provider; }
+struct otg_ble_win *otg_ble_win_create_session(const char *peer, const char *token)
+{ (void)token; return otg_ble_win_create(peer); }
+int otg_ble_win_multi_service_run(const char *token) { (void)token; return 2; }
 const struct otg_hid_transport_ops *otg_ble_win_ops(void)
 {
     static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report, identity};

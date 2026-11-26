@@ -913,11 +913,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_bleIsolate = translated(new QCheckBox, "text", "otg.ble.isolate");
     m_bleIsolate->setObjectName("bleIsolate");
     bleForm->addRow(m_bleIsolate);
-    m_bleMulti = translated(new QCheckBox, "text", "otg.ble.multi_mode");
-    m_bleMulti->setObjectName("bleMultiDevice");
-    setTranslatedProperty(m_bleMulti, "toolTip", "otg.ble.multi_mode_hint");
-    bleForm->addRow(m_bleMulti);
-    connect(m_bleMulti, &QCheckBox::toggled, m_bleIsolate, &QWidget::setDisabled);
     m_bleLegacyHandles = translated(new QCheckBox, "text", "otg.ble.legacy_handles");
     m_bleLegacyHandles->setObjectName("bleLegacyHandles");
     setTranslatedProperty(m_bleLegacyHandles, "toolTip", "otg.ble.legacy_handles_hint");
@@ -925,6 +920,15 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
 #else
     bleForm->addRow(translated(new QLabel, "text", "otg.ble.default_adapter"));
 #endif
+    m_bleMulti = translated(new QCheckBox, "text", "otg.ble.multi_mode");
+    m_bleMulti->setObjectName("bleMultiDevice");
+#ifdef Q_OS_LINUX
+    setTranslatedProperty(m_bleMulti, "toolTip", "otg.ble.multi_mode_hint");
+    connect(m_bleMulti, &QCheckBox::toggled, m_bleIsolate, &QWidget::setDisabled);
+#else
+    setTranslatedProperty(m_bleMulti, "toolTip", "otg.ble.windows_multi_hint");
+#endif
+    bleForm->addRow(m_bleMulti);
     m_bleServiceStatus = translated(new QLabel, "text", "otg.ble.status_checking");
     m_bleServiceStatus->setObjectName("bleServiceStatus");
     m_bleServiceStatus->setWordWrap(true);
@@ -1153,6 +1157,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
             profile["uhidUsbSerialLocked"] = !key.second.isEmpty() && m_profiles.contains(key);
         }
     }
+    if (m_bleMulti) m_bleMulti->setChecked(settings.value("sharedBle/multiDevice", false).toBool());
     if (m_adapter) {
         const auto sharedValue = [&](const char *sharedKey, const char *oldKey, const QVariant &fallback) {
             return settings.value(sharedKey, legacyBle.value(oldKey, settings.value(oldKey, fallback)));
@@ -1160,7 +1165,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         m_adapter->setText(sharedValue("sharedBle/adapter", "bleAdapter", "hci0").toString());
         m_bleIsolate->setChecked(sharedValue("sharedBle/isolate", "bleIsolate", false).toBool());
         m_bleLegacyHandles->setChecked(sharedValue("sharedBle/legacyHandles", "bleLegacyHandles", false).toBool());
-        m_bleMulti->setChecked(settings.value("sharedBle/multiDevice", false).toBool());
         // Save before a device-only update can discard the legacy profile fields.
         saveSharedBleSettings(settings);
     }
@@ -1991,6 +1995,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile)
         options.bleIdentity = profile.value("bleIdentity").toString().trimmed().toUpper();
         options.bleAutoAttach = profile.value("bleAutoAttach", true).toBool();
         options.blePeer = options.bleIdentity;
+        options.preferDirectedBle = m_bleMulti && m_bleMulti->isChecked();
     }
     if (options.transport == "ble" && m_adapter) {
         options.adapter = m_adapter->text().trimmed();
@@ -2473,7 +2478,7 @@ void MainWindow::startBleService()
 void MainWindow::continueBleDiscovery()
 {
     if (!m_discoverMultipleBle || m_closing || m_stoppingBleService ||
-        m_connections.activeBleSessions() >= OTG_BLE_MAX_PHONES ||
+        m_connections.reservedBleSessions() >= OTG_BLE_MAX_PHONES ||
         (!m_discoveryId.isEmpty() && m_connections.state(m_discoveryId) != Session::State::Idle))
         return;
     if (m_discoveryId.isEmpty()) m_discoveryId = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -2532,9 +2537,9 @@ void MainWindow::updateBleServiceControls(bool sharedEditable)
 {
     if (!m_bleServiceStatus) return;
     m_startBleService->setEnabled(sharedEditable);
+    m_bleMulti->setEnabled(sharedEditable && !m_connections.hasBleProvider());
     if (m_adapter) {
         m_adapter->setEnabled(sharedEditable);
-        m_bleMulti->setEnabled(sharedEditable);
         m_bleLegacyHandles->setEnabled(sharedEditable);
         m_bleIsolate->setEnabled(sharedEditable && !m_bleMulti->isChecked());
     } else if (!m_stoppingBleService) {
@@ -2781,11 +2786,11 @@ void MainWindow::rememberDevice(const QVariantMap &profile)
 
 void MainWindow::saveSharedBleSettings(QSettings &settings) const
 {
+    if (m_bleMulti) settings.setValue("sharedBle/multiDevice", m_bleMulti->isChecked());
     if (!m_adapter) return;
     settings.setValue("sharedBle/adapter", m_adapter->text().trimmed());
     settings.setValue("sharedBle/isolate", m_bleIsolate->isChecked());
     settings.setValue("sharedBle/legacyHandles", m_bleLegacyHandles->isChecked());
-    settings.setValue("sharedBle/multiDevice", m_bleMulti->isChecked());
 }
 
 void MainWindow::saveSettings()

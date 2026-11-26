@@ -115,6 +115,7 @@ static void addTestDevice(MainWindow &window, const QString &transport = "usb", 
     QCOMPARE(manager->state(id), Session::State::Connected);
     manager->stop(id);
     QTRY_COMPARE(manager->state(id), Session::State::Idle);
+    if (!manager->busy()) QTRY_COMPARE(manager->serverState(), DeskflowServer::State::Idle);
 }
 
 #ifdef OTG_GUI_HAVE_SCRCPY
@@ -596,7 +597,7 @@ private slots:
         window.close(); // Hidden to tray, no bridge session required.
         other->trigger();
         QTRY_VERIFY(window.statusBar()->currentMessage().contains("two") && other->isEnabled());
-        QCOMPARE(QGuiApplication::clipboard()->image().size(), image.size());
+        QTRY_COMPARE(QGuiApplication::clipboard()->image().size(), image.size());
         QCOMPARE(target->text(), "USB-ID"); // The tray action did not switch the selected device.
 
         window.show();
@@ -1594,7 +1595,8 @@ private slots:
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(false);
             serial->setText("B"); alias->setText("Pixel 8"); width->setValue(1080);
             connectButton->click();
-            QTRY_COMPARE(manager->state(secondId), Session::State::Connected);
+            QTRY_VERIFY2(manager->state(secondId) == Session::State::Connected,
+                         qPrintable(manager->status(secondId)));
             QVERIFY(list->isEnabled());
             QVERIFY(!manageServer->isEnabled());
             QVERIFY(!configFile->isEnabled());
@@ -2161,8 +2163,8 @@ private slots:
     }
     void discoverMultipleBlePhones()
     {
-#if !defined(Q_OS_LINUX) || !defined(OTG_GUI_HAVE_BLE)
-        QSKIP("Linux BLE GUI only");
+#if !defined(OTG_GUI_HAVE_BLE) && !defined(OTG_GUI_HAVE_BLE_WIN)
+        QSKIP("BLE-enabled GUI only");
 #endif
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -2182,10 +2184,15 @@ private slots:
         QVERIFY(queue.write("AA:BB:CC:DD:EE:01\nAA:BB:CC:DD:EE:02\nAA:BB:CC:DD:EE:03\n") > 0);
         queue.close();
         const auto stopMarker = dir.filePath("stopped");
+#ifdef Q_OS_WIN
+        qputenv("OTG_TEST_BLE_WINDOWS", "1");
+#else
         qputenv("OTG_TEST_BLE_STATUS", "directed");
+#endif
         qputenv("OTG_TEST_BLE_DISCOVERY_QUEUE", queue.fileName().toUtf8());
         qputenv("OTG_TEST_BLE_STOP_MARKER", stopMarker.toUtf8());
         const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_WINDOWS");
             qunsetenv("OTG_TEST_BLE_STATUS");
             qunsetenv("OTG_TEST_BLE_DISCOVERY_QUEUE");
             qunsetenv("OTG_TEST_BLE_STOP_MARKER");
@@ -2230,10 +2237,11 @@ private slots:
         usb.manageServer = false;
         usb.bridge = testPeerPath();
         usb.serial = "test-usb";
+        usb.deskflow = window.findChild<QLineEdit *>("deskflowExecutable")->text();
         usb.tls = true;
         usb.tlsCertificate = certificate;
         usb.tlsFingerprint = fingerprint;
-        QVERIFY(manager->start("initial", usb));
+        QVERIFY2(manager->start("initial", usb), qPrintable(manager->status("initial")));
         QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
 
         auto *stop = window.findChild<QPushButton *>("stopBleService");
@@ -2242,7 +2250,9 @@ private slots:
             if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
         });
         stop->click();
+#ifdef Q_OS_LINUX
         QTRY_VERIFY(QFile::exists(stopMarker));
+#endif
         QTRY_COMPARE(window.findChild<QLabel *>("bleServiceStatus")->text(), qtTrId("otg.ble.status_stopped"));
         QCOMPARE(manager->activeBleSessions(), 0);
         QVERIFY(!stop->isEnabled());
@@ -2763,6 +2773,35 @@ private slots:
         QCOMPARE(restored.findChild<QComboBox *>("languageSelector")->currentData().toString(), "en");
         QCOMPARE(restored.findChild<QPushButton *>("connectButton")->text(), "Connect");
         restored.close();
+    }
+    void guideWindowsBleScreenshot()
+    {
+#if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
+        const auto capture = qEnvironmentVariable("OTG_TEST_WINDOWS_BLE_SCREENSHOTS");
+        if (capture.isEmpty()) return;
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        for (const auto &language : {QStringLiteral("en"), QStringLiteral("zh_CN")}) {
+            QSettings settings;
+            settings.clear();
+            settings.setValue("language", language);
+            settings.setValue("manageServer", false);
+            AutoConnectTestWindow window;
+            window.available = false;
+            window.resize(1100, 1220);
+            window.findChild<QLineEdit *>("adbExecutable")->setText("C:/Android/platform-tools/adb.exe");
+            window.findChild<QLineEdit *>("deskflowExecutable")->setText("C:/Deskflow/deskflow-core.exe");
+            window.findChild<QTabWidget *>("deviceTabs")->setCurrentIndex(1);
+            auto *multi = window.findChild<QCheckBox *>("bleMultiDevice");
+            QVERIFY(multi && !multi->isChecked() && multi->isEnabled());
+            window.show();
+            QCoreApplication::processEvents();
+            QVERIFY(window.grab().save(QDir(capture).filePath(language == "en" ?
+                "server-windows-en.png" : "server-windows-zh-CN.png")));
+            window.findChild<QAction *>("trayQuit")->trigger();
+        }
+#endif
     }
     void guideSharedServiceScreenshot()
     {
