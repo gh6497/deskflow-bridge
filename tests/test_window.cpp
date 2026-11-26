@@ -1589,6 +1589,60 @@ private slots:
 #endif
         QCOMPARE(transport->findData("ble"), -1);
         QCOMPARE(transport->count(), count);
+#if !defined(OTG_GUI_HAVE_BLE) && !defined(OTG_GUI_HAVE_BLE_WIN)
+        QVERIFY(!window.findChild<QLabel *>("bleServiceStatus"));
+#endif
+        window.findChild<QAction *>("trayQuit")->trigger();
+    }
+    void sharedBleServiceStatus()
+    {
+#if !defined(Q_OS_LINUX) || !defined(OTG_GUI_HAVE_BLE)
+        QSKIP("Linux BLE GUI only");
+#endif
+        QTemporaryDir settingsDir;
+        QVERIFY(settingsDir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        QSettings settings;
+        settings.setValue("language", "zh_CN");
+        settings.setValue("sharedBle/adapter", "hci1");
+        qputenv("OTG_TEST_BLE_STATUS", "unavailable");
+        qputenv("OTG_TEST_BLE_STATUS_ADAPTER", "hci1");
+        const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_STATUS");
+            qunsetenv("OTG_TEST_BLE_STATUS_ADAPTER");
+        });
+        AutoConnectTestWindow window;
+        auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
+        auto *status = window.findChild<QLabel *>("bleServiceStatus");
+        auto *adapter = window.findChild<QLineEdit *>("bleAdapter");
+        QVERIFY(tabs && status && adapter);
+        QVERIFY(tabs->widget(1)->isAncestorOf(status));
+        window.show();
+        tabs->setCurrentIndex(1);
+        QTRY_COMPARE(status->text(), QStringLiteral("未检测到可用服务"));
+
+        // A resident service can start and become busy without any action in this GUI.
+        qunsetenv("OTG_TEST_BLE_STATUS");
+        QTRY_COMPARE(status->text(), QStringLiteral("运行中 · 空闲"));
+        qputenv("OTG_TEST_BLE_STATUS", "in-use");
+        QTRY_COMPARE(status->text(), QStringLiteral("运行中 · 会话使用中"));
+        qputenv("OTG_TEST_BLE_STATUS", "busy");
+        qputenv("OTG_TEST_BLE_STATUS_ADAPTER", "hci2");
+        adapter->setText("hci2");
+        QVERIFY(QMetaObject::invokeMethod(adapter, "editingFinished"));
+        QTRY_COMPARE(status->text(), QStringLiteral("运行中 · 键鼠已就绪"));
+
+        auto *language = window.findChild<QComboBox *>("languageSelector");
+        language->setCurrentIndex(language->findData("en"));
+        QCOMPARE(status->text(), QStringLiteral("Running · Keyboard and mouse ready"));
+        adapter->setText("invalid");
+        QVERIFY(QMetaObject::invokeMethod(adapter, "editingFinished"));
+        QTRY_COMPARE(status->text(), QStringLiteral("Invalid adapter name"));
+        qputenv("OTG_TEST_BLE_STATUS", "incompatible");
+        adapter->setText("hci2");
+        QVERIFY(QMetaObject::invokeMethod(adapter, "editingFinished"));
+        QTRY_COMPARE(status->text(), QStringLiteral("Could not check service status"));
         window.findChild<QAction *>("trayQuit")->trigger();
     }
     void bleSettingsAndNoAdb()
@@ -1653,7 +1707,12 @@ private slots:
         QVERIFY(!button->isEnabled());
         QVERIFY(!window.findChild<QPushButton *>("connectAllButton")->isEnabled());
         QTRY_COMPARE(session->state(), Session::State::Connected);
-        QVERIFY(!stopService->isEnabled());
+#ifdef Q_OS_WIN
+        auto *serviceStatus = window.findChild<QLabel *>("bleServiceStatus");
+        QVERIFY(serviceStatus && tabs->widget(1)->isAncestorOf(serviceStatus));
+        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 已接入 Deskflow"));
+#endif
+        QVERIFY(stopService->isEnabled());
         QVERIFY(serial->text().isEmpty()); // No startup ADB scan in BLE mode.
         session->stop();
         QTRY_COMPARE(session->state(), Session::State::Idle);
@@ -1691,17 +1750,29 @@ private slots:
         if (!screenshot.isEmpty()) QVERIFY(window.grab().save(screenshot));
 #if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
         QVERIFY(stopService->isEnabled());
+        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
         window.findChild<QPushButton *>("addDeviceButton")->click();
         QVERIFY(transport->currentData().toString() != "ble");
         QVERIFY(stopService->isEnabled());
+        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
         QTimer::singleShot(0, &window, [&window] {
             if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
         });
         stopService->click();
         QTRY_VERIFY(!session->hasBleProvider());
         QVERIFY(!stopService->isEnabled());
+        QCOMPARE(serviceStatus->text(), QStringLiteral("已停止"));
         auto *list = window.findChild<QListWidget *>("deviceSidebar");
         list->setCurrentRow(0);
+        button->click();
+        QTRY_COMPARE(session->state(), Session::State::Connected);
+        QVERIFY(stopService->isEnabled());
+        QTimer::singleShot(0, &window, [&window] {
+            if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
+        });
+        stopService->click();
+        QTRY_COMPARE(session->state(), Session::State::Idle);
+        QVERIFY(!session->hasBleProvider());
 #endif
         window.findChild<QAction *>("trayQuit")->trigger();
         QTRY_VERIFY(!session->hasBleProvider());
@@ -1770,6 +1841,73 @@ private slots:
             window.findChild<QAction *>("trayQuit")->trigger();
             QTRY_VERIFY(manager->settled());
         }
+    }
+    void discoverMultipleBlePhones()
+    {
+#if !defined(Q_OS_LINUX) || !defined(OTG_GUI_HAVE_BLE)
+        QSKIP("Linux BLE GUI only");
+#endif
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("manageServer", false);
+        settings.setValue("adb", "");
+        QFile queue(dir.filePath("phones"));
+        QVERIFY(queue.open(QIODevice::WriteOnly));
+        QVERIFY(queue.write("AA:BB:CC:DD:EE:01\nAA:BB:CC:DD:EE:02\nAA:BB:CC:DD:EE:03\n") > 0);
+        queue.close();
+        const auto stopMarker = dir.filePath("stopped");
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
+        qputenv("OTG_TEST_BLE_DISCOVERY_QUEUE", queue.fileName().toUtf8());
+        qputenv("OTG_TEST_BLE_STOP_MARKER", stopMarker.toUtf8());
+        const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_STATUS");
+            qunsetenv("OTG_TEST_BLE_DISCOVERY_QUEUE");
+            qunsetenv("OTG_TEST_BLE_STOP_MARKER");
+        });
+        AutoConnectTestWindow window;
+        auto *manager = window.findChild<ConnectionManager *>();
+        auto *multi = window.findChild<QCheckBox *>("bleMultiDevice");
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        QVERIFY(manager && multi && list);
+        multi->setChecked(true);
+        window.findChild<QPushButton *>("startBleService")->click();
+        QTRY_COMPARE(list->count(), 4);
+        QStringList ids;
+        for (const auto &suffix : {QStringLiteral("01"), QStringLiteral("02"), QStringLiteral("03")}) {
+            const auto phones = list->findItems("*AA-BB-CC-DD-EE-" + suffix + "*", Qt::MatchWildcard);
+            QCOMPARE(phones.size(), 1);
+            ids << phones.first()->data(Qt::UserRole).toString();
+            QTRY_COMPARE(manager->state(ids.last()), Session::State::Connected);
+        }
+        QTRY_COMPARE(manager->activeBleSessions(), 4); // Three phones and a listener for the next one.
+        manager->stop(ids.front());
+        QTRY_COMPARE(manager->state(ids.front()), Session::State::Idle);
+        QCOMPARE(manager->state(ids[1]), Session::State::Connected);
+        QCOMPARE(manager->state(ids[2]), Session::State::Connected);
+        ConnectionOptions usb;
+        usb.manageServer = false;
+        usb.bridge = testPeerPath();
+        usb.serial = "test-usb";
+        QVERIFY(manager->start("initial", usb));
+        QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
+
+        auto *stop = window.findChild<QPushButton *>("stopBleService");
+        QVERIFY(stop && stop->isEnabled());
+        QTimer::singleShot(0, &window, [&window] {
+            if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
+        });
+        stop->click();
+        QTRY_VERIFY(QFile::exists(stopMarker));
+        QTRY_COMPARE(window.findChild<QLabel *>("bleServiceStatus")->text(), qtTrId("otg.ble.status_stopped"));
+        QCOMPARE(manager->activeBleSessions(), 0);
+        QVERIFY(!stop->isEnabled());
+        QCOMPARE(manager->state("initial"), Session::State::Connected);
+        window.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_VERIFY(manager->settled());
+        QVERIFY(settings.value("sharedBle/multiDevice").toBool());
     }
     void sharedBleSettingsAcrossDevices()
     {
@@ -2226,7 +2364,7 @@ private slots:
             settings.setValue("transport", "usb");
             AutoConnectTestWindow window;
             window.available = false;
-            window.resize(1100, 1140);
+            window.resize(1100, 1220);
             window.findChild<QLineEdit *>("adbExecutable")->setText("/usr/bin/adb");
             window.findChild<QLineEdit *>("deskflowExecutable")->setText("/usr/bin/deskflow-core");
             auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
@@ -2234,6 +2372,11 @@ private slots:
             window.show();
             QCoreApplication::processEvents();
             QTRY_VERIFY(window.findChild<QComboBox *>("deviceSelector")->isEnabled());
+            if (window.findChild<QLineEdit *>("bleAdapter")) {
+                auto *status = window.findChild<QLabel *>("bleServiceStatus");
+                QVERIFY(status);
+                QTRY_COMPARE(status->text(), qtTrId("otg.ble.status_idle"));
+            }
             const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
             QVERIFY(window.grab().save(QDir(capture).filePath(QString("server-") + suffix)));
             window.findChild<QPushButton *>("addDeviceButton")->click();

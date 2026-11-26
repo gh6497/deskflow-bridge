@@ -4,8 +4,8 @@
 <context>
   <name></name>
   <message id="otg.ble.reconnect"><source>Reconnect to Deskflow</source><translation>重新接入 Deskflow</translation></message>
-  <message id="otg.multi.stop_single_service"><source>Disconnect the Bluetooth session, click Stop idle Bluetooth service, then reconnect to start the two-phone service.</source><translation>请先断开蓝牙会话，点击「停止空闲蓝牙服务」，再点「连接」启动双手机服务。</translation></message>
-  <message id="otg.multi.directed_required"><source>For two BLE phones, start a verified directed service, use the same adapter and a different phone address for each screen, and turn off per-device isolation.</source><translation>双蓝牙手机需要先启动已核验的定向服务。两台设备使用同一适配器，分别填写手机地址，并关闭设备配置中的蓝牙隔离。</translation></message>
+  <message id="otg.multi.stop_single_service"><source>Disconnect all devices, stop the idle Bluetooth service, then start the multi-device service.</source><translation>请先断开所有设备，停止空闲蓝牙服务，再启动多设备服务。</translation></message>
+  <message id="otg.multi.directed_required"><source>Multiple Bluetooth phones need a verified shared service on the same adapter, with a separate identity for each phone.</source><translation>多台蓝牙手机须使用同一个适配器上的已核验共享服务，每台手机使用独立的身份。</translation></message>
   <message id="otg.transfer.working"><source>Working with the selected phone…</source><translation>正在处理所选手机的文件请求…</translation></message>
   <message id="otg.transfer.title"><source>Files &amp; sharing</source><translation>文件与分享</translation></message>
   <message id="otg.transfer.help"><source>Requires companion app 0.1.6 and already-authorized ADB. On the phone share to computer, then refresh here and select files to receive. Select files or drag local files into this window to send them. The phone can keep private copies or automatically publish media and files to user-authorized public storage. No clipboard changes or automatic opening. Limits: 32 files, 1 GiB per file, 2 GiB total.</source><translation>需要伴侣应用 0.1.6 和已有的已授权 ADB。在手机「分享至电脑」后，在此刷新并选择接收。可点击选择文件，也可将本地文件拖入窗口发送。手机可以保留私有副本，也可以将媒体文件和其他文件自动保存到用户授权的公共位置。不修改剪贴板、不自动打开。最多 32 个文件，单文件 1 GiB，总计 2 GiB。</translation></message>
@@ -49,9 +49,21 @@
   <message id="otg.ble.windows_setup_hint"><source>Start the Bluetooth service under Shared server, then pair or connect to this PC from the phone.</source><translation>在「共享服务」中启动蓝牙服务，再从手机蓝牙设置配对或连接这台电脑。</translation></message>
   <message id="otg.ble.setup_hint"><source>Start the Bluetooth service under Shared server, then connect to Deskflow Bridge from the phone.</source><translation>在「共享服务」中启动蓝牙服务，再从手机蓝牙设置连接 Deskflow Bridge。</translation></message>
   <message id="otg.ble.start_service"><source>Start Bluetooth service</source><translation>启动蓝牙服务</translation></message>
-  <message id="otg.ble.stop_service"><source>Stop idle Bluetooth service</source><translation>停止空闲蓝牙服务</translation></message>
-  <message id="otg.ble.stop_confirm"><source>This unregisters GATT and loses subscription continuity. The phone may need a Bluetooth reconnect or cache recovery afterward. Other active sessions cannot be stopped here. Continue?</source><translation>这会注销 GATT 并失去订阅连续性，之后手机可能需要重新连接蓝牙或恢复缓存。此操作不会停止其他活动会话。是否继续？</translation></message>
-  <message id="otg.ble.stopped"><source>Idle Bluetooth service stop acknowledged.</source><translation>空闲蓝牙服务已确认停止请求。</translation></message>
+  <message id="otg.ble.stop_service"><source>Stop Bluetooth service</source><translation>停止蓝牙服务</translation></message>
+  <message id="otg.ble.status_label"><source>Service status</source><translation>服务状态</translation></message>
+  <message id="otg.ble.status_checking"><source>Checking…</source><translation>正在查询…</translation></message>
+  <message id="otg.ble.status_unavailable"><source>No available service detected</source><translation>未检测到可用服务</translation></message>
+  <message id="otg.ble.status_query_failed"><source>Could not check service status</source><translation>无法查询服务状态</translation></message>
+  <message id="otg.ble.status_invalid_adapter"><source>Invalid adapter name</source><translation>适配器名称无效</translation></message>
+  <message id="otg.ble.status_stopped"><source>Stopped</source><translation>已停止</translation></message>
+  <message id="otg.ble.status_starting"><source>Starting…</source><translation>正在启动…</translation></message>
+  <message id="otg.ble.status_stopping"><source>Stopping…</source><translation>正在停止…</translation></message>
+  <message id="otg.ble.status_idle"><source>Running · Idle</source><translation>运行中 · 空闲</translation></message>
+  <message id="otg.ble.status_in_use"><source>Running · Session in use</source><translation>运行中 · 会话使用中</translation></message>
+  <message id="otg.ble.status_ready"><source>Running · Keyboard and mouse ready</source><translation>运行中 · 键鼠已就绪</translation></message>
+  <message id="otg.ble.status_connected"><source>Running · Connected to Deskflow</source><translation>运行中 · 已接入 Deskflow</translation></message>
+  <message id="otg.ble.stop_confirm"><source>Stop Bluetooth discovery and disconnect the Bluetooth phones in this window? USB and ADB + UHID sessions will stay connected. The phones may need to reconnect through Bluetooth settings after you restart the service.</source><translation>停止蓝牙设备发现并断开本窗口中的蓝牙手机？USB 和 ADB＋UHID 会话会保持连接。重新启动服务后，手机可能需要在蓝牙设置中重新连接。</translation></message>
+  <message id="otg.ble.stopped"><source>Bluetooth service stopped.</source><translation>蓝牙服务已停止。</translation></message>
   <message id="otg.ble.stop_failed"><source>Bluetooth service could not be stopped: </source><translation>无法停止蓝牙服务：</translation></message>
   <message id="otg.transport.usb"><source>USB (AOA HID)</source><translation>USB（AOA HID）</translation></message>
   <message id="otg.transport.uhid"><source>ADB + UHID (USB / wireless)</source><translation>ADB＋UHID（USB／无线）</translation></message>
@@ -79,7 +91,11 @@
   <message id="otg.ble.shared_isolation_cancelled"><source>BLE-only service startup was cancelled.</source><translation>已取消启动仅 BLE 服务。</translation></message>
   <message id="otg.ble.starting_shared_isolation"><source>Starting the shared BLE-only service on %1. Complete administrator authentication to continue.</source><translation>正在 %1 上启动共享的仅 BLE 服务。请完成管理员认证。</translation></message>
   <message id="otg.ble.stop_unisolated_service"><source>Stop the existing Bluetooth service once it is idle, then reconnect to start a verified BLE-only service.</source><translation>请等现有蓝牙服务空闲后手动停止它，再重新连接以启动已核验的仅 BLE 服务。</translation></message>
-  <message id="otg.ble.verify_directed"><source>Verify the running BlueZ instance before starting the two-phone Bluetooth service.</source><translation>请先核验当前运行的 BlueZ 实例，再启动双机蓝牙服务。</translation></message>
+  <message id="otg.ble.verify_directed"><source>Verify the running BlueZ instance before starting the multi-device Bluetooth service.</source><translation>请先核验当前运行的 BlueZ 实例，再启动多设备蓝牙服务。</translation></message>
+  <message id="otg.ble.multi_mode"><source>Allow multiple Bluetooth phones</source><translation>允许多台蓝牙手机</translation></message>
+  <message id="otg.ble.multi_mode_hint"><source>Uses a verified BlueZ instance and a shared BLE-only service. The adapter temporarily disconnects its Bluetooth devices at startup.</source><translation>使用已核验的 BlueZ 和共享的仅 BLE 服务。启动时会暂时断开此适配器的蓝牙设备。</translation></message>
+  <message id="otg.ble.multi_full"><source>The Bluetooth service has no free phone sessions.</source><translation>蓝牙服务没有空余的手机会话。</translation></message>
+  <message id="otg.ble.discovery_unsupported"><source>This Bluetooth service does not support multi-device discovery. Disconnect all devices, stop the idle service and start it again.</source><translation>当前蓝牙服务不支持多设备发现。请断开所有设备，停止空闲服务后重新启动。</translation></message>
   <message id="otg.ble.confirm"><source>All Bluetooth connections on %1, including keyboards, mice and headphones, will disconnect. Use a wired keyboard/mouse or a dedicated adapter. Administrator authentication is required. Original settings will be restored when the session ends; failed recovery retains a snapshot for --ble-restore. Continue?</source><translation>%1 上的所有蓝牙连接（包括键盘、鼠标、耳机）将断开。请使用有线键鼠或专用适配器。接下来需要管理员认证。会话结束时恢复原设置；恢复失败会保留快照，可用 --ble-restore 显式恢复。是否继续？</translation></message>
   <message id="otg.ble.waiting"><source>Waiting for the target phone's HID connection (pair/connect in Bluetooth settings)</source><translation>等待目标手机 HID 就绪（请在系统蓝牙设置中配对或连接）</translation></message>
   <message id="otg.ble.reconnecting"><source>Bluetooth/Deskflow disconnected — waiting to reconnect; pairing retained</source><translation>蓝牙或 Deskflow 已断开，等待重新连接；配对保留</translation></message>

@@ -370,7 +370,7 @@ static void usage(const char *prog)
              "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
              "      --ble-service     Linux: resident user GATT service (keep running)\n"
-             "      --ble-multi TOKEN Linux: two-phone service, requires verified BlueZ and --ble-isolate\n"
+             "      --ble-multi TOKEN Linux: multi-phone service, requires verified BlueZ and --ble-isolate\n"
              "      --ble-directed-session  Attach --ble-session by explicit peer and screen name\n"
              "      --ble-legacy-handles  Linux: 8-bit HID handles for older Android (on service and session)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
@@ -1340,8 +1340,8 @@ int main(int argc, char **argv)
         if ((opts.ble_multi_instance && (!opts.ble_service || (g_gui && !opts.ble_isolate) || opts.ble_session || opts.ble_restore ||
              opts.ble_status || opts.ble_stop_service || opts.serial || opts.adb_serial || opts.ble_peer ||
              !otg_ble_instance_matches(opts.ble_multi_instance))) ||
-            (opts.ble_directed_session && (!opts.ble_session || !opts.ble_peer || opts.ble_isolate))) {
-            fprintf(stderr,"ERROR: multi service needs a verified running bluetoothd token; directed sessions need an explicit peer and service-level isolation\n");return 2;
+            (opts.ble_directed_session && (!opts.ble_session || (!opts.ble_peer && !(g_gui && g_ble_auto)) || opts.ble_isolate))) {
+            fprintf(stderr,"ERROR: multi service needs a verified running bluetoothd token; directed sessions need an explicit peer or GUI discovery, and service-level isolation\n");return 2;
         }
         if (opts.ble_multi_instance) {
             if (opts.ble_isolate) return otg_ble_supervise(argc,argv,opts.adapter,0,&g_stop);

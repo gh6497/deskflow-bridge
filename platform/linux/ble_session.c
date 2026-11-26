@@ -28,12 +28,13 @@ static const char *runtime_base="/run/user";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
     STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY,
-    GET_IDENTITY
+    GET_IDENTITY, ATTACH_DIRECTED_DISCOVERY
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
 #define STATUS_DIRECTED 4u
 #define STATUS_BLE_ONLY 8u
+#define STATUS_DISCOVERY 16u
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -313,15 +314,16 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
     listener=socket(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0);
     if(listener<0 || bind(listener,(struct sockaddr *)&address,sizeof(address)))goto out;
     bound=true;
-    if(chmod(address.sun_path,0600) || listen(listener,4))goto out;
+    if(chmod(address.sun_path,0600) || listen(listener,OTG_BLE_MAX_PHONES + 4))goto out;
     struct service s={.client=-1,.clean=true,.adapter=adapter,.legacy_handles=legacy_handles};
-    struct directed_service multi={.client={{.fd=-1},{.fd=-1}}};
+    struct directed_service multi={0};
+    for (size_t i=0;i<G_N_ELEMENTS(multi.client);i++) multi.client[i].fd=-1;
     if (instance) {
         s.directed=&multi;
         s.hid=otg_ble_hid_create_directed(adapter,legacy_handles,instance);
         if (!s.hid) {fprintf(stderr,"ERROR: verified bluetoothd instance unavailable\n");goto out;}
     }
-    struct pending_peer pending[4];
+    struct pending_peer pending[OTG_BLE_MAX_PHONES + 4];
     for(size_t i=0;i<G_N_ELEMENTS(pending);i++)pending[i].fd=-1;
     fprintf(stderr,"INFO: resident BLE service listening on %s (%s handles); idle, no advertisement; keep this process running between bridge sessions\n",
             address.sun_path,legacy_handles?"legacy":"standard");
@@ -365,16 +367,19 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
          * that just received a reply. A sleep here caps throughput at 1k RPC/s.
          * The bounded timeout also pumps BlueZ and the last coalesced pointer
          * report when no socket input arrives. Never busy-spin while idle. */
-        struct pollfd fds[8]={{listener,POLLIN,0},{s.client,POLLIN,0}};
+        struct pollfd fds[2 + G_N_ELEMENTS(pending) + G_N_ELEMENTS(multi.client)]={
+            {listener,POLLIN,0},{s.client,POLLIN,0}};
         for(size_t i=0;i<G_N_ELEMENTS(pending);i++)
             fds[i+2]=(struct pollfd){pending[i].fd,POLLIN,0};
-        for (unsigned i=0;i<2;i++) fds[i+6]=(struct pollfd){multi.client[i].fd,POLLIN,0};
+        for (size_t i=0;i<G_N_ELEMENTS(multi.client);i++)
+            fds[2+G_N_ELEMENTS(pending)+i]=(struct pollfd){multi.client[i].fd,POLLIN,0};
         if(!*stop && !s.shutdown && poll(fds,G_N_ELEMENTS(fds),(s.active || multi_count(&multi))?1:50)<0 && errno!=EINTR) {
             result=1;break;
         }
     }
     if (s.directed) {
-        for (unsigned i=0;i<2;i++) if (multi.client[i].fd>=0) multi_drop(&s,&multi.client[i],false);
+        for (size_t i=0;i<G_N_ELEMENTS(multi.client);i++)
+            if (multi.client[i].fd>=0) multi_drop(&s,&multi.client[i],false);
         if (!s.clean) result=1;
     } else drop_client(&s);
     for(size_t i=0;i<G_N_ELEMENTS(pending);i++)if(pending[i].fd>=0)close(pending[i].fd);
@@ -452,13 +457,15 @@ static struct otg_ble_session *session_open(const char *adapter,bool legacy_hand
     struct message reply;
     uint8_t identity[17+255];
     size_t length=0;
+    uint16_t operation=legacy_handles?ATTACH_LEGACY:ATTACH;
     if (screen) {
-        if (!peer || strlen(peer)!=17 || !*screen || strlen(screen)>255) {close(fd);return NULL;}
-        memcpy(identity,peer,17);
-        memcpy(identity+17,screen,strlen(screen));
-        length=17+strlen(screen);
+        if ((peer && strlen(peer)!=17) || !*screen || strlen(screen)>255) {close(fd);return NULL;}
+        operation=peer?ATTACH_DIRECTED_BLE_ONLY:ATTACH_DIRECTED_DISCOVERY;
+        if (peer) {memcpy(identity,peer,17);length=17;}
+        memcpy(identity+length,screen,strlen(screen));
+        length+=strlen(screen);
     }
-    if(!request(fd,screen?ATTACH_DIRECTED_BLE_ONLY:legacy_handles?ATTACH_LEGACY:ATTACH,
+    if(!request(fd,operation,
                 screen && legacy_handles,identity,(uint16_t)length,&reply)) {
         fprintf(stderr,"ERROR: resident BLE service busy, unavailable, or incompatible with the requested handle layout; stop the idle service before changing layouts\n");
         close(fd);return NULL;
@@ -669,11 +676,12 @@ int otg_ble_service_status(const char *adapter)
         printf("{\"version\":2,\"available\":false,\"verifiedInstance\":\"%s\"}\n",token);
         return 1;
     }
-    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s,\"directed\":%s,\"bleOnly\":%s,\"verifiedInstance\":\"%s\"}\n",
+    printf("{\"version\":2,\"available\":true,\"ready\":%s,\"idle\":%s,\"legacyHandles\":%s,\"directed\":%s,\"bleOnly\":%s,\"discovery\":%s,\"verifiedInstance\":\"%s\"}\n",
            (reply.data[0]&STATUS_READY)?"true":"false",reply.data[1]?"true":"false",
            (reply.data[0]&STATUS_LEGACY_HANDLES)?"true":"false",
            (reply.data[0]&STATUS_DIRECTED)?"true":"false",
-           (reply.data[0]&STATUS_BLE_ONLY)?"true":"false",token);
+           (reply.data[0]&STATUS_BLE_ONLY)?"true":"false",
+           (reply.data[0]&STATUS_DISCOVERY)?"true":"false",token);
     return 0;
 }
 
@@ -693,10 +701,29 @@ bool otg_ble_service_single_idle(uid_t uid,const char *adapter)
 
 int otg_ble_service_stop(const char *adapter)
 {
+    char dir[128];
+    struct sockaddr_un address;
+    if (!socket_path(getuid(), adapter, dir, sizeof(dir), &address)) return 1;
+    char recovery[sizeof(address.sun_path) + 32];
+    snprintf(recovery, sizeof(recovery), "/run/deskflow-bridge-ble-%s.state", adapter);
+
     int fd=connect_service(getuid(),adapter);
-    struct message reply;
+    struct message reply={0};
     bool ok=fd>=0 && request(fd,STOP_SERVICE,0,NULL,0,&reply);
     if(fd>=0)close(fd);
-    if(!ok)fprintf(stderr,"ERROR: service unavailable, busy, incompatible or cleanup incomplete; no stop performed\n");
-    return ok ? 0 : 1;
+    if (!ok && reply.operation==REPLY) {
+        fprintf(stderr,"ERROR: service busy, incompatible or cleanup incomplete; no stop performed\n");
+        return 1;
+    }
+    /* A directed service exits after its last client detaches. In both that
+     * case and an explicit stop, wait for teardown and any adapter restoration. */
+    const gint64 deadline=g_get_monotonic_time()+12000000;
+    struct stat st;
+    do {
+        if (lstat(address.sun_path,&st)<0 && errno==ENOENT &&
+            lstat(recovery,&st)<0 && errno==ENOENT) return 0;
+        g_usleep(50000);
+    } while (g_get_monotonic_time()<deadline);
+    fprintf(stderr,"ERROR: timed out waiting for Bluetooth service shutdown or adapter restoration (%s)\n",adapter);
+    return 1;
 }

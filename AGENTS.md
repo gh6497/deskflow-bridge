@@ -450,11 +450,13 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   GUI 左侧设备列表，右侧设备配置和共享服务页签。所有屏幕位置由 Deskflow 管理，输入参数按设备隔离，日志可筛选。
   活动会话期间禁止新增/移除设备或修改共享服务设置，但允许编辑其他空闲设备的尺寸和连接身份。
   多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）。
-  Linux 双 BLE 使用 `--ble-service --ble-multi TOKEN --ble-isolate` 与 `ATTACH_DIRECTED_BLE_ONLY` 接入，每个会话预留
-  唯一地址及屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和
+  Linux 多机 BLE 使用 `--ble-service --ble-multi TOKEN --ble-isolate` 与 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
+  GUI 多设备选项默认关闭。启用后有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。
+  每个会话保留唯一身份和屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和
   该连接的两条通知 FD 发送。不能将未重建的 FD 当作已恢复的 CCC，不能回退全局 Value 广播。
   隔离由共享服务监督器持有。GUI 共用一次启动确认和管理员认证，通过启动管道取消尚未接入的服务。
-  新版状态需 `directed` 与 `bleOnly`，最后一个会话退出时恢复。使用方法见两份用户指南第 9 节。
+  状态需 `directed` 与 `bleOnly`，GUI 匿名发现还需 `discovery`。全部断开包含发现会话，最后一个会话退出时恢复。使用方法见两份用户指南第 9 节。
+  「停止蓝牙服务」可以在发现或连接期间使用。先结束本窗口的蓝牙会话，保留 USB 和 ADB＋UHID 会话。Linux 只停止空闲常驻服务，等待 IPC socket 与恢复快照消失。Windows 停止本窗口的 GATT provider，包括空闲时保留的实例。
   私有 D-Bus、真实 seqpacket 和 fake GUI 子进程测试不访问系统蓝牙。此前手动仅 BLE 已验证两台真机接入，GUI 自动切换待真机验收。
 - `gui/session.cpp` 只管理自己创建的 Deskflow 和桥接进程。自动启动默认关闭。开启时直接使用用户从 Deskflow 导出的服务端配置文件，借助独立的启动设置监听回环地址并同步 TLS 配置。
   外部服务模式不更改或终止已有 Deskflow。根据 `--help` 区分现代 `deskflow-core server --settings` 与传统 server 参数。

@@ -10,12 +10,16 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <memory>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
 #ifdef Q_OS_WIN
 #include <fcntl.h>
 #include <io.h>
+#endif
+#ifdef Q_OS_LINUX
+#include <unistd.h>
 #endif
 
 static void output(const char *text)
@@ -154,20 +158,31 @@ int main(int argc, char **argv)
     if (qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
         (args.contains("--ble-status") || args.contains("--ble-service"))) return 10;
     const auto bleStartMarker = qEnvironmentVariable("OTG_TEST_BLE_START_MARKER");
+    const auto bleStopMarker = qEnvironmentVariable("OTG_TEST_BLE_STOP_MARKER");
+    if (args.contains("--ble-stop-service") && !bleStopMarker.isEmpty()) {
+        QFile marker(bleStopMarker);
+        return marker.open(QIODevice::WriteOnly | QIODevice::NewOnly) ? 0 : 1;
+    }
     if (args.contains("--ble-status")) {
         const auto mode = qEnvironmentVariable("OTG_TEST_BLE_STATUS");
-        if (!bleStartMarker.isEmpty() && !QFile::exists(bleStartMarker)) {
+        const auto adapter = qEnvironmentVariable("OTG_TEST_BLE_STATUS_ADAPTER");
+        if (!adapter.isEmpty() && args.value(args.indexOf("--adapter") + 1) != adapter)
+            return 2;
+        if (mode == "unavailable" || (!bleStartMarker.isEmpty() && !QFile::exists(bleStartMarker)) ||
+            (!bleStopMarker.isEmpty() && QFile::exists(bleStopMarker))) {
             output("{\"version\":2,\"available\":false,\"verifiedInstance\":\"test-bus/:1.1\"}\n");
             return 1;
         }
         if (mode == "directed-legacy")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":true,\"legacyHandles\":true}\n");
         else if (mode == "directed")
-            output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":true}\n");
+            output("{\"version\":2,\"available\":true,\"idle\":false,\"ready\":false,\"directed\":true,\"bleOnly\":true,\"discovery\":true}\n");
         else if (mode == "directed-dual")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"directed\":true,\"bleOnly\":false}\n");
         else if (mode == "busy")
             output("{\"version\":2,\"available\":true,\"idle\":false,\"ready\":true}\n");
+        else if (mode == "in-use")
+            output("{\"version\":2,\"available\":true,\"idle\":false,\"ready\":false}\n");
         else if (mode == "incompatible")
             output("{\"version\":1,\"available\":true,\"idle\":true}\n");
         else if (mode == "legacy")
@@ -180,6 +195,11 @@ int main(int argc, char **argv)
         if (bleStartMarker.isEmpty() ||
             args.mid(2) != QStringList{"--ble-service", "--adapter", "hci0", "--ble-multi", "test-bus/:1.1", "--ble-isolate", "--gui"})
             return 2;
+#ifdef Q_OS_LINUX
+        // Emulate pkexec's parent check after Qt's detached launcher exits.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (getppid() <= 1) return 2;
+#endif
         // Stand in for the resident socket without accessing Bluetooth.
         QFile marker(bleStartMarker);
         return marker.open(QIODevice::WriteOnly | QIODevice::NewOnly) ? 0 : 1;
@@ -359,7 +379,16 @@ int main(int argc, char **argv)
              (args.contains("--ble-session") || args.contains("--adapter") ||
               args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
         if (args.contains("--gui-ble-auto")) {
-            output("{\"event\":\"ble-device\",\"identity\":\"AA:BB:CC:DD:EE:FF\"}\n");
+            auto identity = QByteArrayLiteral("AA:BB:CC:DD:EE:FF");
+            const auto queuePath = qEnvironmentVariable("OTG_TEST_BLE_DISCOVERY_QUEUE");
+            if (!queuePath.isEmpty()) {
+                QFile queue(queuePath);
+                if (!queue.open(QIODevice::ReadWrite)) return 11;
+                identity = queue.readLine().trimmed();
+                const auto waiting = queue.readAll();
+                if (!queue.resize(0) || !queue.seek(0) || queue.write(waiting) != waiting.size()) return 11;
+            }
+            if (!identity.isEmpty()) output("{\"event\":\"ble-device\",\"identity\":\"" + identity + "\"}\n");
             std::thread([&app, bleLog] {
                 char bytes[1600];
                 while (std::fgets(bytes, sizeof(bytes), stdin)) {

@@ -18,13 +18,15 @@ public:
     bool busy() const;
     bool settled() const;
     bool hasBleProvider() const;
+    int activeBleSessions() const;
+    const char *bleProviderStatusId() const;
     DeskflowServer::State serverState() const { return m_server.state(); }
     bool start(const QString &id, const ConnectionOptions &options);
     bool attachBle(const QString &id, const ConnectionOptions &options);
     bool bindBleDiscovery(const QString &sourceId, const QString &deviceId);
     void stop(const QString &id);
     void stopAll();
-    void stopIdleBleProvider();
+    void stopBle();
     void shutdown();
 signals:
     void changed(const QString &id);

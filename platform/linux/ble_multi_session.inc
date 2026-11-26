@@ -11,13 +11,16 @@ struct directed_client {
 };
 
 struct directed_service {
-    struct directed_client client[2];
+    struct directed_client client[OTG_BLE_MAX_PHONES];
     bool ever_attached;
 };
 
 static unsigned multi_count(const struct directed_service *multi)
 {
-    return (unsigned)(multi->client[0].fd>=0)+(unsigned)(multi->client[1].fd>=0);
+    unsigned count=0;
+    for (size_t i=0;i<G_N_ELEMENTS(multi->client);i++)
+        if (multi->client[i].fd>=0) ++count;
+    return count;
 }
 
 static bool multi_reply(int fd,bool ok,uint8_t flags,bool idle)
@@ -64,21 +67,32 @@ static bool multi_register(struct service *s,struct directed_client *c,const str
 
 static void multi_tick(struct service *s)
 {
+    bool discovering=false;
     for (unsigned i=0;i<G_N_ELEMENTS(s->directed->client);i++) {
         struct directed_client *c=&s->directed->client[i];
         if (c->fd<0) continue;
+        if (c->active && !c->route) c->route=otg_ble_route_claim_discovered(s->hid);
         struct message m;
         int n=receive_message(c->fd,&m);
         gint64 now=g_get_monotonic_time();
         if (n<0 || (!n && now-c->last_request>=5000000)) {multi_drop(s,c,false);continue;}
-        if (!n) continue;
+        if (!n) {
+            discovering|=c->active && !c->route;
+            continue;
+        }
         c->last_request=now;
         if (m.operation==DETACH && !m.size && !m.id) {multi_drop(s,c,true);continue;}
-        uint64_t generation;
-        bool ready=otg_ble_route_ready(c->route,&generation) && c->active;
+        uint64_t generation=0;
+        bool ready=c->route && otg_ble_route_ready(c->route,&generation) && c->active;
         /* Even a complete reconnect between two RPCs must be observed as a
          * disconnect. The false reply drops the bridge's old bounded FIFO. */
         if (generation!=c->generation) {ready=false;c->generation=generation;}
+        if (m.operation==GET_IDENTITY && !m.size && !m.id && c->route) {
+            /* The route was claimed only after verifying the paired LE link.
+             * Its identity stays pinned if the phone drops during this RPC. */
+            if (!send_message(c->fd,REPLY,0,otg_ble_route_identity(c->route),17)) multi_drop(s,c,false);
+            continue;
+        }
         bool ok=false;
         switch (m.operation) {
         case REGISTER: ok=multi_register(s,c,&m);break;
@@ -92,7 +106,9 @@ static void multi_tick(struct service *s)
             break;
         }
         if (!multi_reply(c->fd,ok,ready?STATUS_READY:0,false) || !ok) multi_drop(s,c,false);
+        discovering|=c->active && !c->route;
     }
+    otg_ble_route_enable_discovery(s->hid,discovering);
 }
 
 static bool multi_request(struct service *s,int fd,bool owner,const struct message *m)
@@ -100,11 +116,12 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
     struct directed_service *multi=s->directed;
     bool idle=!multi_count(multi) && s->clean;
     if (!m->size && !m->id && (m->operation==STATUS || m->operation==STATUS_WITH_LAYOUT)) {
-        uint8_t flags=m->operation==STATUS_WITH_LAYOUT ? STATUS_DIRECTED | STATUS_BLE_ONLY |
+        uint8_t flags=m->operation==STATUS_WITH_LAYOUT ? STATUS_DIRECTED | STATUS_BLE_ONLY | STATUS_DISCOVERY |
             (s->legacy_handles?STATUS_LEGACY_HANDLES:0) : 0;
         for (unsigned i=0;i<G_N_ELEMENTS(multi->client);i++) {
             uint64_t gen;
-            if (multi->client[i].active && otg_ble_route_ready(multi->client[i].route,&gen)) flags|=STATUS_READY;
+            if (multi->client[i].active && multi->client[i].route &&
+                otg_ble_route_ready(multi->client[i].route,&gen)) flags|=STATUS_READY;
         }
         multi_reply(fd,true,flags,idle);
         return false;
@@ -113,16 +130,18 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
         if (multi_reply(fd,idle,0,idle) && idle) s->shutdown=true;
         return false;
     }
+    bool discovery=m->operation==ATTACH_DIRECTED_DISCOVERY;
+    unsigned address_size=discovery?0:17;
     if (!owner || s->shutdown || !s->clean ||
-        (m->operation!=ATTACH_DIRECTED && m->operation!=ATTACH_DIRECTED_BLE_ONLY) ||
-        m->id!=(unsigned)s->legacy_handles || m->size<=17 || m->size>17+255) goto reject;
+        (!discovery && m->operation!=ATTACH_DIRECTED && m->operation!=ATTACH_DIRECTED_BLE_ONLY) ||
+        m->id!=(unsigned)s->legacy_handles || m->size<=address_size || m->size>address_size+255) goto reject;
     char addr[18]={0},screen[256]={0};
-    for (unsigned i=0;i<17;i++) {
+    for (unsigned i=0;i<address_size;i++) {
         if (i%3==2 ? m->data[i]!=':' : !g_ascii_isxdigit(m->data[i])) goto reject;
         addr[i]=g_ascii_toupper(m->data[i]);
     }
-    memcpy(screen,m->data+17,m->size-17);
-    for (unsigned i=17;i<m->size;i++) if (m->data[i]<=0x20 || m->data[i]==127) goto reject;
+    memcpy(screen,m->data+address_size,m->size-address_size);
+    for (unsigned i=address_size;i<m->size;i++) if (m->data[i]<=0x20 || m->data[i]==127) goto reject;
     struct directed_client *slot=NULL;
     for (unsigned i=0;i<G_N_ELEMENTS(multi->client);i++) {
         struct directed_client *c=&multi->client[i];
@@ -130,8 +149,8 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
         else if (!g_ascii_strcasecmp(c->screen,screen)) goto reject;
     }
     if (!slot) goto reject;
-    struct otg_ble_route *route=otg_ble_route_bind(s->hid,addr);
-    if (!route) goto reject;
+    struct otg_ble_route *route=discovery?NULL:otg_ble_route_bind(s->hid,addr);
+    if (!discovery && !route) goto reject;
     *slot=(struct directed_client){.fd=fd,.route=route,.last_request=g_get_monotonic_time()};
     multi->ever_attached=true;
     g_strlcpy(slot->screen,screen,sizeof(slot->screen));

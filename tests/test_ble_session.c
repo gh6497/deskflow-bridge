@@ -14,7 +14,7 @@ struct otg_ble_hid {
 };
 struct otg_ble_route { bool bound; char address[18]; uint64_t gen; unsigned sent; };
 bool otg_ble_verified_instance(char *token,size_t capacity) {(void)token;(void)capacity;return false;}
-static struct otg_ble_route fake_routes[2];
+static struct otg_ble_route fake_routes[OTG_BLE_MAX_PHONES];
 struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter,bool legacy,const char *instance)
 {
     CHECK(!strcmp(instance,"fixture"));
@@ -23,15 +23,20 @@ struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter,bool legacy,
 struct otg_ble_route *otg_ble_route_bind(struct otg_ble_hid *b,const char *addr)
 {
     (void)b;
-    for (unsigned i=0;i<2;i++) if (fake_routes[i].bound && !g_ascii_strcasecmp(fake_routes[i].address,addr)) return NULL;
-    for (unsigned i=0;i<2;i++) if (!fake_routes[i].bound) {
+    for (unsigned i=0;i<G_N_ELEMENTS(fake_routes);i++)
+        if (fake_routes[i].bound && !g_ascii_strcasecmp(fake_routes[i].address,addr)) return NULL;
+    for (unsigned i=0;i<G_N_ELEMENTS(fake_routes);i++) if (!fake_routes[i].bound) {
         fake_routes[i].bound=true;
         g_strlcpy(fake_routes[i].address,addr,18);
         return &fake_routes[i];
     }
     return NULL;
 }
-void otg_ble_route_unbind(struct otg_ble_route *r) {r->bound=false;}
+void otg_ble_route_enable_discovery(struct otg_ble_hid *b,bool enabled) {(void)b;(void)enabled;}
+struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *b)
+{ return otg_ble_route_bind(b,"AA:BB:CC:DD:EE:03"); }
+const char *otg_ble_route_identity(const struct otg_ble_route *r) {return r->address;}
+void otg_ble_route_unbind(struct otg_ble_route *r) {if(r)r->bound=false;}
 bool otg_ble_route_ready(const struct otg_ble_route *r,uint64_t *gen) {*gen=r->gen;return r->bound;}
 void otg_ble_route_send(struct otg_ble_route *r,uint16_t id,const uint8_t data[8])
 {
@@ -401,7 +406,7 @@ static void test_multi_process(bool cancel_startup)
         close(gui[1]);
         CHECK(dup2(gui[0],STDIN_FILENO)>=0);close(gui[0]);
         CHECK(!otg_ble_multi_service_run("hci0",true,"fixture",-1,true,&stop_service));
-        if (!cancel_startup) CHECK(fake_routes[0].sent==1 && fake_routes[1].sent==2);
+        if (!cancel_startup) CHECK(fake_routes[0].sent==1 && fake_routes[1].sent==2 && fake_routes[2].sent==2);
         _exit(0);
     }
     close(gui[0]);
@@ -409,7 +414,7 @@ static void test_multi_process(bool cancel_startup)
     struct message status_reply;
     int query=connect_service(getuid(),"hci0");CHECK(query>=0);
     CHECK(request(query,STATUS_WITH_LAYOUT,0,NULL,0,&status_reply));close(query);
-    CHECK(status_reply.data[0]==(STATUS_DIRECTED|STATUS_BLE_ONLY|STATUS_LEGACY_HANDLES));
+    CHECK(status_reply.data[0]==(STATUS_DIRECTED|STATUS_BLE_ONLY|STATUS_LEGACY_HANDLES|STATUS_DISCOVERY));
     if (cancel_startup) {
         /* Closing the last waiting GUI session cancels an unused service. */
         close(gui[1]);
@@ -422,21 +427,37 @@ static void test_multi_process(bool cancel_startup)
         CHECK(!otg_ble_directed_session_open("hci0",true,"aa:bb:cc:dd:ee:01","right"));
         CHECK(!otg_ble_directed_session_open("hci0",true,b,"LEFT"));
         struct otg_ble_session *second=otg_ble_directed_session_open("hci0",true,b,"right");CHECK(second);
+        struct otg_ble_session *third=otg_ble_directed_session_open("hci0",true,NULL,"discover");CHECK(third);
+        struct otg_ble_session *extra[OTG_BLE_MAX_PHONES-3];
+        for (unsigned i=0;i<G_N_ELEMENTS(extra);i++) {
+            char address[18],screen[32];
+            snprintf(address,sizeof(address),"AA:BB:CC:DD:EF:%02X",i);
+            snprintf(screen,sizeof(screen),"extra-%u",i);
+            extra[i]=otg_ble_directed_session_open("hci0",true,address,screen);CHECK(extra[i]);
+        }
+        CHECK(!otg_ble_directed_session_open("hci0",true,"AA:BB:CC:DD:FF:FF","overflow"));
+        for (unsigned i=0;i<G_N_ELEMENTS(extra);i++) otg_ble_session_destroy(extra[i]);
         /* Once attached, the IPC sessions own the lifetime even after GUI EOF. */
         close(gui[1]);
         for (unsigned i=1;i<=2;i++) {
             struct message m=descriptor(i);
             CHECK(session_register(first,i,m.data,m.size));
             CHECK(session_register(second,i,m.data,m.size));
+            CHECK(session_register(third,i,m.data,m.size));
         }
         uint8_t keys[8]={0,0,4};
         CHECK(session_rpc(first,POLL_SESSION,0,NULL,0) && first->ready);
         CHECK(session_rpc(first,REPORT,1,keys,8));
         keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8));
+        CHECK(session_rpc(third,POLL_SESSION,0,NULL,0) && third->ready);
+        CHECK(!strcmp(session_identity(third),"AA:BB:CC:DD:EE:03"));
+        keys[2]=6;CHECK(session_rpc(third,REPORT,1,keys,8));
         close(first->fd);first->fd=-1;otg_ble_session_destroy(first);
         CHECK(otg_ble_service_stop("hci0")!=0);
-        CHECK(session_rpc(second,REPORT,1,keys,8) && second->ready);
+        keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8) && second->ready);
         otg_ble_session_destroy(second);
+        keys[2]=6;CHECK(session_rpc(third,REPORT,1,keys,8) && third->ready);
+        otg_ble_session_destroy(third);
     }
     int status;CHECK(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
     char *service=g_build_filename(user,"deskflow-bridge",NULL);
@@ -451,6 +472,7 @@ static void test_multi_stale_reports(void)
     struct otg_ble_route first={.bound=true,.gen=42},second={.bound=true,.gen=9};
     struct directed_service multi={.client={{.fd=a[0],.active=true,.route=&first,.generation=41},
                                            {.fd=b[0],.active=true,.route=&second,.generation=9}}};
+    for (size_t i=2;i<G_N_ELEMENTS(multi.client);i++) multi.client[i].fd=-1;
     struct service s={.directed=&multi,.clean=true};
     const uint8_t old_key[8]={0,0,30};
     CHECK(send_message(a[1],REPORT,1,old_key,8));
