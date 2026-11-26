@@ -84,7 +84,7 @@ Use just one phone for your first setup.
 | Control over Wi-Fi | **ADB + UHID (USB / wireless)** | A phone with wireless debugging, paired and connected |
 | Bluetooth control without depending on ADB | **Bluetooth Low Energy** | Compatible Linux Bluetooth hardware/software, or a Windows package with experimental BLE |
 
-**For your first connection, start with USB + ADB + UHID below**, particularly on Windows, where it avoids replacing USB drivers for AOA. Fresh Linux/macOS profiles may default to AOA, so select UHID explicitly. If you do not want debugging, go to the [AOA instructions](#aoa).
+**For your first connection, start with USB + ADB + UHID below**, particularly on Windows, where it avoids replacing USB drivers for AOA. If you do not want debugging, go to the [AOA instructions](#aoa).
 
 Wireless ADB and Bluetooth are different connection types. macOS currently has no BLE mode. If an option is missing, check the features included in your release.
 
@@ -95,7 +95,7 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 ![Device settings: device list on the left, connection and ADB settings on the right, connection actions and logs below](screenshots/device-en.png)
 
 - **Device list on the left**: select the phone to view, configure or connect. Buttons below add devices, connect all or disconnect all.
-- **Device settings** lets you select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app.
+- **Device settings** shows the connection type chosen in **Add device** and lets you edit the target, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app.
 - **Shared server** holds Deskflow connection settings, executable paths and Bluetooth service settings. Arrange screens in Deskflow. The **Bluetooth service** section appears in builds that support BLE.
 - The **Connect**, **Disconnect**, **Copy phone screenshot** and **Manual clipboard** buttons at the bottom right apply to the selected device. **Files & sharing** opens the file transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
@@ -109,31 +109,14 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 
 1. Enable “Developer options” and “USB debugging” in the phone's settings. The location varies by brand; commonly, tap the build number repeatedly under “About phone”, then find Developer options in Settings.
 2. Connect a data cable, unlock the phone, and approve this computer in the “Allow USB debugging” prompt.
-3. Open Deskflow Bridge and select **ADB + UHID (USB / wireless)** under “Device settings → Connection type”.
-4. Click **Refresh devices** and select the phone marked **Online**. A single device is usually selected automatically; its identifier appears in **ADB target (required)**.
-5. Use **Test ADB** to confirm that the target is available.
 
 For “Unauthorized”, check the phone's approval prompt, then refresh. If Windows never finds the device, check the manufacturer's ADB driver. This mode does not require replacing it with WinUSB.
 
-### Step 2: Check the screen dimensions
+### Step 2: Place the phone in Deskflow
 
-Click **Read screen size**, then scroll down to “Screen and display”.
+In Deskflow, add a screen named `android` or choose your own name. Place it next to the computer screen and apply the layout. For example, place it on the right to reach the phone by crossing the computer's right edge.
 
-![Screen and display settings with phone dimensions of 1080 × 2340](screenshots/input-en.png)
-
-- **Phone screen resolution**: the phone's width × height in its current orientation. `1080 × 2340` is a portrait example; your phone may differ. Enter it manually if reading fails.
-- **Swap dimensions**: use this when changing to landscape.
-- **Bridge resolution multiplier and Movement multiplier**: start with both at `1.00 ×`.
-- **Phone screen name**: keep `android` for a single phone. This is its name in Deskflow, not the phone model.
-- **Mouse mode**: keep **Absolute (recommended)**.
-
-Leave audio, clipboard, automatic unlock and other extras off until basic control works.
-
-### Step 3: Place the phone in Deskflow
-
-In Deskflow, add a screen using the phone's screen name from Step 2, such as `android`. Place it next to the computer screen and apply the layout. For example, place it on the right to reach the phone by crossing the computer's right edge.
-
-### Step 4: Set up the server connection
+### Step 3: Set up the server connection
 
 Start the server in Deskflow. In Deskflow Bridge, open **Shared server** and enter the server address and port. For a local server, the defaults are `127.0.0.1` and `24800`.
 
@@ -143,12 +126,20 @@ If your server uses TLS, enable TLS and enter its server fingerprint. If it also
 
 **Optional automatic startup.** In Deskflow, use **Export server configuration** after arranging the screens. In the bridge, check **Start local Deskflow automatically**, select the exported **Deskflow configuration file**, and enter the computer screen name used in that file. Under **Programs and mode**, select `deskflow-core` or `deskflow-server` if the program was not found automatically. Stop any Deskflow server already listening on the same port. The bridge starts its server on Connect, using the exported file as-is. After changing the layout, export it again and restart the connection after all devices disconnect.
 
-### Step 5: Connect and try it
+### Step 4: Add and connect the device
 
-1. Click **Connect** at the bottom right and wait for **Connected**.
-2. For a right-side layout, move the mouse to the computer's right edge and keep moving right. You should see a movable pointer on the phone.
-3. Click a text field on the phone and type a few characters with the computer keyboard. Try scrolling, dragging and Back.
-4. Move out of the phone screen toward the computer to return. With the phone on the right, leave through the phone screen's left edge.
+![Add device window with USB ADB discovery and connection controls](screenshots/add-device-en.png)
+
+1. Click **Add device**. Choose **ADB + UHID** and **USB ADB**, then enter the screen name you set in Deskflow.
+2. Click **Refresh devices** and select the phone marked **Online**. If the list contains a single device and it is online, the window fills its **USB ADB serial** automatically.
+3. Click **Read screen size** or enter the phone's width and height for its current orientation. Click **Connect** in the same window.
+4. Wait for the window to close and the device to appear in the list. If Deskflow reports an error, correct it and retry in the window, or click **Cancel** to discard the new device.
+
+### Step 5: Try it
+
+1. For a right-side layout, move the mouse to the computer's right edge and keep moving right. You should see a movable pointer on the phone.
+2. Click a text field on the phone and type a few characters with the computer keyboard. Try scrolling, dragging and Back.
+3. Move out of the phone screen toward the computer to return. With the phone on the right, leave through the phone screen's left edge.
 
 After the app says Connected, also check that the phone actually responds. If there is no pointer, see [Troubleshooting](#troubleshooting).
 
@@ -158,12 +149,12 @@ After the app says Connected, also check that the phone actually responds. If th
 
 This mode can provide keyboard and mouse control with a data cable, without ADB or the phone companion app.
 
-![USB AOA configuration with a manual USB serial and ADB enhancements disabled](screenshots/aoa-en.png)
+![USB AOA configuration with a USB serial and ADB enhancements disabled](screenshots/aoa-en.png)
 
-1. Select **USB (AOA HID)** and turn off **Enable ADB enhancements for this device**.
-2. Plug in the phone, click **Refresh devices** and select the matching USB device. If it is not found, check the cable and USB permissions. You can also enter its correct USB serial manually.
-3. Enter the phone's width and height for its current orientation. The **USB serial** is not a Wi-Fi address or BLE address; do not copy the screenshot's example.
-4. Set the phone's position and configure **Shared server** as above, then connect.
+1. Set the phone's position in Deskflow and configure **Shared server** as above.
+2. Click **Add device**, choose **USB (AOA HID)** and enter the matching screen name.
+3. Plug in the phone, click **Refresh devices** and select the matching USB device. If it is not found, check the cable and USB permissions. You can also enter the phone's USB serial manually.
+4. Enter the phone's width and height for its current orientation, then click **Connect** in the same window. The device appears in the list after Deskflow connects.
 
 Linux needs USB access permissions; see [Linux USB permissions](../README.md#rootless-usb-access-on-linux-udev-rule). Allow accessory access if macOS requests it. Windows AOA needs a libusb-compatible driver, which may conflict with existing ADB/file-transfer drivers. Read [Windows USB guidance](WINDOWS_USB.md) before changing drivers, or use ADB + UHID instead.
 
@@ -181,6 +172,8 @@ Linux needs USB access permissions; see [Linux USB permissions](../README.md#roo
 
 ### Pointer too slow or too fast
 
+![Screen and display settings with phone dimensions of 1080 × 2340](screenshots/input-en.png)
+
 Disconnect the selected device before adjusting settings. Change one thing at a time:
 
 - **Movement multiplier**: increasing it moves the phone pointer farther for the same computer mouse movement.
@@ -196,11 +189,11 @@ After rotating the phone without rotation tracking enabled, disconnect, read the
 - **Disconnect** ends control of the selected device; **Disconnect all** ends all device sessions.
 - **Closing the window** hides it when a system tray is available and keeps connections active. Click the tray icon or **Show window** to restore it.
 - **Quit** from the tray menu to exit. Without a system tray, closing the window disconnects and exits.
-- Settings are saved automatically. Selecting a different device does not disconnect the others.
+- Complete the first connection in **Add device**. After Deskflow connects, the app saves the profile and adds it to the list. If the connection fails, you can edit the settings and retry in that window. Selecting a different saved device leaves the other connections active.
 
 ### Connect automatically when you plug in a USB cable
 
-In the phone's device settings, choose **ADB + UHID** or **USB (AOA HID)**. For UHID, authorize USB debugging on the phone and select its USB ADB serial, not a Wi-Fi address. AOA does not need USB debugging.
+Select the phone's **ADB + UHID** or **USB (AOA HID)** profile. For UHID, authorize USB debugging, choose **USB ADB**, and select its USB ADB serial. AOA does not need USB debugging.
 
 Enable **Automatically connect this device when USB is inserted** (off by default) and connect once by hand until the status reads **Connected**. Leave the app running, optionally hidden in the tray. Next time you plug in that phone, it reconnects automatically. If UHID is waiting for authorization, approve the prompt on the phone.
 
@@ -296,10 +289,10 @@ Transfers do not overwrite or open files automatically. The per-file limit is `1
 If your phone supports wireless debugging (usually Android 11+), UHID can work over Wi-Fi:
 
 1. Put the phone and computer on the same reachable network and enable **Developer options → Wireless debugging** on the phone.
-2. Open **Wireless ADB setup** on the desktop. Choose pairing with a code on the phone.
+2. For a new device, open **Add device**, choose **ADB + UHID** and **Wireless ADB**, then open **Wireless ADB setup**. For a saved device, open the helper in its settings. Choose pairing with a code on the phone.
 3. Select the discovered pairing address or enter the IP and port shown in the phone's pairing dialog. Enter its six-digit pairing code and pair.
-4. Then select the connection address and port shown on the phone's main **Wireless debugging** page. A successful connection fills the target in device settings.
-5. Select ADB + UHID, read dimensions and connect as above.
+4. Then select the connection address and port shown on the phone's main **Wireless debugging** page. In an ADB + UHID profile, a successful connection fills **Wireless ADB address** and selects **Wireless ADB**. If you already know the connection address, enter it directly and select **Wireless ADB**.
+5. Read dimensions and click **Connect**. The profile keeps both targets and remembers your last selection. Disconnect before switching. Inserting a USB cable leaves an active wireless session in place.
 
 **Pairing and connection ports can differ.** Addresses/ports may also change after switching networks or restarting wireless debugging. Update the target if needed. The companion's wireless ADB helper opens system settings; it cannot approve authorization for you.
 
@@ -309,10 +302,14 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 
 ![Device settings for the second phone, showing its screen name android2](screenshots/multiple-devices-en.png)
 
-1. Disconnect all devices, click **Add device**, and set each phone's own connection target and dimensions.
-2. New devices get unique **Phone screen names** such as `android2` and `android3`. **Display name** can be any name that helps you recognize the device.
-3. Add the same screen names in Deskflow and arrange them. If you use automatic startup, export the updated configuration from Deskflow and select it in the bridge.
-4. Configure Deskflow once under **Shared server**, then connect individually or click **Connect all**.
+1. Add a screen in Deskflow for each phone and arrange them. If you use automatic startup, export the updated configuration from Deskflow and select it in **Shared server**.
+2. For each phone, choose **Add device**, enter a matching screen name such as `android2` or `android3`, select the target and click **Connect** in that window. Other phones can stay connected.
+3. To use AOA and ADB + UHID for the same phone, create a second profile using its existing screen name. Give the profiles distinct **Display names** if helpful.
+4. Reconnect saved devices individually or with **Connect all**.
+
+Only one profile can use a Deskflow screen at a time. Only one profile for that screen can have USB auto-connect enabled. If several profiles for the same screen are ready, **Connect all** uses the one with USB auto-connect enabled, or asks you to connect one manually.
+
+To remove a device, select it in the list and click **Remove device** after it has disconnected. Other phones can stay connected. Keep at least one device in the list. If Windows is still keeping the device's Bluetooth service running, click **Stop Bluetooth service** first. To change **Shared server** settings, disconnect all devices first.
 
 Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. The experimental Linux service allows up to eight BLE phone sessions on one adapter. The number of simultaneous connections depends on the controller, and this hardware combination has been tested with two phones. Each phone has its own screen. Input follows the pointer.
 
@@ -342,7 +339,7 @@ BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB 
 
 Check **Service status** under **Shared server → Bluetooth service**. On Linux, it refreshes about every two seconds while the page is visible and shows whether the selected adapter's service is available, idle, in use, or ready to send keyboard and mouse input. On Windows, it shows the service started by this app, including when it is kept idle after disconnecting or when its session has connected to Deskflow.
 
-The phone appears in the device list once it subscribes to keyboard and pointer input. The GUI reuses its saved profile on later connections. **Add device** offers USB and ADB connections only. For a discovered Bluetooth device, **Connection type** is read-only. You can set the screen dimensions and turn **Automatically connect discovered phones to Deskflow** on or off in its profile. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
+The phone appears in the device list once it subscribes to keyboard and pointer input. The GUI reuses its saved Bluetooth profile on later connections. You can set the screen dimensions and turn **Automatically connect discovered phones to Deskflow** on or off in its profile. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
 
 To change a connected phone's screen dimensions or mouse buttons, select it in the device list, click **Disconnect** and wait for disconnection to finish. After editing, click **Reconnect to Deskflow** for the selected phone. This button also works with automatic connection turned off. If the phone has lost its Bluetooth link, reconnect to the computer in the phone's Bluetooth settings.
 

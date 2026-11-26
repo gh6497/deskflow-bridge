@@ -13,6 +13,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -62,22 +63,59 @@ static QString testPeerPath()
 
 class AutoConnectTestWindow : public TrayTestWindow {
 public:
-    AutoConnectTestWindow()
-    {
-        // These fixtures exercise AOA unless a test explicitly selects UHID.
-        // Production fresh Windows profiles are tested separately below.
-        auto *transport = findChild<QComboBox *>("transportSelector");
-        const int index = transport->findData(QSettings().value("transport", "usb"));
-        if (index >= 0) transport->setCurrentIndex(index);
-        if (transport->currentData() == "usb")
-            findChild<QCheckBox *>("adbEnabled")->setChecked(QSettings().value("adbEnabled", false).toBool());
-    }
+    AutoConnectTestWindow() : AutoConnectTestWindow(prepareSettings()) {}
 protected:
-    QString bridgeExecutable() const override
+    QString bridgeExecutable() const override { return testPeerPath(); }
+private:
+    explicit AutoConnectTestWindow(int) {}
+    static int prepareSettings()
     {
-        return testPeerPath();
+        QSettings settings;
+        const int count = settings.beginReadArray("devices");
+        settings.endArray();
+        if (!count && !settings.contains("transport")) settings.setValue("transport", "usb");
+        if (!count && settings.value("transport") == "usb" && !settings.contains("serial"))
+            settings.setValue("serial", "TEST123");
+        if (!count && settings.value("transport") == "uhid" && !settings.contains("adbSerial"))
+            settings.setValue("adbSerial", "TEST123");
+        return count;
     }
 };
+
+static void addTestDevice(MainWindow &window, const QString &transport = "usb", const QString &screen = {},
+                          bool refresh = false)
+{
+    auto *list = window.findChild<QListWidget *>("deviceSidebar");
+    const auto count = list->count();
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+        QVERIFY(dialog);
+        auto rejectOnFailure = qScopeGuard([&] { dialog->reject(); });
+        auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+        QVERIFY(method->findData(transport) >= 0);
+        method->setCurrentIndex(method->findData(transport));
+        if (!screen.isEmpty()) dialog->findChild<QComboBox *>("newDeviceScreen")->setCurrentText(screen);
+        auto *serial = dialog->findChild<QLineEdit *>("newDeviceUsbSerial");
+        if (refresh) {
+            dialog->findChild<QPushButton *>("newDeviceRefresh")->click();
+            QTRY_COMPARE(serial->text(), "TEST123");
+        } else {
+            serial->setText("fixture-" + QString::number(count));
+        }
+        auto *connect = dialog->findChild<QPushButton *>("newDeviceConnect");
+        QVERIFY(connect->isEnabled());
+        QTimer::singleShot(2500, dialog, [dialog] { dialog->reject(); });
+        rejectOnFailure.dismiss();
+        connect->click();
+    });
+    window.findChild<QPushButton *>("addDeviceButton")->click();
+    QCOMPARE(list->count(), count + 1);
+    auto *manager = window.findChild<ConnectionManager *>();
+    const auto id = list->currentItem()->data(Qt::UserRole).toString();
+    QCOMPARE(manager->state(id), Session::State::Connected);
+    manager->stop(id);
+    QTRY_COMPARE(manager->state(id), Session::State::Idle);
+}
 
 #ifdef OTG_GUI_HAVE_SCRCPY
 static QByteArray clipboardReply(const QByteArray &text)
@@ -105,14 +143,30 @@ private slots:
         QTemporaryDir dir;
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
-        QSettings settings; settings.setValue("adb", "");
-        MainWindow window;
-        auto *transport = window.findChild<QComboBox *>("transportSelector");
+        QSettings settings;
+        settings.setValue("adb", testPeerPath());
+        settings.setValue("devices/size", 0);
+        AutoConnectTestWindow window;
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        QCOMPARE(list->count(), 0);
+        QVERIFY(!window.findChild<QPushButton *>("connectButton")->isEnabled());
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+            const auto *transport = dialog->findChild<QComboBox *>("newDeviceTransport");
 #ifdef Q_OS_WIN
-        QCOMPARE(transport->currentData().toString(), "uhid");
+            const auto expected = QStringLiteral("uhid");
 #else
-        QCOMPARE(transport->currentData().toString(), "usb");
+            const auto expected = QStringLiteral("usb");
 #endif
+            const auto selected = transport->currentData().toString();
+            dialog->reject();
+            QCOMPARE(selected, expected);
+        });
+        window.findChild<QPushButton *>("addDeviceButton")->click();
+        QCOMPARE(list->count(), 0);
+        addTestDevice(window, "uhid", {}, true);
+        QCOMPARE(list->count(), 1);
+        QVERIFY(window.findChild<QLabel *>("deviceTransport")->text().contains("UHID"));
         window.findChild<QAction *>("trayQuit")->trigger();
 #endif
     }
@@ -132,6 +186,7 @@ private slots:
         settings.setValue("adb", peer);
         settings.setValue("transport", "uhid");
         settings.setValue("serial", "OLD_AOA_SERIAL");
+        settings.setValue("adbSerial", "TEST123");
         settings.setValue("adbEnabled", false);
         settings.setValue("manageServer", false);
         const auto logPath = dir.filePath("commands.jsonl");
@@ -139,13 +194,14 @@ private slots:
         const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_UHID_LOG"); });
         {
             AutoConnectTestWindow window; window.show();
-            auto *transport = window.findChild<QComboBox *>("transportSelector");
-            auto *target = window.findChild<QLineEdit *>("adbSerial");
+            auto *transport = window.findChild<QLabel *>("deviceTransport");
+            auto *target = window.findChild<QLineEdit *>("uhidUsbSerial");
             auto *serial = window.findChild<QLineEdit *>("usbSerial");
             auto *enabled = window.findChild<QCheckBox *>("adbEnabled");
             auto *connect = window.findChild<QPushButton *>("connectButton");
             QVERIFY(transport && target && serial && enabled && connect);
-            QTRY_COMPARE(target->text(), "TEST123");
+            QCOMPARE(target->text(), "TEST123");
+            window.findChild<QPushButton *>("adbReadDisplay")->click();
             QTRY_COMPARE(window.findChild<QSpinBox *>("screenWidth")->value(), 1600);
             QCOMPARE(serial->text(), "OLD_AOA_SERIAL");
             QVERIFY(serial->isHidden());
@@ -158,9 +214,9 @@ private slots:
             target->setText("MANUAL_ADB_TARGET"); QVERIFY(connect->isEnabled());
             auto *language = window.findChild<QComboBox *>("languageSelector");
             language->setCurrentIndex(language->findData("zh_CN"));
-            QVERIFY(transport->currentText().contains("UHID"));
+            QVERIFY(transport->text().contains("UHID"));
             language->setCurrentIndex(language->findData("en"));
-            QCOMPARE(transport->currentData().toString(), "uhid");
+            QVERIFY(transport->text().contains("UHID"));
             const auto screenshot = qEnvironmentVariable("OTG_TEST_UHID_SCREENSHOT");
             if (!screenshot.isEmpty()) {
                 QCoreApplication::processEvents();
@@ -175,14 +231,14 @@ private slots:
         settings.endArray();
         {
             AutoConnectTestWindow restored;
-            QCOMPARE(restored.findChild<QComboBox *>("transportSelector")->currentData().toString(), "uhid");
-            QTRY_VERIFY(restored.findChild<QComboBox *>("deviceSelector")->count() > 1);
-            QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), "MANUAL_ADB_TARGET");
+            QVERIFY(restored.findChild<QLabel *>("deviceTransport")->text().contains("UHID"));
+            QVERIFY(!restored.findChild<QComboBox *>("deviceSelector"));
+            QCOMPARE(restored.findChild<QLineEdit *>("uhidUsbSerial")->text(), "MANUAL_ADB_TARGET");
             restored.findChild<QAction *>("trayQuit")->trigger();
         }
         QFile log(logPath); QVERIFY(log.open(QIODevice::ReadOnly));
         const auto commands = log.readAll();
-        QVERIFY(commands.contains("devices"));
+        QVERIFY(commands.contains("dumpsys"));
         QVERIFY(!commands.contains("--usb-scan") && !commands.contains("get-devpath"));
 #endif
     }
@@ -256,7 +312,7 @@ private slots:
             QCOMPARE(right->currentText(), "Android Back (Win+Backspace)");
             QCOMPARE(unlockWithSpace->text(), QStringLiteral("Use Space instead of swiping"));
             QCOMPARE(right->currentData().toString(), "back");
-            window.findChild<QPushButton *>("addDeviceButton")->click();
+            addTestDevice(window);
             QCOMPARE(list->count(), 2);
             right->setCurrentIndex(right->findData("normal"));
             middle->setCurrentIndex(middle->findData("home"));
@@ -284,6 +340,7 @@ private slots:
         auto *unlockWithSpace = restored.findChild<QCheckBox *>("unlockWithSpace");
         QVERIFY(unlockWithSpace && !unlockWithSpace->isChecked());
         QCOMPARE(restored.findChild<QLineEdit *>("unlockPin")->text(), QStringLiteral("1234"));
+        QCOMPARE(list->count(), 2);
         list->setCurrentRow(1);
         QVERIFY(unlockWithSpace->isChecked());
         QCOMPARE(right->currentData().toString(), "normal");
@@ -363,9 +420,8 @@ private slots:
         AutoConnectTestWindow window; window.show();
         auto *button = window.findChild<QPushButton *>("copyScreenshot");
         auto *menu = window.findChild<QMenu *>("trayScreenshots");
-        auto *selector = window.findChild<QComboBox *>("deviceSelector");
         auto *target = window.findChild<QLineEdit *>("adbSerial");
-        QTRY_VERIFY(selector->count() > 1);
+        QVERIFY(!window.findChild<QComboBox *>("deviceSelector"));
         QCOMPARE(menu->actions().size(), 2);
         QVERIFY(!button->isEnabled());
         auto *other = menu->actions().last();
@@ -379,15 +435,16 @@ private slots:
         window.show();
         auto *enabled = window.findChild<QCheckBox *>("adbEnabled");
         enabled->setChecked(true);
-        auto *transport = window.findChild<QComboBox *>("transportSelector");
-        for (const auto *mode : {"uhid", "ble"}) {
-            const auto index = transport->findData(mode);
-            if (index < 0) continue;
-            transport->setCurrentIndex(index); target->clear();
-            QVERIFY(!button->isEnabled()); // Never fall back to the stale AOA serial or BLE peer.
-            target->setText("[::1]:5555"); QVERIFY(button->isEnabled());
-        }
-        transport->setCurrentIndex(transport->findData("usb"));
+#ifdef OTG_GUI_HAVE_UHID
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        addTestDevice(window, "uhid");
+        window.findChild<QLineEdit *>("uhidUsbSerial")->clear();
+        QVERIFY(!button->isEnabled());
+        window.findChild<QComboBox *>("uhidAccessSelector")->setCurrentIndex(1);
+        window.findChild<QLineEdit *>("uhidWirelessTarget")->setText("[::1]:5555");
+        QVERIFY(button->isEnabled());
+        list->setCurrentRow(0);
+#endif
         target->setText("USB-ID");
         auto *connectButton = window.findChild<QPushButton *>("connectButton");
         QTRY_VERIFY(connectButton->isEnabled()); connectButton->click();
@@ -792,8 +849,13 @@ private slots:
     {
         QTest::addColumn<QString>("objectName");
         QTest::newRow("language") << QStringLiteral("languageSelector");
-        QTest::newRow("transport") << QStringLiteral("transportSelector");
-        QTest::newRow("device") << QStringLiteral("deviceSelector");
+#ifdef OTG_GUI_HAVE_UHID
+        QTest::newRow("ADB access") << QStringLiteral("uhidAccessSelector");
+        QTest::newRow("new ADB access") << QStringLiteral("newDeviceAdbAccess");
+#endif
+        QTest::newRow("new transport") << QStringLiteral("newDeviceTransport");
+        QTest::newRow("new screen") << QStringLiteral("newDeviceScreen");
+        QTest::newRow("new device") << QStringLiteral("newDeviceSelector");
         QTest::newRow("mouse mode") << QStringLiteral("mouseMode");
         QTest::newRow("middle button") << QStringLiteral("middleButtonAction");
         QTest::newRow("right button") << QStringLiteral("rightButtonAction");
@@ -814,9 +876,25 @@ private slots:
         settings.setValue("adb", "");
         settings.setValue("manageServer", true);
         settings.setValue("tls", true);
+        settings.setValue("transport", objectName == "uhidAccessSelector" ? "uhid" : "usb");
         MainWindow window;
         window.show();
         QCoreApplication::processEvents();
+        if (objectName.startsWith("newDevice")) {
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+                const auto reject = qScopeGuard([&] { dialog->reject(); });
+                dialog->activateWindow();
+                if (objectName == "newDeviceAdbAccess")
+                    dialog->findChild<QComboBox *>("newDeviceTransport")->setCurrentIndex(1);
+                QCoreApplication::processEvents();
+                auto *combo = dialog->findChild<QComboBox *>(objectName);
+                QVERIFY(combo);
+                verifyDropdownWheel(combo);
+            });
+            window.findChild<QPushButton *>("addDeviceButton")->click();
+            return;
+        }
         auto *combo = window.findChild<QComboBox *>(objectName);
         QVERIFY(combo);
         auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
@@ -824,7 +902,11 @@ private slots:
         for (int i = 0; i < tabs->count(); ++i)
             if (tabs->widget(i)->isAncestorOf(combo)) tabs->setCurrentIndex(i);
         QVERIFY(combo->isEnabled());
+        verifyDropdownWheel(combo);
+    }
 
+    void verifyDropdownWheel(QComboBox *combo)
+    {
         // Exercise selection without triggering device discovery or changing transport.
         const QSignalBlocker blocker(combo);
         const int originalIndex = combo->currentIndex();
@@ -856,7 +938,6 @@ private slots:
         QCOMPARE(combo->currentIndex(), 0);
         while (combo->count() > originalCount) combo->removeItem(combo->count() - 1);
         combo->setCurrentIndex(originalIndex);
-        window.findChild<QAction *>("trayQuit")->trigger();
     }
 
     void companionApkDefaults()
@@ -961,12 +1042,6 @@ private slots:
             language->setCurrentIndex(language->findData("zh_CN"));
             check->click(); QTRY_VERIFY(!app->busy());
             QCOMPARE(status->text(), qtTrId("otg.companion.access_required"));
-            auto *transport = window.findChild<QComboBox *>("transportSelector");
-            if (transport->findData("ble") >= 0) {
-                transport->setCurrentIndex(transport->findData("ble"));
-                QVERIFY(!install->isVisible());
-                transport->setCurrentIndex(transport->findData("usb"));
-            }
             target->clear();
 #ifdef Q_OS_WIN
             // Windows requires an explicit ADB target, even for USB HID.
@@ -1131,9 +1206,12 @@ private slots:
             QVERIFY(manager && list && width && height && sensitivity && motion);
             width->setValue(1080); height->setValue(1920); sensitivity->setValue(2.0);
             motion->setValue(2.0);
-            window.findChild<QPushButton *>("addDeviceButton")->click();
+            addTestDevice(window);
             const auto second = list->currentItem()->data(Qt::UserRole).toString();
             width->setValue(720); height->setValue(1600); sensitivity->setValue(1.5); motion->setValue(2.5);
+            window.findChild<QLineEdit *>("usbSerial")->setText("B");
+            window.findChild<QPushButton *>("connectButton")->click();
+            QTRY_COMPARE(manager->state(second), Session::State::Connected);
             manager->session("initial")->displaySizeChanged(QSize(1920, 1080));
             QCOMPARE(width->value(), 720); QCOMPARE(height->value(), 1600);
             for (int i = 0; i < list->count(); ++i)
@@ -1144,6 +1222,7 @@ private slots:
             manager->session(second)->displaySizeChanged(QSize(1600, 720));
             QCOMPARE(width->value(), 1920);
             window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_VERIFY(manager->settled());
         }
         AutoConnectTestWindow restored;
         QCOMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 1920);
@@ -1183,7 +1262,7 @@ private slots:
             feature->setChecked(true);
             if (audioProfile) gain->setValue(6);
             window.findChild<QLineEdit *>("usbSerial")->setText("A");
-            window.findChild<QPushButton *>("addDeviceButton")->click();
+            addTestDevice(window);
             QVERIFY(!feature->isChecked());
             QCOMPARE(gain->value(), 0);
             window.findChild<QLineEdit *>("usbSerial")->setText("B");
@@ -1192,6 +1271,12 @@ private slots:
             if (audioProfile) QCOMPARE(gain->value(), 6);
             list->setCurrentRow(1);
             QVERIFY(!feature->isChecked());
+            auto *manager = window.findChild<ConnectionManager *>();
+            const auto id = list->currentItem()->data(Qt::UserRole).toString();
+            window.findChild<QPushButton *>("connectButton")->click();
+            QTRY_COMPARE(manager->state(id), Session::State::Connected);
+            window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_VERIFY(manager->settled());
         }
         AutoConnectTestWindow restored;
         auto *list = restored.findChild<QListWidget *>("deviceSidebar");
@@ -1220,8 +1305,7 @@ private slots:
         auto *unlock = window.findChild<QCheckBox *>("unlockEnabled");
         auto *pin = window.findChild<QLineEdit *>("unlockPin");
         auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
-        auto *transport = window.findChild<QComboBox *>("transportSelector");
-        QVERIFY(adbEnabled && audio && gain && clipboard && autoRotate && unlock && pin && tabs && transport);
+        QVERIFY(adbEnabled && audio && gain && clipboard && autoRotate && unlock && pin && tabs);
         QVERIFY(!adbEnabled->isChecked());
         QVERIFY(!audio->isEnabled());
         QVERIFY(gain->isHidden());
@@ -1272,24 +1356,6 @@ private slots:
         QVERIFY(gain->isHidden());
         audio->setChecked(false);
 #endif
-        const int ble = transport->findData("ble");
-        if (ble >= 0) {
-            transport->setCurrentIndex(ble);
-#ifdef OTG_GUI_HAVE_AUDIO
-            QVERIFY(!audio->isHidden());
-            QVERIFY(audio->isEnabled());
-#else
-            QVERIFY(audio->isHidden());
-            QVERIFY(!audio->isEnabled());
-#endif
-            transport->setCurrentIndex(0);
-#ifdef OTG_GUI_HAVE_AUDIO
-            QVERIFY(!audio->isHidden());
-            QVERIFY(audio->isEnabled());
-#else
-            QVERIFY(audio->isHidden());
-#endif
-        }
         window.findChild<QAction *>("trayQuit")->trigger();
     }
     void multipleDevices()
@@ -1329,8 +1395,10 @@ private slots:
             auto *manageServer = window.findChild<QCheckBox *>("manageServer");
             auto *configFile = window.findChild<QLineEdit *>("deskflowConfigFile");
             auto *connectButton = window.findChild<QPushButton *>("connectButton");
+            auto *addDevice = window.findChild<QPushButton *>("addDeviceButton");
+            auto *removeDevice = window.findChild<QPushButton *>("removeDeviceButton");
             QVERIFY(manager && list && tabs && serial && screenName && alias && width && audio);
-            QVERIFY(manageServer && configFile);
+            QVERIFY(manageServer && configFile && connectButton && addDevice && removeDevice);
             QCOMPARE(tabs->count(), 2);
             QCOMPARE(tabs->tabText(0), QStringLiteral("设备配置"));
             QCOMPARE(tabs->tabText(1), QStringLiteral("共享服务"));
@@ -1347,8 +1415,9 @@ private slots:
             configFile->setText(config.fileName());
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(true);
             QCOMPARE(list->count(), 1);
+            QVERIFY(!removeDevice->isEnabled());
             serial->setText("A"); alias->setText("Redmi K20 Pro"); width->setValue(1234);
-            window.findChild<QPushButton *>("addDeviceButton")->click();
+            addTestDevice(window);
             QCOMPARE(list->count(), 2);
             QCOMPARE(screenName->text(), "android2");
             QCOMPARE(alias->text(), "android2");
@@ -1356,8 +1425,6 @@ private slots:
             const auto secondId = list->currentItem()->data(Qt::UserRole).toString();
             QVERIFY(secondId != "initial");
             tabs->setCurrentIndex(0);
-            auto *transport = window.findChild<QComboBox *>("transportSelector");
-            transport->setCurrentIndex(transport->findData("usb"));
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(false);
             serial->setText("B"); alias->setText("Pixel 8"); width->setValue(1080);
             connectButton->click();
@@ -1366,7 +1433,19 @@ private slots:
             QVERIFY(!manageServer->isEnabled());
             QVERIFY(!configFile->isEnabled());
             QVERIFY(!audio->isEnabled());
-            QVERIFY(!window.findChild<QPushButton *>("addDeviceButton")->isEnabled());
+            QVERIFY(!removeDevice->isEnabled());
+            QVERIFY(addDevice->isEnabled());
+            addTestDevice(window);
+            QCOMPARE(list->count(), 3);
+            QCOMPARE(screenName->text(), "android3");
+            const auto thirdId = list->currentItem()->data(Qt::UserRole).toString();
+            QCOMPARE(manager->state(secondId), Session::State::Connected);
+            QVERIFY(removeDevice->isEnabled());
+            removeDevice->click();
+            QCOMPARE(list->count(), 2);
+            QVERIFY(!manager->session(thirdId));
+            QCOMPARE(manager->state(secondId), Session::State::Connected);
+            QCOMPARE(manager->serverState(), DeskflowServer::State::Running);
             for (int i = 0; i < list->count(); ++i)
                 if (list->item(i)->data(Qt::UserRole) == "initial") list->setCurrentRow(i);
             QCOMPARE(serial->text(), "A");
@@ -1480,7 +1559,7 @@ private slots:
         const QByteArray header = "List of devices attached\n";
         {
             AutoConnectTestWindow window; window.show();
-            auto *target = window.findChild<QLineEdit *>("adbSerial");
+            auto *target = window.findChild<QLineEdit *>("uhidUsbSerial");
             auto *enable = window.findChild<QCheckBox *>("uhidUsbAutoConnect");
             auto *button = window.findChild<QPushButton *>("connectButton");
             auto *session = window.findChild<Session *>();
@@ -1504,6 +1583,20 @@ private slots:
             QCOMPARE(session->state(), Session::State::Idle);
             qputenv("OTG_TEST_ADB_DEVICES", header + "TEST123 device transport_id:2\n");
             QTRY_COMPARE(session->state(), Session::State::Connected);
+            auto *access = window.findChild<QComboBox *>("uhidAccessSelector");
+            QVERIFY(!access->isEnabled());
+            window.findChild<QAction *>("trayDisconnect")->trigger();
+            QTRY_COMPARE(session->state(), Session::State::Idle);
+            window.findChild<QLineEdit *>("uhidWirelessTarget")->setText("192.0.2.1:5555");
+            access->setCurrentIndex(access->findData("wireless"));
+            button->click();
+            QTRY_COMPARE(session->state(), Session::State::Connected);
+            const auto manager = window.findChild<ConnectionManager *>();
+            QCOMPARE(manager->activeUhidTarget("initial"), "192.0.2.1:5555");
+            qputenv("OTG_TEST_ADB_DEVICES", header + "TEST123 device transport_id:3\n");
+            const auto nextScan = scans();
+            QTRY_VERIFY(scans() >= nextScan + 2);
+            QCOMPARE(manager->activeUhidTarget("initial"), "192.0.2.1:5555");
             window.findChild<QAction *>("trayQuit")->trigger();
             QTRY_COMPARE(session->state(), Session::State::Idle);
         }
@@ -1514,19 +1607,70 @@ private slots:
         auto *session = restored.findChild<Session *>();
         const auto before = scans();
         QTRY_VERIFY(scans() > before);
-        QCOMPARE(restored.findChild<QLineEdit *>("adbSerial")->text(), "TEST123");
+        QCOMPARE(restored.findChild<QLineEdit *>("uhidUsbSerial")->text(), "TEST123");
+        QCOMPARE(restored.findChild<QLineEdit *>("uhidWirelessTarget")->text(), "192.0.2.1:5555");
+        QCOMPARE(restored.findChild<QComboBox *>("uhidAccessSelector")->currentData().toString(), "wireless");
         QVERIFY(restored.findChild<QCheckBox *>("uhidUsbAutoConnect")->isChecked());
         QCOMPARE(session->state(), Session::State::Idle);
         restored.close();
         qputenv("OTG_TEST_ADB_DEVICES", header + "TEST123 device transport_id:5\nOTHER device transport_id:4\n");
         QTRY_COMPARE(session->state(), Session::State::Connected);
+        QCOMPARE(restored.findChild<ConnectionManager *>()->activeUhidTarget("initial"), "TEST123");
+        QCOMPARE(restored.findChild<QComboBox *>("uhidAccessSelector")->currentData().toString(), "wireless");
         restored.findChild<QAction *>("trayQuit")->trigger();
         QTRY_COMPARE(session->state(), Session::State::Idle);
         const auto commands = log();
-        QCOMPARE(commands.count("\"--gui\""), 3);
+        QCOMPARE(commands.count("\"--gui\""), 4);
         QCOMPARE(commands.count("\"--adb-serial\",\"TEST123\""), 3);
+        QCOMPARE(commands.count("\"--adb-serial\",\"192.0.2.1:5555\""), 1);
         QVERIFY(!commands.contains("--usb-scan") && !commands.contains("--usb-watch"));
         QVERIFY(!commands.contains("[\"connect\"") && !commands.contains("[\"pair\""));
+#endif
+    }
+
+    void alternateProfilesShareDeskflowScreen()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QTemporaryDir dir;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("adb", testPeerPath());
+        settings.setValue("transport", "usb");
+        settings.setValue("language", "en");
+        AutoConnectTestWindow window;
+        window.show();
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        auto *manager = window.findChild<ConnectionManager *>();
+        auto *connect = window.findChild<QPushButton *>("connectButton");
+        auto *connectAll = window.findChild<QPushButton *>("connectAllButton");
+        auto *usbAuto = window.findChild<QCheckBox *>("autoConnectEnabled");
+        auto *uhidAuto = window.findChild<QCheckBox *>("uhidUsbAutoConnect");
+        QTRY_VERIFY(connect->isEnabled());
+        addTestDevice(window, "uhid", "android");
+        QCOMPARE(list->count(), 2);
+        QCOMPARE(window.findChild<QLineEdit *>("screenName")->text(), "android");
+        const auto uhid = list->currentItem()->data(Qt::UserRole).toString();
+        window.findChild<QLineEdit *>("uhidUsbSerial")->setText("ADB-SERIAL");
+        connectAll->click();
+        QVERIFY(window.statusBar()->currentMessage().contains("android"));
+        QVERIFY(!manager->busy());
+
+        list->setCurrentRow(0);
+        usbAuto->click();
+        list->setCurrentRow(1);
+        QVERIFY(!uhidAuto->isEnabled());
+        connectAll->click();
+        QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
+        QVERIFY(!connect->isEnabled());
+        QCOMPARE(manager->state(uhid), Session::State::Idle);
+        manager->stop("initial");
+        QTRY_VERIFY(connect->isEnabled());
+        connect->click();
+        QTRY_COMPARE(manager->state(uhid), Session::State::Connected);
+        QCOMPARE(manager->activeUhidTarget(uhid), "ADB-SERIAL");
+        window.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_VERIFY(manager->settled());
 #endif
     }
 
@@ -1577,18 +1721,22 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings().setValue("adb", "");
         AutoConnectTestWindow window;
-        auto *transport = window.findChild<QComboBox *>("transportSelector");
-        QVERIFY(transport);
-        QCOMPARE(transport->itemData(0).toString(), "usb");
-        int count = 1;
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+            const auto reject = qScopeGuard([&] { dialog->reject(); });
+            auto *transport = dialog->findChild<QComboBox *>("newDeviceTransport");
+            QVERIFY(transport);
+            QCOMPARE(transport->itemData(0).toString(), "usb");
 #ifdef OTG_GUI_HAVE_UHID
-        ++count;
-        QVERIFY(transport->findData("uhid") >= 0);
+            QCOMPARE(transport->count(), 2);
+            QVERIFY(transport->findData("uhid") >= 0);
 #else
-        QCOMPARE(transport->findData("uhid"), -1);
+            QCOMPARE(transport->count(), 1);
+            QCOMPARE(transport->findData("uhid"), -1);
 #endif
-        QCOMPARE(transport->findData("ble"), -1);
-        QCOMPARE(transport->count(), count);
+            QCOMPARE(transport->findData("ble"), -1);
+        });
+        window.findChild<QPushButton *>("addDeviceButton")->click();
 #if !defined(OTG_GUI_HAVE_BLE) && !defined(OTG_GUI_HAVE_BLE_WIN)
         QVERIFY(!window.findChild<QLabel *>("bleServiceStatus"));
 #endif
@@ -1672,10 +1820,8 @@ private slots:
         AutoConnectTestWindow window;
         window.show();
         QCoreApplication::processEvents();
-        auto *transport = window.findChild<QComboBox *>("transportSelector");
-        QCOMPARE(transport->currentData().toString(), "ble");
-        QCOMPARE(transport->count(), 1);
-        QVERIFY(!transport->isEnabled());
+        auto *transport = window.findChild<QLabel *>("deviceTransport");
+        QVERIFY(transport->text().contains(QStringLiteral("低功耗蓝牙")));
         auto *serial = window.findChild<QLineEdit *>("usbSerial");
         QVERIFY(serial->text().isEmpty());
         QVERIFY(!serial->isEnabled());
@@ -1751,8 +1897,8 @@ private slots:
 #if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
         QVERIFY(stopService->isEnabled());
         QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
-        window.findChild<QPushButton *>("addDeviceButton")->click();
-        QVERIFY(transport->currentData().toString() != "ble");
+        addTestDevice(window);
+        QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
         QVERIFY(stopService->isEnabled());
         QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
         QTimer::singleShot(0, &window, [&window] {
@@ -1785,10 +1931,8 @@ private slots:
 #ifdef Q_OS_LINUX
         QCOMPARE(settings.value("sharedBle/adapter").toString(), "hci1");
 #endif
-        auto *restoredTransport = restored.findChild<QComboBox *>("transportSelector");
-        QVERIFY(!restoredTransport->isEnabled());
-        QCOMPARE(restoredTransport->currentData().toString(), "ble");
-        QCOMPARE(restoredTransport->count(), 1);
+        auto *restoredTransport = restored.findChild<QLabel *>("deviceTransport");
+        QVERIFY(restoredTransport->text().contains(QStringLiteral("低功耗蓝牙")));
         restored.findChild<QAction *>("trayQuit")->trigger();
     }
     void discoverBleFromManualDevice()
@@ -1807,12 +1951,11 @@ private slots:
         for (int launch = 0; launch < 2; ++launch) {
             AutoConnectTestWindow window;
             auto *list = window.findChild<QListWidget *>("deviceSidebar");
-            auto *transport = window.findChild<QComboBox *>("transportSelector");
+            auto *transport = window.findChild<QLabel *>("deviceTransport");
             auto *manager = window.findChild<ConnectionManager *>();
             auto *start = window.findChild<QPushButton *>("startBleService");
             QVERIFY(list && transport && manager && start);
-            QVERIFY(transport->isEnabled());
-            QCOMPARE(transport->findData("ble"), -1);
+            QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
             start->click();
             QTRY_COMPARE(list->count(), launch == 0 ? 2 : 3);
             auto *phone = list->findItems("*AA-BB-CC-DD-EE-FF*", Qt::MatchWildcard).value(0);
@@ -1822,20 +1965,15 @@ private slots:
             QCOMPARE(id, phoneId);
             QTRY_COMPARE(manager->state(id), Session::State::Connected);
             QVERIFY(manager->state("initial") == Session::State::Idle);
-            QCOMPARE(transport->currentData().toString(), "usb");
+            QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
             manager->stop(id);
             QTRY_COMPARE(manager->state(id), Session::State::Idle);
             list->setCurrentItem(list->findItems("*AA-BB-CC-DD-EE-FF*", Qt::MatchWildcard).first());
-            QCOMPARE(transport->count(), 1);
-            QCOMPARE(transport->currentData().toString(), "ble");
-            QVERIFY(!transport->isEnabled());
-            QTest::keyClick(transport, Qt::Key_Down);
-            QCOMPARE(transport->currentData().toString(), "ble");
+            QVERIFY(transport->text() == qtTrId("otg.transport.ble") ||
+                    transport->text() == qtTrId("otg.transport.ble_windows"));
             if (launch == 0) {
-                window.findChild<QPushButton *>("addDeviceButton")->click();
-                QVERIFY(transport->isEnabled());
-                QCOMPARE(transport->findData("ble"), -1);
-                QVERIFY(transport->findData("usb") >= 0);
+                addTestDevice(window);
+                QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
             }
             list->setCurrentRow(0);
             window.findChild<QAction *>("trayQuit")->trigger();
@@ -1972,10 +2110,8 @@ private slots:
             list->setCurrentRow(1);
             QCOMPARE(adapter->text(), "hci3");
             QVERIFY(!isolate->isChecked() && legacy->isChecked());
-            auto *transport = window.findChild<QComboBox *>("transportSelector");
-            QVERIFY(!transport->isEnabled());
-            QCOMPARE(transport->currentData().toString(), "ble");
-            QCOMPARE(transport->findData("usb"), -1);
+            auto *transport = window.findChild<QLabel *>("deviceTransport");
+            QCOMPARE(transport->text(), qtTrId("otg.transport.ble"));
             window.findChild<QAction *>("trayQuit")->trigger();
             QTRY_VERIFY(manager->settled());
         }
@@ -2036,8 +2172,15 @@ private slots:
         window.findChild<QAction *>("trayQuit")->trigger();
         QTRY_COMPARE(session->state(), Session::State::Idle);
     }
+    void failedConnectionNotRemembered_data()
+    {
+        QTest::addColumn<bool>("retry");
+        QTest::newRow("quit after failure") << false;
+        QTest::newRow("retry successfully") << true;
+    }
     void failedConnectionNotRemembered()
     {
+        QFETCH(bool, retry);
         QTemporaryDir settingsDir;
         QVERIFY(settingsDir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -2047,15 +2190,76 @@ private slots:
         QSettings settings;
         settings.setValue("adb", "");
         settings.setValue("manageServer", false);
-        AutoConnectTestWindow window;
-        QCoreApplication::processEvents();
-        window.findChild<QLineEdit *>("usbSerial")->setText("reject");
-        auto *session = window.findChild<Session *>();
-        window.findChild<QPushButton *>("connectButton")->click();
-        QTRY_COMPARE(session->state(), Session::State::Idle);
-        QCOMPARE(settings.beginReadArray("rememberedDevices"), 0);
+        settings.setValue("transport", "usb");
+        settings.setValue("serial", "OLD_SERIAL");
+        settings.beginWriteArray("devices", 0); // Stale legacy fields must not recreate a removed device.
         settings.endArray();
-        window.findChild<QAction *>("trayQuit")->trigger();
+        QString id;
+        {
+            AutoConnectTestWindow window;
+            auto *list = window.findChild<QListWidget *>("deviceSidebar");
+            QCOMPARE(list->count(), 0);
+            auto *manager = window.findChild<ConnectionManager *>();
+            QVERIFY(!window.findChild<QPushButton *>("newDeviceRefresh"));
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+                QVERIFY(dialog);
+                auto rejectOnFailure = qScopeGuard([&] { dialog->reject(); });
+                auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+                method->setCurrentIndex(0);
+                auto *serial = dialog->findChild<QLineEdit *>("newDeviceUsbSerial");
+                auto *connect = dialog->findChild<QPushButton *>("newDeviceConnect");
+                auto *refresh = dialog->findChild<QPushButton *>("newDeviceRefresh");
+                QVERIFY(!connect->isEnabled());
+                refresh->click();
+                QTRY_COMPARE(serial->text(), "TEST123");
+                serial->setText("reject");
+                connect->click();
+                QTRY_VERIFY(connect->isEnabled());
+                QCOMPARE(list->count(), 0);
+                QCOMPARE(settings.value("devices/size").toInt(), 0);
+                QCOMPARE(settings.value("rememberedDevices/size").toInt(), 0);
+                QCOMPARE(serial->text(), "reject");
+
+                if (retry) {
+                    serial->setText("RETRY_SERIAL");
+                    QTimer::singleShot(2500, dialog, [dialog] { dialog->reject(); });
+                    rejectOnFailure.dismiss();
+                    connect->click();
+                } else {
+                    QSignalSpy usbReady(manager, &ConnectionManager::usbAttached);
+                    serial->setText("slow");
+                    connect->click();
+                    QTRY_COMPARE(usbReady.size(), 1);
+                    QCOMPARE(list->count(), 0);
+                    QCOMPARE(settings.value("devices/size").toInt(), 0);
+                    // Closing a connection still waiting for Deskflow cancels it.
+                    dialog->reject();
+                    rejectOnFailure.dismiss();
+                }
+            });
+            window.findChild<QPushButton *>("addDeviceButton")->click();
+            QCOMPARE(list->count(), retry ? 1 : 0);
+            if (retry) {
+                id = list->currentItem()->data(Qt::UserRole).toString();
+                QCOMPARE(manager->state(id), Session::State::Connected);
+                QCOMPARE(settings.value("devices/size").toInt(), 1);
+            } else {
+                QVERIFY(manager->settled());
+            }
+            window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_VERIFY(manager->settled());
+        }
+        QCOMPARE(settings.value("devices/size").toInt(), retry ? 1 : 0);
+        QCOMPARE(settings.value("serial").toString(), retry ? QString("RETRY_SERIAL") : QString("OLD_SERIAL"));
+        AutoConnectTestWindow restored;
+        auto *list = restored.findChild<QListWidget *>("deviceSidebar");
+        QCOMPARE(list->count(), retry ? 1 : 0);
+        if (retry) {
+            QCOMPARE(list->currentItem()->data(Qt::UserRole).toString(), id);
+            QCOMPARE(restored.findChild<QLineEdit *>("usbSerial")->text(), "RETRY_SERIAL");
+        }
+        restored.findChild<QAction *>("trayQuit")->trigger();
     }
     void autoConnectWithoutAdb()
     {
@@ -2231,6 +2435,7 @@ private slots:
         QSettings settings;
         settings.setValue("adb", "");
         settings.setValue("language", "en");
+        settings.setValue("transport", "usb");
         TrayTestWindow window;
         window.available = available;
         window.show();
@@ -2339,6 +2544,7 @@ private slots:
         QSettings settings;
         settings.setValue("language", "en");
         settings.setValue("adb", "");
+        settings.setValue("transport", "usb");
         MainWindow window;
         window.show();
         auto *language = window.findChild<QComboBox *>("languageSelector");
@@ -2360,13 +2566,18 @@ private slots:
         language->setCurrentIndex(language->findData("en"));
         QCOMPARE(button->text(), "Connect");
         QCOMPARE(mode->currentText(), "Relative (compatibility mode)");
-        QTRY_VERIFY([&window] {
-            for (auto *label : window.findChildren<QLabel *>()) {
-                if (label->text().startsWith("ADB not found."))
-                    return true;
-            }
-            return false;
-        }());
+#ifdef OTG_GUI_HAVE_UHID
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+            QVERIFY(dialog);
+            const auto reject = qScopeGuard([&] { dialog->reject(); });
+            auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+            method->setCurrentIndex(method->findData("uhid"));
+            dialog->findChild<QPushButton *>("newDeviceRefresh")->click();
+            QVERIFY(dialog->findChild<QLabel *>("newDeviceStatus")->text().startsWith("ADB not found."));
+        });
+        window.findChild<QPushButton *>("addDeviceButton")->click();
+#endif
         QCOMPARE(width->value(), 1234);
         window.close();
         MainWindow restored;
@@ -2396,7 +2607,7 @@ private slots:
             tabs->setCurrentIndex(1);
             window.show();
             QCoreApplication::processEvents();
-            QTRY_VERIFY(window.findChild<QComboBox *>("deviceSelector")->isEnabled());
+            QVERIFY(!window.findChild<QComboBox *>("deviceSelector"));
             if (window.findChild<QLineEdit *>("bleAdapter")) {
                 auto *status = window.findChild<QLabel *>("bleServiceStatus");
                 QVERIFY(status);
@@ -2404,8 +2615,11 @@ private slots:
             }
             const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
             QVERIFY(window.grab().save(QDir(capture).filePath(QString("server-") + suffix)));
-            window.findChild<QPushButton *>("addDeviceButton")->click();
             tabs->setCurrentIndex(0);
+            window.resize(1100, 880);
+            QCoreApplication::processEvents();
+            QVERIFY(window.grab().save(QDir(capture).filePath(QString("aoa-") + suffix)));
+            addTestDevice(window);
             window.resize(1100, 955);
             auto *scroll = qobject_cast<QScrollArea *>(tabs->widget(0));
             QVERIFY(scroll);
@@ -2445,25 +2659,27 @@ private slots:
             auto *scroll = qobject_cast<QScrollArea *>(tabs->widget(0));
             QVERIFY(perAxis && scroll);
             QTRY_VERIFY(perAxis->isEnabled());
+            const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
+            QVERIFY(window.grab().save(QDir(capture).filePath(QString("device-") + suffix)));
+            QTimer::singleShot(0, &window, [&] {
+                auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+                QVERIFY(dialog);
+                const auto reject = qScopeGuard([&] { dialog->reject(); });
+                auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+                method->setCurrentIndex(method->findData("uhid"));
+                dialog->findChild<QPushButton *>("newDeviceRefresh")->click();
+                QTRY_COMPARE(dialog->findChild<QLineEdit *>("newDeviceUsbSerial")->text(), "TEST123");
+                QVERIFY(dialog->grab().save(QDir(capture).filePath(QString("add-device-") + suffix)));
+            });
+            window.findChild<QPushButton *>("addDeviceButton")->click();
             scroll->ensureWidgetVisible(perAxis, 0, 12);
             QCoreApplication::processEvents();
-            const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
             QVERIFY(window.grab().save(QDir(capture).filePath(QString("input-") + suffix)));
             window.close();
         }
     }
-    void discoverAndRender_data()
-    {
-        QTest::addColumn<bool>("noDevpath");
-        QTest::newRow("usb-path") << false;
-        QTest::newRow("windows-native-usb") << true;
-    }
     void discoverAndRender()
     {
-        QFETCH(bool, noDevpath);
-        if (noDevpath)
-            qputenv("OTG_TEST_NO_DEVPATH", "1");
-        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_NO_DEVPATH"); });
         QTemporaryDir settingsDir;
         QVERIFY(settingsDir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -2481,7 +2697,6 @@ private slots:
         settings.setValue("adbSerial", "TEST123"); // Explicit ADB target on Windows.
         settings.setValue("deskflow", peer);
         settings.setValue("language", "zh_CN");
-        // Windows discovers USB through the bridge, not through `adb devices`.
         AutoConnectTestWindow window;
         window.available = false;
         window.show();
@@ -2490,6 +2705,7 @@ private slots:
         auto *serial = window.findChild<QLineEdit *>("usbSerial");
         auto *connectButton = window.findChild<QPushButton *>("connectButton");
         QVERIFY(width && height && serial && connectButton);
+        window.findChild<QPushButton *>("adbReadDisplay")->click();
         QTRY_COMPARE(width->value(), 1600);
         QCOMPARE(height->value(), 720);
         QCOMPARE(serial->text(), "TEST123");
@@ -2574,7 +2790,8 @@ private slots:
         QCOMPARE(restored.findChild<QDoubleSpinBox *>("sensitivityMultiplier")->value(), 1.5);
         QCOMPARE(restored.findChild<QDoubleSpinBox *>("motionMultiplier")->value(), 1.5);
         QVERIFY(restored.findChild<QLabel *>("virtualScreenSize")->text().startsWith("720 × 1560"));
-        // ADB refresh replaces the baseline, retaining the chosen multiplier.
+        // An explicit size read replaces the baseline, retaining the chosen multiplier.
+        restored.findChild<QPushButton *>("adbReadDisplay")->click();
         QTRY_COMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 1600);
         QTRY_VERIFY(restored.findChild<QPushButton *>("connectButton")->isEnabled());
         QVERIFY(restored.findChild<QLabel *>("virtualScreenSize")->text().startsWith("1067 × 480"));

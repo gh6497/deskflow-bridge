@@ -448,7 +448,12 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   和 Windows provider 结束。共享服务失败终止其所有会话；绝不接管外部 Deskflow。
   单设备 `Session` 仍支持独立管理 server，以复用相同生命周期测试。
   GUI 左侧设备列表，右侧设备配置和共享服务页签。所有屏幕位置由 Deskflow 管理，输入参数按设备隔离，日志可筛选。
-  活动会话期间禁止新增/移除设备或修改共享服务设置，但允许编辑其他空闲设备的尺寸和连接身份。
+  活动会话期间可新增设备、移除空闲且未保留 Windows BLE provider 的设备，或编辑其他空闲设备的尺寸和连接身份。
+  列表至少保留一台设备。修改共享服务设置前须结束所有活动会话。
+  连接方式在添加或发现时确定。AOA 与 UHID 可作为两条配置复用屏幕名，同名屏幕的连接和插线自动连接互斥。
+  UHID 独立保存 USB ADB 序列号、无线目标与手动接入选择。USB 自动连接固定使用保存的 USB 目标，保留手动选择。
+  AOA/UHID 的「添加设备」窗口负责刷新、选择目标和首次连接。等待或失败时保留窗口供重试，取消只停止该窗口发起的会话。
+  首次 Deskflow Connected 后才加入设备列表和保存。蓝牙仍由共享服务发现，首次接入 Deskflow 后保存配置。
   多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）。
   Linux 多机 BLE 使用 `--ble-service --ble-multi TOKEN --ble-isolate` 与 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
   GUI 多设备选项默认关闭。启用后有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。

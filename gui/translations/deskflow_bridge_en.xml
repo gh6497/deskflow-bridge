@@ -69,8 +69,12 @@
   <message id="otg.transport.uhid"><source>ADB + UHID (USB / wireless)</source><translation>ADB + UHID (USB / wireless)</translation></message>
   <message id="otg.transport.uhid_windows"><source>ADB + UHID (recommended on Windows)</source><translation>ADB + UHID (recommended on Windows)</translation></message>
   <message id="otg.uhid.adb_required"><source>ADB enabled (required for UHID)</source><translation>ADB enabled (required for UHID)</translation></message>
-  <message id="otg.uhid.target_label"><source>ADB target (required)</source><translation>ADB target (required)</translation></message>
-  <message id="otg.uhid.target_hint"><source>Authorized USB ADB serial or wireless host:port; no USB serial fallback</source><translation>Authorized USB ADB serial or wireless host:port; no USB serial fallback</translation></message>
+  <message id="otg.uhid.access_label"><source>ADB connection</source><translation>ADB connection</translation></message>
+  <message id="otg.uhid.usb_access"><source>USB ADB</source><translation>USB ADB</translation></message>
+  <message id="otg.uhid.wireless_access"><source>Wireless ADB</source><translation>Wireless ADB</translation></message>
+  <message id="otg.uhid.usb_serial"><source>USB ADB serial</source><translation>USB ADB serial</translation></message>
+  <message id="otg.uhid.wireless_target"><source>Wireless ADB address</source><translation>Wireless ADB address</translation></message>
+  <message id="otg.uhid.wireless_hint"><source>Connection address, e.g. 192.0.2.10:39833</source><translation>Connection address, e.g. 192.0.2.10:39833</translation></message>
   <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>Enter ADB target manually</translation></message>
   <message id="otg.uhid.device_ready"><source>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</translation></message>
   <message id="otg.uhid.setup_hint"><source>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</source><translation>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</translation></message>
@@ -141,7 +145,6 @@
   <message id="otg.uhid.auto_scan_failed"><source>Wired UHID auto-connect could not read the ADB device list. Check the ADB executable; scanning will continue.</source><translation>Wired UHID auto-connect could not read the ADB device list. Check the ADB executable; scanning will continue.</translation></message>
   <message id="otg.auto_connect.connecting"><source>USB phone %1 detected; connecting with remembered settings.</source><translation>USB phone %1 detected; connecting with remembered settings.</translation></message>
   <message id="otg.auto_connect.scan_failed"><source>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</source><translation>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</translation></message>
-  <message id="otg.auto_connect.restored"><source>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</source><translation>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</translation></message>
   <message id="otg.action.about"><source>About</source><translation>About</translation></message>
   <message id="otg.about.title"><source>About Deskflow Bridge</source><translation>About Deskflow Bridge</translation></message>
   <message id="otg.about.text"><source>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</translation></message>
@@ -284,6 +287,7 @@
   <message id="otg.unlock.tooltip"><source>Checks the lock state through authorized ADB. If locked, wakes the phone and opens the PIN prompt with an upward swipe or Space, then sends the PIN and Enter. Swiping requires absolute mouse mode; if Space does not work on your phone, switch back to swiping. Mouse input is temporarily blocked. The PIN is saved per device in local settings and is not logged.</source><translation>Checks the lock state through authorized ADB. If locked, wakes the phone and opens the PIN prompt with an upward swipe or Space, then sends the PIN and Enter. Swiping requires absolute mouse mode; if Space does not work on your phone, switch back to swiping. Mouse input is temporarily blocked. The PIN is saved per device in local settings and is not logged.</translation></message>
   <message id="otg.status.not_connected"><source>Not connected</source><translation>Not connected</translation></message>
   <message id="otg.action.connect"><source>Connect</source><translation>Connect</translation></message>
+  <message id="otg.action.cancel"><source>Cancel</source><translation>Cancel</translation></message>
   <message id="otg.action.disconnect"><source>Disconnect</source><translation>Disconnect</translation></message>
   <message id="otg.log.placeholder"><source>Runtime logs will appear here</source><translation>Runtime logs will appear here</translation></message>
   <message id="otg.log.title"><source>Runtime logs</source><translation>Runtime logs</translation></message>
@@ -291,13 +295,12 @@
   <message id="otg.size.absolute_note"><source> (bridge size = original size ÷ resolution multiplier; movement × movement multiplier)</source><translation> (bridge size = original size ÷ resolution multiplier; movement × movement multiplier)</translation></message>
   <message id="otg.size.relative_note"><source> (relative mode uses the original size; multipliers are inactive)</source><translation> (relative mode uses the original size; multipliers are inactive)</translation></message>
   <message id="otg.device.adb_not_found"><source>ADB not found. Select an ADB executable, or enter the USB serial number and dimensions manually.</source><translation>ADB not found. Select an ADB executable, or enter the USB serial number and dimensions manually.</translation></message>
-  <message id="otg.device.adb_failed"><source>ADB detection failed. Retry or enter device information manually.</source><translation>ADB detection failed. Retry or enter device information manually.</translation></message>
-  <message id="otg.device.manual_hint"><source>Manual mode: enter your phone's USB serial number and dimensions in its current orientation. ADB is not required for control.</source><translation>Manual mode: enter your phone's USB serial number and dimensions in its current orientation. ADB is not required for control.</translation></message>
+  <message id="otg.device.refreshing"><source>Looking for connected USB devices…</source><translation>Looking for connected USB devices…</translation></message>
+  <message id="otg.device.scan_failed"><source>Could not refresh devices. Retry or enter the serial number manually.</source><translation>Could not refresh devices. Retry or enter the serial number manually.</translation></message>
+  <message id="otg.device.none_found"><source>No devices found. Check the cable and permissions, then refresh.</source><translation>No devices found. Check the cable and permissions, then refresh.</translation></message>
   <message id="otg.device.authorize_hint"><source>Unlock your phone and authorize USB debugging, then refresh.</source><translation>Unlock your phone and authorize USB debugging, then refresh.</translation></message>
   <message id="otg.device.offline_hint"><source>Device offline or access denied. Check the USB connection and ADB permissions, then refresh.</source><translation>Device offline or access denied. Check the USB connection and ADB permissions, then refresh.</translation></message>
   <message id="otg.device.reading"><source>Reading USB transport information and screen size…</source><translation>Reading USB transport information and screen size…</translation></message>
-  <message id="otg.device.usb_unconfirmed"><source>USB transport could not be confirmed. Connect over USB, or verify the USB serial number manually.</source><translation>USB transport could not be confirmed. Connect over USB, or verify the USB serial number manually.</translation></message>
-  <message id="otg.log.usb_path_unavailable"><source>The ADB backend did not provide a device path; the device will be matched by its exact USB serial number on connection.</source><translation>The ADB backend did not provide a device path; the device will be matched by its exact USB serial number on connection.</translation></message>
   <message id="otg.device.size_failed"><source>Could not read screen size. Enter width and height manually.</source><translation>Could not read screen size. Enter width and height manually.</translation></message>
   <message id="otg.device.orientation_unknown"><source>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</source><translation>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</translation></message>
   <message id="otg.device.ready"><source>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</translation></message>
@@ -386,6 +389,11 @@
   <message id="otg.multi.device_tab"><source>Device settings</source><translation>Device settings</translation></message>
   <message id="otg.multi.server_tab"><source>Shared server</source><translation>Shared server</translation></message>
   <message id="otg.multi.add_device"><source>Add device</source><translation>Add device</translation></message>
+  <message id="otg.multi.add_first"><source>No devices configured yet.</source><translation>No devices configured yet.</translation></message>
+  <message id="otg.multi.add_hint"><source>The device is added after Deskflow connects. To reuse a layout, select its existing screen name.</source><translation>The device is added after Deskflow connects. To reuse a layout, select its existing screen name.</translation></message>
+  <message id="otg.multi.auto_connect_conflict"><source>Another profile already has USB auto-connect enabled for screen %1.</source><translation>Another profile already has USB auto-connect enabled for screen %1.</translation></message>
+  <message id="otg.multi.choose_connection"><source>Choose a profile and connect manually for: %1</source><translation>Choose a profile and connect manually for: %1</translation></message>
+  <message id="otg.multi.transport_unavailable"><source>This connection type is unavailable in this build.</source><translation>This connection type is unavailable in this build.</translation></message>
   <message id="otg.multi.connect_all"><source>Connect all</source><translation>Connect all</translation></message>
   <message id="otg.multi.disconnect_all"><source>Disconnect all</source><translation>Disconnect all</translation></message>
   <message id="otg.multi.alias"><source>Display name</source><translation>Display name</translation></message>

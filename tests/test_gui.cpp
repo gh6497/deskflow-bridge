@@ -645,15 +645,20 @@ private slots:
         changedConfig.deskflowConfig += ".other";
         QVERIFY(!manager.start("b", changedConfig));
         QVERIFY(manager.start("b", b)); // Both wait on the same server startup.
+        QCOMPARE(manager.state("b"), Session::State::Starting);
+        QVERIFY(!manager.removeDevice("b"));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+        QVERIFY(!manager.removeDevice("b"));
         QFile starts(path);
         QVERIFY(starts.open(QIODevice::ReadOnly));
         QCOMPARE(starts.readAll(), QByteArray("server\n"));
         manager.stop("a");
         QTRY_COMPARE(manager.state("a"), Session::State::Idle);
+        QVERIFY(manager.removeDevice("a"));
         QCOMPARE(manager.state("b"), Session::State::Connected);
         QCOMPARE(manager.serverState(), DeskflowServer::State::Running);
+        manager.addDevice("a");
         QVERIFY(manager.start("a", a));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         starts.seek(0);

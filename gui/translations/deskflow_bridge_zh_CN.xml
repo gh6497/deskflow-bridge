@@ -69,8 +69,12 @@
   <message id="otg.transport.uhid"><source>ADB + UHID (USB / wireless)</source><translation>ADB＋UHID（USB／无线）</translation></message>
   <message id="otg.transport.uhid_windows"><source>ADB + UHID (recommended on Windows)</source><translation>ADB＋UHID（Windows 推荐）</translation></message>
   <message id="otg.uhid.adb_required"><source>ADB enabled (required for UHID)</source><translation>已启用 ADB（UHID 必需）</translation></message>
-  <message id="otg.uhid.target_label"><source>ADB target (required)</source><translation>ADB 目标（必填）</translation></message>
-  <message id="otg.uhid.target_hint"><source>Authorized USB ADB serial or wireless host:port; no USB serial fallback</source><translation>已授权的 USB ADB 序列号或无线 host:port；不回退使用 USB 序列号</translation></message>
+  <message id="otg.uhid.access_label"><source>ADB connection</source><translation>ADB 接入</translation></message>
+  <message id="otg.uhid.usb_access"><source>USB ADB</source><translation>USB ADB</translation></message>
+  <message id="otg.uhid.wireless_access"><source>Wireless ADB</source><translation>无线 ADB</translation></message>
+  <message id="otg.uhid.usb_serial"><source>USB ADB serial</source><translation>USB ADB 序列号</translation></message>
+  <message id="otg.uhid.wireless_target"><source>Wireless ADB address</source><translation>无线 ADB 地址</translation></message>
+  <message id="otg.uhid.wireless_hint"><source>Connection address, e.g. 192.0.2.10:39833</source><translation>连接地址，例如 192.0.2.10:39833</translation></message>
   <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>手动填写 ADB 目标</translation></message>
   <message id="otg.uhid.device_ready"><source>ADB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>已识别 ADB 设备及当前方向的屏幕尺寸，可调整尺寸或连接。</translation></message>
   <message id="otg.uhid.setup_hint"><source>Enable USB debugging and authorize this computer, then refresh and select the phone or enter its ADB target. UHID keeps the absolute pointer and uses normal ADB drivers. Android must support /dev/uhid. No video or companion app is required.</source><translation>开启 USB 调试并授权本电脑，刷新选择手机或填写 ADB 目标。UHID 保留绝对坐标指针，使用正常 ADB 驱动；手机系统须支持 /dev/uhid。无需投屏或伴侣应用。</translation></message>
@@ -141,7 +145,6 @@
   <message id="otg.uhid.auto_scan_failed"><source>Wired UHID auto-connect could not read the ADB device list. Check the ADB executable; scanning will continue.</source><translation>有线 UHID 自动连接无法读取 ADB 设备列表。请检查 ADB 程序路径，稍后会继续检测。</translation></message>
   <message id="otg.auto_connect.connecting"><source>USB phone %1 detected; connecting with remembered settings.</source><translation>检测到 USB 手机 %1，正在使用已记住的配置连接。</translation></message>
   <message id="otg.auto_connect.scan_failed"><source>USB auto-connect scan failed. Check bridge installation, USB permissions and drivers; scanning will continue.</source><translation>USB 自动连接扫描失败，请检查桥接程序、USB 权限和驱动；程序将继续检测。</translation></message>
-  <message id="otg.auto_connect.restored"><source>Using remembered phone settings without ADB. Adjust dimensions manually if the screen orientation has changed.</source><translation>已恢复手机配置，无需 ADB。若屏幕方向已改变，请手动调整宽高。</translation></message>
   <message id="otg.action.about"><source>About</source><translation>关于</translation></message>
   <message id="otg.about.title"><source>About Deskflow Bridge</source><translation>关于 Deskflow Bridge</translation></message>
   <message id="otg.about.text"><source>Deskflow Bridge&#10;Version: %1&#10;Git commit: %2&#10;&#10;Share your keyboard and mouse over USB.&#10;CLI and GUI use the same software version.&#10;License: Apache-2.0</source><translation>Deskflow Bridge&#10;版本：%1&#10;Git 提交：%2&#10;&#10;通过 USB 共享键盘鼠标。&#10;命令行与 GUI 使用相同的软件版本。&#10;许可证：Apache-2.0</translation></message>
@@ -284,6 +287,7 @@
   <message id="otg.unlock.tooltip"><source>Checks the lock state through authorized ADB. If locked, wakes the phone and opens the PIN prompt with an upward swipe or Space, then sends the PIN and Enter. Swiping requires absolute mouse mode; if Space does not work on your phone, switch back to swiping. Mouse input is temporarily blocked. The PIN is saved per device in local settings and is not logged.</source><translation>通过已授权的 ADB 检查锁屏状态。确认锁定后唤醒手机，使用上滑或空格键打开 PIN 输入界面，再发送 PIN 和回车。上滑需要绝对坐标模式；如果手机不响应空格键，请切回上滑。流程期间暂时屏蔽鼠标输入。PIN 按设备保存到本地设置，不写入日志。</translation></message>
   <message id="otg.status.not_connected"><source>Not connected</source><translation>未连接</translation></message>
   <message id="otg.action.connect"><source>Connect</source><translation>连接</translation></message>
+  <message id="otg.action.cancel"><source>Cancel</source><translation>取消</translation></message>
   <message id="otg.action.disconnect"><source>Disconnect</source><translation>断开</translation></message>
   <message id="otg.log.placeholder"><source>Runtime logs will appear here</source><translation>运行日志将显示在这里</translation></message>
   <message id="otg.log.title"><source>Runtime logs</source><translation>运行日志</translation></message>
@@ -291,13 +295,12 @@
   <message id="otg.size.absolute_note"><source> (bridge size = original size ÷ resolution multiplier; movement × movement multiplier)</source><translation>（桥接尺寸 = 原始尺寸 ÷ 分辨率倍率；移动距离 × 移动倍率）</translation></message>
   <message id="otg.size.relative_note"><source> (relative mode uses the original size; multipliers are inactive)</source><translation>（相对模式使用原始尺寸；两个倍率均不生效）</translation></message>
   <message id="otg.device.adb_not_found"><source>ADB not found. Select an ADB executable, or enter the USB serial number and dimensions manually.</source><translation>未找到 ADB，请选择 ADB 程序，或手动填写 USB 序列号和宽高。</translation></message>
-  <message id="otg.device.adb_failed"><source>ADB detection failed. Retry or enter device information manually.</source><translation>ADB 识别失败，可重试或手动填写设备信息。</translation></message>
-  <message id="otg.device.manual_hint"><source>Manual mode: enter your phone's USB serial number and dimensions in its current orientation. ADB is not required for control.</source><translation>手动模式：填写手机的 USB 序列号和当前方向尺寸；ADB 不是控制必需项。</translation></message>
+  <message id="otg.device.refreshing"><source>Looking for connected USB devices…</source><translation>正在查找已插入的 USB 设备…</translation></message>
+  <message id="otg.device.scan_failed"><source>Could not refresh devices. Retry or enter the serial number manually.</source><translation>无法刷新设备。请重试或手动填写序列号。</translation></message>
+  <message id="otg.device.none_found"><source>No devices found. Check the cable and permissions, then refresh.</source><translation>未找到设备。请检查数据线和权限，然后刷新。</translation></message>
   <message id="otg.device.authorize_hint"><source>Unlock your phone and authorize USB debugging, then refresh.</source><translation>请解锁手机并允许 USB 调试，然后刷新。</translation></message>
   <message id="otg.device.offline_hint"><source>Device offline or access denied. Check the USB connection and ADB permissions, then refresh.</source><translation>设备离线或权限不足，请检查 USB 连接和 ADB 权限，然后刷新。</translation></message>
   <message id="otg.device.reading"><source>Reading USB transport information and screen size…</source><translation>正在读取 USB 传输信息及屏幕尺寸…</translation></message>
-  <message id="otg.device.usb_unconfirmed"><source>USB transport could not be confirmed. Connect over USB, or verify the USB serial number manually.</source><translation>未确认 USB 传输，请使用 USB 连接；也可手动核对 USB 序列号。</translation></message>
-  <message id="otg.log.usb_path_unavailable"><source>The ADB backend did not provide a device path; the device will be matched by its exact USB serial number on connection.</source><translation>ADB 后端未提供设备路径；连接时将按 USB 序列号精确匹配设备。</translation></message>
   <message id="otg.device.size_failed"><source>Could not read screen size. Enter width and height manually.</source><translation>无法读取尺寸，请手动填写宽高。</translation></message>
   <message id="otg.device.orientation_unknown"><source>Screen size detected, but orientation is unknown. Swap dimensions to match the current orientation.</source><translation>已识别尺寸；未识别屏幕方向，请按当前横竖屏交换宽高。</translation></message>
   <message id="otg.device.ready"><source>USB device and oriented screen size detected. Adjust dimensions if needed, or connect.</source><translation>已识别 USB 设备与当前方向尺寸，可手动调整宽高或连接。</translation></message>
@@ -386,6 +389,11 @@
   <message id="otg.multi.device_tab"><source>Device settings</source><translation>设备配置</translation></message>
   <message id="otg.multi.server_tab"><source>Shared server</source><translation>共享服务</translation></message>
   <message id="otg.multi.add_device"><source>Add device</source><translation>添加设备</translation></message>
+  <message id="otg.multi.add_first"><source>No devices configured yet.</source><translation>尚未配置设备。</translation></message>
+  <message id="otg.multi.add_hint"><source>The device is added after Deskflow connects. To reuse a layout, select its existing screen name.</source><translation>接入 Deskflow 后才会添加设备。要复用布局，请选择已有屏幕名称。</translation></message>
+  <message id="otg.multi.auto_connect_conflict"><source>Another profile already has USB auto-connect enabled for screen %1.</source><translation>屏幕 %1 的另一条配置已开启插线自动连接。</translation></message>
+  <message id="otg.multi.choose_connection"><source>Choose a profile and connect manually for: %1</source><translation>请为以下屏幕选择一条配置并手动连接：%1</translation></message>
+  <message id="otg.multi.transport_unavailable"><source>This connection type is unavailable in this build.</source><translation>当前构建不支持此连接方式。</translation></message>
   <message id="otg.multi.connect_all"><source>Connect all</source><translation>全部连接</translation></message>
   <message id="otg.multi.disconnect_all"><source>Disconnect all</source><translation>全部断开</translation></message>
   <message id="otg.multi.alias"><source>Display name</source><translation>显示名称</translation></message>

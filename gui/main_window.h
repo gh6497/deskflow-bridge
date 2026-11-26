@@ -10,6 +10,7 @@
 #include "phone_screenshot.h"
 #include <QMainWindow>
 #include <QPointer>
+#include <QSet>
 #include <QVariantMap>
 
 class QCheckBox;
@@ -60,8 +61,6 @@ private:
     void updateScreenshotActions();
     void transferClipboard(PhoneClipboard::Direction direction);
     void updateClipboardAction();
-    void refreshDevices();
-    void readDevice();
     void readDisplayFromAdb();
     void connectDevice();
     void startBleService();
@@ -89,6 +88,8 @@ private:
     void storeDevice();
     void updateDeviceList();
     void connectAll();
+    bool screenInUse(const QString &screen) const;
+    bool otherScreenAutoConnect(const QString &screen) const;
     ConnectionOptions connectionOptions(const QVariantMap &profile);
     void persistDevices();
     void updateAutoConnect();
@@ -97,6 +98,7 @@ private:
     void setupWirelessAdb();
     void updateCompanionStatus();
     QString adbTargetForCurrentDevice() const;
+    QString adbActionTarget(const QString &id, const QVariantMap &profile) const;
     void appendLog(const QString &text, const QString &id = {});
     void refreshLog();
     QWidget *pathField(QLineEdit *&field, const char *placeholderId,
@@ -110,8 +112,9 @@ private:
     QComboBox *m_language;
     ConnectionManager m_connections;
     Session *m_session = nullptr;
-    QString m_selectedId = "initial";
+    QString m_selectedId;
     QMap<QString, QVariantMap> m_records;
+    QSet<QString> m_unsavedDevices;
     QMap<QString, QVariantMap> m_pendingProfiles;
     QMap<QString, QString> m_pendingBleIdentities;
     QString m_discoveryId;
@@ -145,7 +148,7 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QAction *m_trayDisconnect = nullptr;
     QWidget *m_form;
-    QComboBox *m_devices, *m_mouseMode, *m_middleButtonAction, *m_rightButtonAction,
+    QComboBox *m_mouseMode, *m_middleButtonAction, *m_rightButtonAction,
               *m_sideButton1Action, *m_sideButton2Action;
     QCheckBox *m_unlockEnabled, *m_unlockWithSpace, *m_absolutePerAxis;
     QLineEdit *m_unlockPin;
@@ -153,7 +156,10 @@ private:
     QLabel *m_adbStatus;
     QPushButton *m_adbTest, *m_adbReadDisplay, *m_adbWirelessSetup;
     QWidget *m_adbBox;
-    QComboBox *m_transport;
+    QString m_transport;
+    QLabel *m_transportLabel;
+    QComboBox *m_uhidAccess;
+    QLineEdit *m_uhidUsbSerial, *m_uhidWirelessTarget;
     QCheckBox *m_bleAutoAttach = nullptr;
     QLineEdit *m_adapter = nullptr;
     QCheckBox *m_bleIsolate = nullptr, *m_bleLegacyHandles = nullptr;
@@ -182,14 +188,13 @@ private:
     QDoubleSpinBox *m_sensitivity, *m_motionMultiplier;
     QCheckBox *m_manage;
     QCheckBox *m_autoConnectEnabled, *m_uhidAutoConnectEnabled;
-    QPushButton *m_refresh, *m_connect, *m_disconnect;
+    QPushButton *m_connect, *m_disconnect;
     QLabel *m_status, *m_deviceStatus, *m_connectionStatus;
     QLabel *m_virtualSize;
     QPlainTextEdit *m_log;
     QComboBox *m_logFilter;
     QList<QPair<QString, QString>> m_logHistory;
     QFormLayout *m_deviceForm, *m_displayForm, *m_adbForm, *m_featuresForm, *m_programForm;
-    QList<AndroidDevice> m_deviceList;
     bool m_scanning = false;
     bool m_uiReady = false;
     bool m_monitorsReady = false;
