@@ -87,7 +87,6 @@ struct otg_ble_hid {
     char *adapter;
     char *adapter_path;
     char *original_alias;
-    bool alias_changed;
     guint registrations[BLE_OBJECT_COUNT];
     bool app_registered, adv_registered;
     struct pending_call adv_call;
@@ -472,26 +471,9 @@ static void update_channel_state(struct otg_ble_hid *b)
             ready ? "ready" : "disconnected");
 }
 
-static bool set_adapter_alias(struct otg_ble_hid *b, const char *alias)
+static bool load_adapter_alias(struct otg_ble_hid *b)
 {
-    GError *error = NULL;
-    GVariant *reply = g_dbus_connection_call_sync(
-        b->bus, BLUEZ, b->adapter_path, "org.freedesktop.DBus.Properties",
-        "Set", g_variant_new("(ssv)", "org.bluez.Adapter1", "Alias",
-                              g_variant_new_string(alias)), NULL,
-        G_DBUS_CALL_FLAGS_NONE, -1, NULL, &error);
-    if (!reply) {
-        fprintf(stderr, "ERROR: cannot set Bluetooth adapter name: %s\n",
-                error ? error->message : "unknown error");
-        g_clear_error(&error);
-        return false;
-    }
-    g_variant_unref(reply);
-    return true;
-}
-
-static bool configure_adapter_alias(struct otg_ble_hid *b)
-{
+    if (b->original_alias) return true;
     GError *error = NULL;
     GVariant *reply = g_dbus_connection_call_sync(
         b->bus, BLUEZ, b->adapter_path, "org.freedesktop.DBus.Properties",
@@ -516,31 +498,9 @@ static bool configure_adapter_alias(struct otg_ble_hid *b)
         fprintf(stderr, "ERROR: Bluetooth adapter returned no name\n");
         return false;
     }
-    if (strcmp(b->original_alias, "Deskflow Bridge") == 0) {
-        return true;
-    }
-    if (!set_adapter_alias(b, "Deskflow Bridge")) {
-        g_clear_pointer(&b->original_alias, g_free);
-        return false;
-    }
-    b->alias_changed = true;
-    fprintf(stderr, "INFO: Bluetooth adapter name changed from \"%s\" to \"Deskflow Bridge\"\n",
+    fprintf(stderr, "INFO: keeping Bluetooth adapter name \"%s\"\n",
             b->original_alias);
     return true;
-}
-
-static bool restore_adapter_alias(struct otg_ble_hid *b)
-{
-    if (!b->alias_changed || !b->original_alias || !b->bus) {
-        return true;
-    }
-    if (set_adapter_alias(b, b->original_alias)) {
-        fprintf(stderr, "INFO: Bluetooth adapter name restored to \"%s\"\n",
-                b->original_alias);
-        b->alias_changed = false;
-        return true;
-    }
-    return false;
 }
 
 static GVariant *props(const struct ble_object *o, const char *interface)
@@ -564,7 +524,7 @@ static GVariant *props(const struct ble_object *o, const char *interface)
         g_variant_builder_add(&d,"{sv}","Service",g_variant_new_object_path(ROOT "/hid"));
         g_variant_builder_add(&d,"{sv}","Flags",o->kind==BLE_LEDS ? strv((const char*[]){"read","encrypt-read","write","write-without-response","encrypt-write",NULL}) : strv((const char*[]){"write-without-response","encrypt-write",NULL}));
     }
-    else if (o->kind==BLE_ADV) { g_variant_builder_add(&d,"{sv}","Type",g_variant_new_string("peripheral")); g_variant_builder_add(&d,"{sv}","ServiceUUIDs",strv((const char*[]){HID_UUID,NULL})); g_variant_builder_add(&d,"{sv}","LocalName",g_variant_new_string("Deskflow Bridge")); g_variant_builder_add(&d,"{sv}","Appearance",g_variant_new_uint16(0x03c0)); }
+    else if (o->kind==BLE_ADV) { g_variant_builder_add(&d,"{sv}","Type",g_variant_new_string("peripheral")); g_variant_builder_add(&d,"{sv}","ServiceUUIDs",strv((const char*[]){HID_UUID,NULL})); g_variant_builder_add(&d,"{sv}","LocalName",g_variant_new_string(b->original_alias ? b->original_alias : "")); g_variant_builder_add(&d,"{sv}","Appearance",g_variant_new_uint16(0x03c0)); }
     if (object_handle(o)) g_variant_builder_add(&d,"{sv}","Handle",g_variant_new_uint16(object_handle(o)));
     (void)interface; return g_variant_builder_end(&d);
 }
@@ -813,8 +773,8 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b, bool enabled)
     if(!b->resident)return false;
     if(enabled) {
         if(b->session_enabled)return true;
-        if(!b->app_registered || !configure_adapter_alias(b))return false;
-        if(!start_advertisement(b)){restore_adapter_alias(b);return false;}
+        if(!b->app_registered || !load_adapter_alias(b))return false;
+        if(!start_advertisement(b))return false;
         reset_reports(b);b->pointer_interval_ns=0;b->suspended=false;
         b->session_enabled=true;
         if (!b->directed_owner) update_channel_state(b);
@@ -831,8 +791,6 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b, bool enabled)
     if (!b->directed_owner) update_channel_state(b);
     drain_directed_advertisement(b);
     bool ok=stop_advertisement(b);
-    if(!restore_adapter_alias(b))ok=false;
-    if(!b->alias_changed)g_clear_pointer(&b->original_alias,g_free);
     fprintf(stderr,"%s: BLE session %s; inputs released, GATT registration retained\n",
             ok?"INFO":"ERROR",ok?"idle":"cleanup incomplete");
     return ok;
@@ -990,7 +948,7 @@ static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident,bo
     b->devices=g_dbus_object_manager_client_new_sync(b->bus,
         G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_DO_NOT_AUTO_START,BLUEZ,"/",NULL,NULL,NULL,NULL,&error);
     if(!b->devices){fprintf(stderr,"ERROR: BlueZ device monitor: %s\n",error->message);g_clear_error(&error);return false;}
-    if(!resident && !configure_adapter_alias(b))return false;
+    if(!load_adapter_alias(b))return false;
     node_info=g_dbus_node_info_new_for_xml(xml,&error);
     if(!node_info){g_clear_error(&error);return false;}
     return register_objects(b);
@@ -1081,7 +1039,6 @@ void otg_ble_hid_destroy(struct otg_ble_hid *b)
     close_ble(b);
     for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++) directed_free(b->routes[i]);
     g_free(b->directed_owner);
-    restore_adapter_alias(b);
     if (b->latency_fd>=0) close(b->latency_fd);
     if (b->hci_fd>=0) close(b->hci_fd);
     for (unsigned i=0;i<2;i++) {
