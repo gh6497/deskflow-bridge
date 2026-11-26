@@ -226,9 +226,15 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   在途IPC旧报告丢弃并回not-ready，不能按协议错误关闭。真实通知超时仍须失败隔离。
   WinRT 等待按会话 epoch 取消并记录操作名；断线取消不算致命超时。Cancel 不等于完成，
   旧通知真正完成/取消前不得恢复 ready 或发送新通知；5 秒仍未结束则失败退出。
-  当前 Windows 排障版状态屏障通知30ms、纯指针移动15ms（均非实测interval），降低切屏
-  状态突发并改善连续指针轨迹；
+  Windows 无法读取链路参数时采用状态屏障30ms、纯指针移动15ms的回退间隔；
+  Windows 11 可读取时两者跟随实测协商间隔，纯移动按提交时间计时，状态屏障按完成时间计时。
   致命通知超时先关闭ready再释放/注销，日志含发送计数/队列/在线及session状态。
+  Windows 11 在在线配对与两路订阅核验后按手机持有 `ThroughputOptimized` 参数请求，
+  单机/多机共用，每条物理连接只尝试一次；Deskflow暂停与元数据核验不重建请求，
+  断线/设备替换/服务销毁关闭，快速重连由独立link_generation识别。失败保留键鼠连接，
+  不把请求Success当成15ms：始终按读回值/参数事件更新pacing，日志含手机地址。
+  `ble_win_preference` 离线覆盖持有/重连/独立清理/拒绝与异常；R17独立探针已验证45→15ms，
+  关闭请求后恢复45ms，不外推正式后端完整输入或重连验收。
   nova 9 的独立原型键盘/悬停/点击/拖拽/滚轮已过，不能等同连续 Deskflow 输入、
   重连/休眠/进程重启已验收。Redmi Android14 ROM 的 LHDC 白名单超91字节导致
   配对时蓝牙崩溃，未修改手机配置。用法与限制见 `docs/WINDOWS_BLE.md`。
