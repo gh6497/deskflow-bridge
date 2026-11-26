@@ -18,6 +18,8 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Refreshed both `server` screenshots from the worktree based on `9354222` using `guideSharedServiceScreenshot` to show **Service status**. The mock Bluetooth service is running and idle.
 - The same capture hook now shows **Allow multiple Bluetooth phones** in both `server` views. The option is unchecked by default.
 - Both `server` views were recaptured with `guideSharedServiceScreenshot` for the **Stop Bluetooth service** label.
+- Both languages of `aoa`, `device`, `input` and `multiple-devices` were recaptured from the worktree based on `8978eab`. The connection type is read-only and the UHID page has separate USB and wireless ADB targets. The capture used `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
+- `add-device` shows USB ADB discovery and the first connection in the same window. The matching main-window screenshots were refreshed after moving discovery into the dialog. Both languages were captured with `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
 - Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1220. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions and button settings.
@@ -53,3 +55,5 @@ update both guides when controls move or change.
 基于 `9354222` 的工作区使用 `guideSharedServiceScreenshot` 更新中英文共享服务页截图，展示运行中且空闲的模拟蓝牙服务。
 使用相同方式重新采集两张共享服务页截图，展示默认关闭的「允许多台蓝牙手机」。
 使用 `guideSharedServiceScreenshot` 更新两张共享服务页截图，展示「停止蓝牙服务」按钮。
+基于 `8978eab` 的工作区，用离屏测试 `guideSharedServiceScreenshot` 和 `guidePointerScreenshot` 更新中英文 AOA、设备、输入和多设备截图。连接方式为只读，UHID 页面分别显示有线和无线 ADB 目标。
+用相同的离屏测试采集中英文 `add-device`，展示在添加窗口内刷新 USB ADB 设备并完成首次连接。同步更新了对应的主窗口截图。

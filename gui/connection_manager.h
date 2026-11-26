@@ -10,9 +10,11 @@ public:
     explicit ConnectionManager(QObject *parent = nullptr);
     ~ConnectionManager() override;
     Session *addDevice(const QString &id);
+    bool canRemoveDevice(const QString &id) const;
     bool removeDevice(const QString &id);
     Session *session(const QString &id) const;
     Session::State state(const QString &id) const;
+    QString activeUhidTarget(const QString &id) const;
     QString status(const QString &id) const;
     bool hasFailure(const QString &id) const;
     bool busy() const;

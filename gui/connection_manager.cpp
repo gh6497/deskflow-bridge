@@ -80,9 +80,15 @@ ConnectionManager::~ConnectionManager()
 
 Session *ConnectionManager::session(const QString &id) const { return m_devices.value(id).session; }
 
+bool ConnectionManager::canRemoveDevice(const QString &id) const
+{
+    const auto *child = session(id);
+    return child && state(id) == Session::State::Idle && !child->hasBleProvider();
+}
+
 bool ConnectionManager::removeDevice(const QString &id)
 {
-    if (!m_devices.contains(id) || busy() || m_server.state() != DeskflowServer::State::Idle || session(id)->hasBleProvider()) return false;
+    if (!canRemoveDevice(id)) return false;
     auto *child = m_devices.take(id).session;
     child->disconnect(this);
     delete child;
@@ -99,6 +105,13 @@ Session::State ConnectionManager::state(const QString &id) const
 {
     const auto entry = m_devices.value(id);
     return entry.pending ? Session::State::Starting : entry.session ? entry.session->state() : Session::State::Idle;
+}
+
+QString ConnectionManager::activeUhidTarget(const QString &id) const
+{
+    const auto it = m_devices.constFind(id);
+    return it != m_devices.cend() && state(id) != Session::State::Idle && it->options.transport == "uhid" ?
+        it->options.adbSerial : QString();
 }
 
 QString ConnectionManager::status(const QString &id) const
