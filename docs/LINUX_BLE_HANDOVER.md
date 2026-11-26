@@ -133,7 +133,7 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
   不得为了降低延迟退回普通相对鼠标并声称无漂移[public.sql](../../../../../Desktop/sql/public.sql)。
 - 旧实现只在约 500ms 空闲时发送最后一个待合并坐标，现使用 5ms BLE 事件泵，持续事件时
   也处理回调。只合并坐标；按键状态、滚轮、范围变化不丢弃。
-- 默认移动约 30Hz；收到实测间隔后使用 `max(连接间隔, 16.67ms)` 的发送周期。
+- 共享服务每条手机路由默认使用 15ms；收到按连接句柄标记的实测间隔后，该路由直接跟随对应间隔发送。
 
 ### 原生监督与恢复
 
@@ -146,8 +146,8 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 - 正常退出/可捕获信号触发恢复。普通桥接子进程 SIGKILL 后，存活的常驻服务/父进程可清理；
   root supervisor 自身 SIGKILL、断电不能自动清理；`/run` 不跨重启持久化。
 - `--ble-restore` 仅识别原生 `.state`，不读取旧 Python 实验脚本的 JSON 文件。
-- `platform/linux/ble_link.c` 对共享服务中的唯一、已加密、本机为 peripheral 的已观测 LE 链路请求 7.5～15ms。
-  通过专用 Unix datagram FD 传递 `ready:hciN` 和实测间隔，不接受子进程指定 HCI 命令/句柄。
+- `platform/linux/ble_link.c` 对共享服务中每条已加密、本机为 peripheral 的已观测 LE 链路请求 7.5～15ms。
+  通过专用 Unix datagram FD 传递带连接句柄的实测间隔，不接受子进程指定 HCI 命令/句柄。
 - Command Status 成功只表示请求被接受；必须看到 LE Connection Update Complete 才能确认
   新参数。拒绝或 5 秒未确认时保留链路，不无限重试。
 

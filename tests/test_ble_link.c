@@ -50,12 +50,12 @@ static int fake_close(int fd){CHECK(fd==42);closed++;return 0;}
 
 static void test_monitor_open(void)
 {
-    struct otg_ble_link *b=otg_ble_link_open(7,99);
+    struct otg_ble_link *b=otg_ble_link_open(7,99,false);
     CHECK(b && b->index==7 && b->channel==99 && filter_calls==1);
     otg_ble_link_close(b);CHECK(closed==1);
     for(fail_stage=1;fail_stage<=3;fail_stage++) {
         int before=closed;
-        CHECK(!otg_ble_link_open(7,99));
+        CHECK(!otg_ble_link_open(7,99,false));
         CHECK(closed==before+(fail_stage!=1));
     }
     fail_stage=0;
@@ -99,6 +99,15 @@ int main(void)
     negotiate(b,200);CHECK(recv(hci[1],packet,sizeof(packet),0)<0);
     connect_event(b,2050);b->ready=true;negotiate(b,300);
     CHECK(recv(hci[1],packet,sizeof(packet),0)<0); /* Ambiguous peers untouched. */
+    while (recv(ipc[1],message,sizeof(message),MSG_DONTWAIT)>0) {}
+    struct otg_ble_link *multi=g_new0(struct otg_ble_link,1);
+    multi->hci=hci[0];multi->channel=ipc[0];multi->multi=true;
+    connect_event(multi,2051);connect_event(multi,2052);
+    negotiate(multi,400);
+    CHECK(recv(hci[1],packet,sizeof(packet),0)==18 && get16(packet+4)==2051);
+    memset(message,0,sizeof(message));CHECK(recv(ipc[1],message,sizeof(message),0)>0);
+    CHECK(!strcmp(message,"interval_us=45000;handle=2051\n"));
+    g_free(multi);
     close(hci[0]);close(hci[1]);close(ipc[0]);close(ipc[1]);g_free(b);
     puts("PASS: native HCI request, actual confirmation, rejection, reconnection and peer ambiguity");
     return 0;

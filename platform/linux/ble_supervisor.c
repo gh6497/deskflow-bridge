@@ -357,8 +357,8 @@ int otg_ble_supervise(int argc,char **argv,const char *adapter,
         g_subprocess_launcher_setenv(launcher,"OTG_BLE_SUPERVISOR_FD","4",TRUE);
         if (gui) g_subprocess_launcher_setenv(launcher,"OTG_BLE_GUI_STARTUP","1",TRUE);
     }
-    if(!shared_service && socketpair(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK,0,ipc)==0)
-        link=otg_ble_link_open(c.index,ipc[0]);
+    if(socketpair(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK,0,ipc)==0)
+        link=otg_ble_link_open(c.index,ipc[0],shared_service);
     if(link) {
         g_subprocess_launcher_take_fd(launcher,ipc[1],3);ipc[1]=-1;
         g_subprocess_launcher_setenv(launcher,"OTG_BLE_LATENCY_FD","3",TRUE);

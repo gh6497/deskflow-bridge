@@ -104,6 +104,7 @@ struct otg_ble_hid {
     int latency_fd;
     int hci_fd;
     uint16_t hci_index;
+    uint64_t link_interval_ns[4096];
     bool (*read_links)(struct otg_ble_hid *, struct link_snapshot *);
     uint64_t pointer_interval_ns;
     uint8_t *report_map;
@@ -178,6 +179,8 @@ static uint64_t pointer_interval(const struct otg_ble_hid *b)
     return b->pointer_interval_ns ? b->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
 }
 
+static bool directed_set_interval(struct otg_ble_hid *b, uint16_t handle, uint64_t us);
+
 static void latency_state(struct otg_ble_hid *b, bool ready)
 {
     if (!ready) {
@@ -215,10 +218,23 @@ static void latency_poll(struct otg_ble_hid *b)
         }
         char *end;
         uint64_t us = g_ascii_strtoull(message + strlen(prefix), &end, 10);
+        uint16_t handle = UINT16_MAX;
+        if (*end == ';' && g_str_has_prefix(end, ";handle=")) {
+            char *handle_end;
+            unsigned long value = strtoul(end + 8, &handle_end, 10);
+            if (value >= 4096 || (handle_end[0] != '\n' && handle_end[0] != '\0'))
+                continue;
+            handle = (uint16_t)value;
+            end = handle_end;
+        }
         if ((*end != '\n' && *end != '\0') || us < 7500 || us > 4000000) {
             continue;
         }
-        otg_ble_hid_set_interval(b, us);
+        if (handle != UINT16_MAX) {
+            (void)directed_set_interval(b, handle, us);
+        } else {
+            otg_ble_hid_set_interval(b, us);
+        }
     }
 }
 
@@ -889,6 +905,7 @@ static bool poll_ble(void *ctx)
     }
     if (b->directed_owner) {
         if (!directed_poll(b)) return false;
+        latency_poll(b);
         poll_directed_advertisement(b, monotonic_ns());
         return true;
     }
@@ -931,7 +948,7 @@ static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident,bo
     memset(b,0,sizeof(*b));b->resident=resident;
     b->legacy_handles=legacy_handles;
     b->hci_fd=-1;
-    if(resident)b->latency_fd=-1;else latency_init(b);
+    latency_init(b);
     b->adapter=g_strdup(adapter ? adapter : "hci0");
     if(!b->adapter)return false;
     if (!g_str_has_prefix(b->adapter,"hci") || !g_ascii_isdigit(b->adapter[3])) return false;
