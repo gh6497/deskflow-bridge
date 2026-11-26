@@ -34,15 +34,18 @@ static void manager_method(GDBusConnection *bus,const char *sender,const char *p
         bool privacy=g_atomic_int_get(&mock->private_path)!=0;
         const char *paths[]={privacy ? "/org/bluez/hci0/dev_52_00_00_00_00_01" :
             "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF","/org/bluez/hci0/dev_11_22_33_44_55_66",
-            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"};
-        for(int i=0;i<(privacy?3:2);i++) {
+            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "/org/bluez/hci0/dev_52_00_00_00_00_02"};
+        const int unpaired=g_atomic_int_get(&mock->unpaired_mask);
+        const char *addresses[]={"AA:BB:CC:DD:EE:FF","11:22:33:44:55:66","AA:BB:CC:DD:EE:FF",
+            (unpaired&8)?"52:00:00:00:00:02":"22:33:44:55:66:77"};
+        for(unsigned i=0;i<G_N_ELEMENTS(paths);i++) {
+            if (i==2 && !privacy) continue;
             GVariantBuilder interfaces,properties;
             g_variant_builder_init(&interfaces,G_VARIANT_TYPE("a{sa{sv}}"));
             g_variant_builder_init(&properties,G_VARIANT_TYPE("a{sv}"));
-            g_variant_builder_add(&properties,"{sv}","Address",g_variant_new_string(i==1 ?
-                "11:22:33:44:55:66" : "AA:BB:CC:DD:EE:FF"));
+            g_variant_builder_add(&properties,"{sv}","Address",g_variant_new_string(addresses[i]));
             g_variant_builder_add(&properties,"{sv}","Connected",g_variant_new_boolean(!!(g_atomic_int_get(&mock->connected_mask)&(1<<i))));
-            g_variant_builder_add(&properties,"{sv}","Paired",g_variant_new_boolean(!(g_atomic_int_get(&mock->unpaired_mask)&(1<<i))));
+            g_variant_builder_add(&properties,"{sv}","Paired",g_variant_new_boolean(!(unpaired&(1<<i))));
             g_variant_builder_add(&interfaces,"{s@a{sv}}","org.bluez.Device1",g_variant_builder_end(&properties));
             g_variant_builder_add(&objects,"{o@a{sa{sv}}}",paths[i],g_variant_builder_end(&interfaces));
         }
@@ -335,18 +338,31 @@ static void test_directed_advertisement(GDBusConnection *bus,struct mock_bluez *
     CHECK(other_keys>=0 && other_pointer>=0 && directed_poll(&hid) && first->ready && second->ready);
     expect_report(other_keys,neutral);expect_report(other_pointer,neutral);
     poll_directed_advertisement(&hid,hid.adv_next_ns);
-    CHECK(!hid.adv_rearm && hid.adv_operation==ADV_NONE);
+    CHECK(hid.adv_operation==ADV_REMOVE); /* A third phone can still connect. */
+    finish_advertisement_call(&hid,ADV_REMOVE);
+    finish_advertisement_call(&hid,ADV_REGISTER);
+    CHECK(hid.adv_registered && first->ready && second->ready);
+
+    fake_links.le_count=OTG_BLE_MAX_PHONES;
+    for (unsigned i=2;i<fake_links.le_count;i++) {
+        fake_links.entries[i].peripheral=true;
+        fake_links.entries[i].handle=(uint16_t)(i+10);
+    }
+    CHECK(directed_poll(&hid));
+    poll_directed_advertisement(&hid,hid.adv_next_ns);
+    finish_advertisement_call(&hid,ADV_REMOVE);
+    CHECK(!hid.adv_registered && hid.adv_operation==ADV_NONE);
 
     fake_links.le_count=1;
     observe_devices(&hid,mock,1,0,false);
     CHECK(directed_poll(&hid) && first->ready && !second->ready && hid.adv_rearm);
     poll_directed_advertisement(&hid,hid.adv_next_ns);
-    CHECK(hid.adv_operation==ADV_REMOVE);
+    CHECK(hid.adv_operation==ADV_REGISTER);
     otg_ble_route_unbind(first);
     otg_ble_route_unbind(second);
     CHECK(otg_ble_hid_set_session(&hid,false));
     CHECK(hid.adv_operation==ADV_NONE && !hid.adv_rearm && !hid.adv_registered && hid.app_registered);
-    CHECK(g_atomic_int_get(&mock->advertised)==started+1 && g_atomic_int_get(&mock->stopped)==stopped+2);
+    CHECK(g_atomic_int_get(&mock->advertised)==started+3 && g_atomic_int_get(&mock->stopped)==stopped+4);
     CHECK(g_atomic_int_get(&mock->unregistered)==gatt_removed);
     close(keys);close(pointer);close(other_keys);close(other_pointer);
     close_ble(&hid);directed_free(first);directed_free(second);g_free(hid.directed_owner);
@@ -377,6 +393,26 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     otg_ble_route_send(one,1,key);otg_ble_route_send(two,2,drag);
     expect_report(ak,key);expect_report(bp,drag);
     struct pollfd silent[]={{bk,POLLIN,0},{ap,POLLIN,0}};CHECK(!poll(silent,2,0));
+    const char *c="/org/bluez/hci0/dev_52_00_00_00_00_02";
+    fake_links.le_count=3;
+    fake_links.entries[2]=(struct le_link){"52:00:00:00:00:02",11,true};
+    observe_devices(&hid,mock,11,8,true);
+    CHECK(get_report_fd(&hid,mock->bus,c,0)<0); /* No discovery session yet. */
+    otg_ble_route_enable_discovery(&hid,true);
+    int ck=get_report_fd(&hid,mock->bus,c,0),cp=get_report_fd(&hid,mock->bus,c,1);
+    CHECK(ck>=0 && cp>=0 && !otg_ble_route_claim_discovered(&hid));
+    observe_devices(&hid,mock,11,0,true); /* Pairing resolves the same handle's private address. */
+    CHECK(directed_poll(&hid));
+    struct otg_ble_route *three=otg_ble_route_claim_discovered(&hid);
+    CHECK(three && !strcmp(otg_ble_route_identity(three),"22:33:44:55:66:77"));
+    CHECK(directed_poll(&hid) && one->ready && two->ready && three->ready);
+    expect_report(ck,neutral);expect_report(cp,neutral);
+    otg_ble_route_send(three,1,key);expect_report(ck,key);
+    CHECK(!poll(silent,2,0));
+    otg_ble_route_unbind(three);expect_report(ck,neutral);expect_report(cp,neutral);
+    close(ck);close(cp);fake_links.le_count=2;
+    observe_devices(&hid,mock,3,0,true);
+    otg_ble_route_enable_discovery(&hid,false);
     GVariant *read=invoke_from(&hid,mock->bus,ROOT "/hid/keys","org.bluez.GattCharacteristic1","ReadValue",
         g_variant_new("(@a{sv})",device_options(b)),true);
     GVariant *val=g_variant_get_child_value(read,0);gsize n=0;
@@ -417,7 +453,7 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     links_available=true;
     close(ak);close(ap);close(bk);close(bp);
     otg_ble_route_unbind(two);CHECK(otg_ble_hid_set_session(&hid,false));
-    close_ble(&hid);directed_free(one);directed_free(two);g_free(hid.directed_owner);
+    close_ble(&hid);directed_free(one);directed_free(two);directed_free(three);g_free(hid.directed_owner);
     g_free(hid.peer_path);g_clear_object(&hid.devices);
 }
 

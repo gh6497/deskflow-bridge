@@ -4,7 +4,7 @@ struct otg_ble_route {
     char address[18];
     char *path;
     uint16_t handle;
-    bool bound, paired, ready, suspended;
+    bool bound, candidate, paired, ready, suspended;
     const char *wait_reason;
     uint64_t generation;
     int fd[2];
@@ -63,26 +63,62 @@ static void directed_release(struct otg_ble_route *r)
     directed_reset(r);
 }
 
-struct otg_ble_route *otg_ble_route_bind(struct otg_ble_hid *b, const char *address)
+static struct otg_ble_route *directed_route(struct otg_ble_hid *b, const char *address,
+                                            const char *discovery_path, uint16_t handle)
 {
     if (!b->directed_owner || !address || strlen(address)!=17) return NULL;
     struct otg_ble_route **available=NULL;
+    struct otg_ble_route *resolving=NULL;
     for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++) {
         struct otg_ble_route *r=b->routes[i];
-        if (r && !g_ascii_strcasecmp(address,r->address)) {
-            if (r->bound) return NULL;
-            r->bound=true;
-            return r;
-        }
-        if (!r || (!r->bound && !available)) available=&b->routes[i];
+        if (r && !g_ascii_strcasecmp(address,r->address)) return r;
+        if (discovery_path && r && r->candidate && !r->paired && r->handle==handle &&
+            !g_strcmp0(r->path,discovery_path)) resolving=r;
+        if (!r) available=&b->routes[i];
+        else if (!available && !r->bound && !r->path) available=&b->routes[i];
+    }
+    if (resolving) {
+        /* BlueZ can publish the identity address after the first CCC write.
+         * Keep the FDs only for the same still-live object and HCI handle. */
+        g_strlcpy(resolving->address,address,sizeof(resolving->address));
+        return resolving;
     }
     if (!available) return NULL;
     directed_free(*available);
     struct otg_ble_route *r=*available=g_new0(struct otg_ble_route,1);
     r->fd[0]=r->fd[1]=-1;
-    r->bound=true;
+    r->candidate=discovery_path!=NULL;
     g_strlcpy(r->address,address,sizeof(r->address));
     return r;
+}
+
+struct otg_ble_route *otg_ble_route_bind(struct otg_ble_hid *b, const char *address)
+{
+    struct otg_ble_route *r=directed_route(b,address,NULL,0);
+    if (!r || r->bound) return NULL;
+    r->bound=true;
+    r->candidate=false;
+    return r;
+}
+
+void otg_ble_route_enable_discovery(struct otg_ble_hid *b, bool enabled)
+{
+    b->discover_routes=enabled;
+}
+
+struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *b)
+{
+    for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++) {
+        struct otg_ble_route *r=b->routes[i];
+        if (r && r->candidate && r->paired && r->fd[0]>=0 && r->fd[1]>=0)
+            return otg_ble_route_bind(b,r->address);
+    }
+    return NULL;
+}
+
+const char *otg_ble_route_identity(const struct otg_ble_route *r)
+{
+    return r->address;
 }
 
 void otg_ble_route_unbind(struct otg_ble_route *r)
@@ -190,24 +226,50 @@ static void directed_refresh(struct otg_ble_hid *b, struct otg_ble_route *r,
 static void directed_observe_advertisement(struct otg_ble_hid *b, const struct link_snapshot *links)
 {
     unsigned peripherals = 0;
-    uint16_t handle = 0;
+    uint16_t handles[G_N_ELEMENTS(links->entries)];
     for (unsigned i = 0; i < links->le_count; ++i) {
         if (links->entries[i].peripheral) {
-            ++peripherals;
-            handle = links->entries[i].handle;
+            const uint16_t handle = links->entries[i].handle;
+            unsigned j = peripherals++;
+            for (; j && handles[j-1] > handle; --j) handles[j] = handles[j-1];
+            handles[j] = handle;
         }
     }
-    if (peripherals == b->adv_peripherals && (peripherals != 1 || handle == b->adv_last_handle)) return;
+    size_t size = peripherals * sizeof(handles[0]);
+    if (peripherals == b->adv_peripherals && !memcmp(handles,b->adv_handles,size)) return;
     b->adv_peripherals = peripherals;
-    b->adv_last_handle = handle;
+    memcpy(b->adv_handles,handles,size);
     if (!b->session_enabled) return;
 
     /* A peripheral connection can consume the controller's advertisement.
      * BlueZ can still list that instance as registered. Re-arm once per
      * topology change while there is room for another phone. */
-    b->adv_rearm = peripherals < G_N_ELEMENTS(b->routes);
+    b->adv_rearm = peripherals < G_N_ELEMENTS(b->routes) || b->adv_registered;
     b->adv_attempts = BLE_ADV_ATTEMPTS;
     b->adv_next_ns = monotonic_ns() + BLE_ADV_REARM_DELAY_NS;
+}
+
+static void directed_discover(struct otg_ble_hid *b, GList *objects, const struct link_snapshot *links)
+{
+    for (GList *it=objects;it;it=it->next) {
+        GDBusObject *obj=it->data;
+        const char *path=g_dbus_object_get_object_path(obj);
+        if (!g_str_has_prefix(path,b->adapter_path) || path[strlen(b->adapter_path)]!='/') continue;
+        GDBusInterface *iface=g_dbus_object_get_interface(obj,"org.bluez.Device1");
+        if (!iface) continue;
+        GDBusProxy *dev=G_DBUS_PROXY(iface);
+        GVariant *online=g_dbus_proxy_get_cached_property(dev,"Connected");
+        char *address=online && g_variant_get_boolean(online) ? device_address(dev) : NULL;
+        for (unsigned n=0;address && n<links->le_count;n++) {
+            const struct le_link *le=&links->entries[n];
+            if (!le->peripheral || !matches_address(le->address,address,path)) continue;
+            directed_route(b,address,path,le->handle);
+            break;
+        }
+        g_free(address);
+        g_clear_pointer(&online,g_variant_unref);
+        g_object_unref(iface);
+    }
 }
 
 static bool directed_poll(struct otg_ble_hid *b)
@@ -220,6 +282,8 @@ static bool directed_poll(struct otg_ble_hid *b)
         directed_observe_advertisement(b,&links);
     else links.le_count=0;
     GList *objects=g_dbus_object_manager_get_objects(b->devices);
+    if (b->discover_routes && b->session_enabled && links.le_count)
+        directed_discover(b,objects,&links);
     for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++)
         if (b->routes[i]) directed_refresh(b,b->routes[i],objects,&links);
     g_list_free_full(objects,g_object_unref);

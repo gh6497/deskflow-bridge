@@ -73,7 +73,8 @@ enum adv_operation { ADV_NONE, ADV_REMOVE, ADV_REGISTER };
 
 struct otg_ble_hid {
     char *directed_owner;
-    struct otg_ble_route *routes[2];
+    struct otg_ble_route *routes[OTG_BLE_MAX_PHONES];
+    bool discover_routes;
     bool legacy_handles;
     GDBusConnection *bus;
     GDBusObjectManager *devices;
@@ -92,7 +93,7 @@ struct otg_ble_hid {
     struct pending_call adv_call;
     enum adv_operation adv_operation;
     unsigned adv_attempts, adv_peripherals;
-    uint16_t adv_last_handle;
+    uint16_t adv_handles[64];
     bool adv_rearm;
     uint64_t adv_next_ns;
     bool resident, session_enabled;
@@ -778,10 +779,11 @@ static void poll_directed_advertisement(struct otg_ble_hid *b, uint64_t now)
                 fprintf(stderr, "INFO: BLE advertisement re-registered for another connection\n");
             return;
         }
-        b->adv_rearm = available;
+        b->adv_rearm = available || (b->session_enabled && b->adv_registered);
         b->adv_next_ns = now + BLE_ADV_RETRY_DELAY_NS;
     }
-    if (!available || !b->adv_rearm || !b->adv_attempts || now < b->adv_next_ns) return;
+    if (!b->session_enabled || (!available && !b->adv_registered) || !b->adv_rearm ||
+        !b->adv_attempts || now < b->adv_next_ns) return;
     --b->adv_attempts;
     b->adv_rearm = false;
     directed_advertisement_call(b, b->adv_registered ? ADV_REMOVE : ADV_REGISTER);

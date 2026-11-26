@@ -813,12 +813,12 @@ private slots:
         QCOMPARE(session.statusMessage(), qtTrId("otg.ble.stop_unisolated_service"));
     }
 
-    void twoDirectedBleSessions()
+    void multipleDirectedBleSessions()
     {
         qputenv("OTG_TEST_BLE_STATUS", "directed");
         const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
         ConnectionManager manager;
-        manager.addDevice("a"); manager.addDevice("b");
+        manager.addDevice("a"); manager.addDevice("b"); manager.addDevice("c");
         ConnectionOptions a;
         a.bridge = peerPath(); a.manageServer = false; a.transport = "ble";
         a.blePeer = "AA:BB:CC:DD:EE:01"; a.phone = "k20";
@@ -827,10 +827,14 @@ private slots:
         QVERIFY(!manager.start("b", b));
         b.blePeer = "AA:BB:CC:DD:EE:02";
         QVERIFY(manager.start("b", b));
+        auto c = a; c.phone = "third"; c.blePeer = "AA:BB:CC:DD:EE:03";
+        QVERIFY(manager.start("c", c));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+        QTRY_COMPARE(manager.state("c"), Session::State::Connected);
         manager.stop("a"); QTRY_COMPARE(manager.state("a"), Session::State::Idle);
         QCOMPARE(manager.state("b"), Session::State::Connected);
+        QCOMPARE(manager.state("c"), Session::State::Connected);
         manager.shutdown(); QTRY_VERIFY(manager.settled());
     }
 #endif

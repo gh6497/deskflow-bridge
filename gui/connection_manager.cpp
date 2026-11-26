@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "connection_manager.h"
 #include "device_info.h"
+#include "ble_limits.h"
 
 ConnectionManager::ConnectionManager(QObject *parent) : QObject(parent)
 {
@@ -125,6 +126,22 @@ bool ConnectionManager::hasBleProvider() const
     return false;
 }
 
+int ConnectionManager::activeBleSessions() const
+{
+    int count = 0;
+    for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it)
+        if (it->options.transport == "ble" && state(it.key()) != Session::State::Idle) ++count;
+    return count;
+}
+
+const char *ConnectionManager::bleProviderStatusId() const
+{
+    for (const auto &entry : m_devices) {
+        if (const auto id = entry.session->bleProviderStatusId()) return id;
+    }
+    return nullptr;
+}
+
 bool ConnectionManager::settled() const
 {
     return !busy() && !hasBleProvider() && m_server.state() == DeskflowServer::State::Idle;
@@ -146,6 +163,10 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
         return reject(id, "otg.error.phone_screen_name");
     if (options.manageServer && options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
         return reject(id, "otg.error.screen_names");
+#if defined(Q_OS_LINUX) && defined(OTG_GUI_HAVE_BLE)
+    if (options.transport == "ble" && activeBleSessions() >= OTG_BLE_MAX_PHONES)
+        return reject(id, "otg.ble.multi_full");
+#endif
     bool requireDirected = false;
     for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {
         if (it.key() == id) continue;
@@ -158,10 +179,11 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
         if (options.transport == "ble" && ((reserved && it->options.transport == "ble") ||
             it->session->hasBleProvider())) {
 #ifdef Q_OS_LINUX
-            if (requireDirected || options.adapter != it->options.adapter || options.bleIsolate ||
-                it->options.bleIsolate || options.blePeer.isEmpty() || it->options.blePeer.isEmpty())
+            if (options.adapter != it->options.adapter || options.bleIsolate || it->options.bleIsolate ||
+                ((options.blePeer.isEmpty() || it->options.blePeer.isEmpty()) &&
+                 !(options.preferDirectedBle && it->options.preferDirectedBle)))
                 return reject(id, "otg.multi.directed_required");
-            if (!options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
+            if (!options.blePeer.isEmpty() && !options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
                 return reject(id, "otg.multi.duplicate_device");
             requireDirected = true;
 #else
@@ -236,21 +258,14 @@ bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &op
     if (!m_devices.contains(id) || options.transport != "ble" ||
         state(id) != Session::State::Starting || !m_devices[id].waitingForBleAttach)
         return false;
-    if (options.manageServer) {
-        if (m_server.state() != DeskflowServer::State::Idle)
-            return false;
-        m_shared = options;
-        m_devices[id].options = options;
-        m_devices[id].waitingForBleAttach = true;
+    if (m_server.state() == DeskflowServer::State::Stopping) return false;
+    m_devices[id].options = options;
+    if (options.manageServer && m_server.state() == DeskflowServer::State::Idle) {
         m_server.start({options.deskflow, options.computer, options.deskflowConfig, options.port,
                         options.tls, options.tlsCertificate});
         return true;
     }
-    if (m_server.state() != DeskflowServer::State::Idle &&
-        m_server.state() != DeskflowServer::State::Running)
-        return false;
-    m_devices[id].options = options;
-    m_devices[id].waitingForBleAttach = true;
+    if (m_server.state() == DeskflowServer::State::Starting) return true;
     configureWaitingBle();
     return !m_devices[id].waitingForBleAttach;
 }
@@ -281,15 +296,15 @@ void ConnectionManager::stopAll()
     if (!busy()) m_server.stop();
 }
 
-void ConnectionManager::stopIdleBleProvider()
+void ConnectionManager::stopBle()
 {
-    if (busy()) return;
-    for (const auto &entry : m_devices) {
-        if (entry.session->hasBleProvider()) {
-            entry.session->stopBleProvider();
-            return;
-        }
+    const auto ids = m_devices.keys();
+    for (const auto &id : ids) {
+        const auto &entry = m_devices[id];
+        if (entry.session->hasBleProvider()) entry.session->stopBleProvider();
+        if (entry.options.transport == "ble") stop(id);
     }
+    if (!busy()) m_server.stop();
 }
 
 void ConnectionManager::shutdown()

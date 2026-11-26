@@ -96,6 +96,7 @@ public:
     void stopBleProvider();
     bool configureBle(const ConnectionOptions &options);
     bool hasBleProvider() const { return m_bleProvider.state() != QProcess::NotRunning; }
+    const char *bleProviderStatusId() const;
 
 signals:
     void changed(Session::State state, const QString &message);

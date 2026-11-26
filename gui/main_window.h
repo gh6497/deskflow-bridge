@@ -27,6 +27,7 @@ class QSpinBox;
 class QSettings;
 class QListWidget;
 class QTabWidget;
+class QTimer;
 class TransferDialog;
 class WirelessAdbDialog;
 
@@ -41,6 +42,7 @@ protected:
     virtual QString bridgeExecutable() const;
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 private:
     void setTranslatedProperty(QObject *object, const char *property, const char *id);
     template<class T> T *translated(T *object, const char *property, const char *id)
@@ -63,8 +65,12 @@ private:
     void readDisplayFromAdb();
     void connectDevice();
     void startBleService();
+    void continueBleDiscovery();
+    void refreshBleServiceStatus();
     bool confirmBleIsolation(const ConnectionOptions &options);
-    void stopIdleBleService();
+    void stopBleService();
+    void finishBleServiceStop();
+    void updateBleServiceControls(bool sharedIdle);
     void saveSettings();
     void saveSharedBleSettings(QSettings &settings) const;
     QVariantMap deviceProfile() const;
@@ -83,7 +89,7 @@ private:
     void storeDevice();
     void updateDeviceList();
     void connectAll();
-    ConnectionOptions connectionOptions(const QVariantMap &profile) const;
+    ConnectionOptions connectionOptions(const QVariantMap &profile);
     void persistDevices();
     void updateAutoConnect();
     void regenerateTlsCertificate();
@@ -112,7 +118,7 @@ private:
     bool m_loadingDevice = false;
     QListWidget *m_deviceSidebar;
     QTabWidget *m_tabs;
-    QWidget *m_deviceBox, *m_sharedBox;
+    QWidget *m_deviceBox, *m_sharedBox, *m_deskflowBox;
     QLineEdit *m_alias;
     QLabel *m_summary;
     QPushButton *m_connectAll, *m_disconnectAll, *m_addDevice, *m_removeDevice;
@@ -151,9 +157,17 @@ private:
     QCheckBox *m_bleAutoAttach = nullptr;
     QLineEdit *m_adapter = nullptr;
     QCheckBox *m_bleIsolate = nullptr, *m_bleLegacyHandles = nullptr;
+    QCheckBox *m_bleMulti = nullptr;
+    bool m_discoverMultipleBle = false;
     QPushButton *m_stopBleService = nullptr;
     QPushButton *m_startBleService = nullptr;
+    QLabel *m_bleServiceStatus = nullptr;
+    QTimer *m_bleStatusTimer = nullptr;
+    quint64 m_bleStatusGeneration = 0;
+    bool m_bleStatusPending = false;
+    bool m_bleServiceIdle = false;
     bool m_stoppingBleService = false;
+    bool m_bleStopQueryPending = false;
     QLineEdit *m_serial, *m_adbSerial, *m_adb, *m_deskflow, *m_deskflowConfig, *m_host, *m_computer, *m_phone;
     QLineEdit *m_tlsCert, *m_tlsFingerprint, *m_tlsFingerprintFile;
     QComboBox *m_tlsKeyLength;

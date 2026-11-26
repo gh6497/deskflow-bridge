@@ -3,6 +3,7 @@
 #define DESKFLOW_BRIDGE_BLE_HID_H
 
 #include "bridge.h"
+#include "ble_limits.h"
 
 #ifdef __linux__
 #include <stdbool.h>
@@ -20,6 +21,9 @@ struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter, bool legacy
 bool otg_ble_instance_matches(const char *instance);
 bool otg_ble_verified_instance(char *token,size_t capacity);
 struct otg_ble_route *otg_ble_route_bind(struct otg_ble_hid *hid, const char *address);
+void otg_ble_route_enable_discovery(struct otg_ble_hid *hid, bool enabled);
+struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *hid);
+const char *otg_ble_route_identity(const struct otg_ble_route *route);
 void otg_ble_route_unbind(struct otg_ble_route *route);
 bool otg_ble_route_ready(const struct otg_ble_route *route, uint64_t *generation);
 void otg_ble_route_send(struct otg_ble_route *route, uint16_t id, const uint8_t data[8]);

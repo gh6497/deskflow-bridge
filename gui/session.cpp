@@ -75,7 +75,8 @@ Session::Session(QObject *parent, std::shared_ptr<BleStartupCoordinator> bleStar
         m_blePeer.clear();
         if (wasActive && m_state != State::Stopping) fail("otg.error.bridge_exited", QString::number(code));
         if (wasActive || m_state == State::Stopping) stopServer();
-        else emit log(qtTrId("otg.ble.provider_ended"));
+        else if (!m_stoppingBleProvider) emit log(qtTrId("otg.ble.provider_ended"));
+        m_stoppingBleProvider = false;
         emit bleProviderChanged();
     });
     connect(&m_deadline, &QTimer::timeout, this, [this] {
@@ -408,13 +409,18 @@ void Session::prepareBle(bool started, int attempts)
                 fail("otg.multi.stop_single_service");
                 return;
             }
-            if ((m_options.requireDirectedBle && !m_directedBle) ||
-                (m_directedBle && (m_options.blePeer.isEmpty() || m_options.bleIsolate))) {
+            if (m_directedBle && (m_options.bleIsolate ||
+                (m_options.blePeer.isEmpty() && !m_options.bleDiscovery))) {
                 fail("otg.multi.directed_required");
                 return;
             }
             if (m_directedBle && !status.value("bleOnly").toBool()) {
                 fail("otg.ble.stop_unisolated_service");
+                return;
+            }
+            if (m_directedBle && m_options.bleDiscovery && m_options.blePeer.isEmpty() &&
+                !status.value("discovery").toBool()) {
+                fail("otg.ble.discovery_unsupported");
                 return;
             }
             if (!m_directedBle && !status.value("idle").toBool()) {
@@ -536,8 +542,11 @@ void Session::launchDirectedBle(const QString &token, const QString &logPath)
     }
 
     QProcess service;
-    service.setProgram(m_options.blePrivilegeProgram);
-    QStringList args{m_options.bridge, "--ble-service", "--adapter", launch->adapter,
+    // pkexec needs a live parent for PolicyKit to identify the calling session.
+    // Keep this detached shell waiting until the privileged supervisor exits.
+    service.setProgram("/bin/sh");
+    QStringList args{"-c", "\"$@\"; exit $?", "deskflow-ble-launch", m_options.blePrivilegeProgram,
+                     m_options.bridge, "--ble-service", "--adapter", launch->adapter,
                      "--ble-multi", token, "--ble-isolate", "--gui"};
     if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
     service.setArguments(args);
@@ -734,6 +743,7 @@ void Session::launchBridge()
                 .arg(m_options.sideSwipeDistancePercent)
                 .arg(qRound(m_options.motionMultiplier * 100.0));
             m_bleProvider.write((resume + (m_options.absolutePerAxis ? "\tper-axis\n" : "\n")).toUtf8());
+            emit bleProviderChanged();
             emit log(qtTrId("otg.ble.provider_reused"));
         } else {
             m_bleEvents.clear();
@@ -892,9 +902,9 @@ void Session::stop()
     m_bleLaunch.reset();
     m_deadline.stop();
     setState(State::Stopping, "otg.status.disconnecting");
-    if (m_shutdown) endBleProvider();
+    if (m_shutdown || m_stoppingBleProvider) endBleProvider();
     if (windowsBle() && m_bleActive && hasBleProvider()) {
-        if (!m_shutdown) {
+        if (!m_shutdown && !m_stoppingBleProvider) {
             m_bleProvider.write("pause\n");
             m_killBle.start(8000);
         }
@@ -917,14 +927,31 @@ void Session::endBleProvider()
     m_killBle.start(8000);
 }
 
+const char *Session::bleProviderStatusId() const
+{
+    if (!hasBleProvider()) return nullptr;
+    if (m_shutdown || m_stoppingBleProvider) return "otg.ble.status_stopping";
+    if (m_bleProvider.state() == QProcess::Starting) return "otg.ble.status_starting";
+    if (!m_bleActive) return "otg.ble.status_idle";
+    return m_state == State::Connected ? "otg.ble.status_connected" : "otg.ble.status_in_use";
+}
+
 void Session::stopBleProvider()
 {
-    if (m_state != State::Idle || !hasBleProvider()) return;
+    if (!hasBleProvider() || m_stoppingBleProvider) return;
     m_stoppingBleProvider = true;
-    m_failureId.clear();
-    m_failureDetail.clear();
-    setState(State::Stopping, "otg.status.disconnecting");
+    if (windowsBle()) {
+        if (m_state == State::Idle) {
+            m_failureId.clear();
+            m_failureDetail.clear();
+            setState(State::Stopping, "otg.status.disconnecting");
+        } else if (m_state != State::Stopping) {
+            stop();
+            return;
+        }
+    }
     endBleProvider();
+    emit bleProviderChanged();
 }
 
 void Session::shutdown()

@@ -15,7 +15,10 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
 - Both `server` screenshots were refreshed with `guideSharedServiceScreenshot` to show **Start Bluetooth service** in the shared settings.
 - Refreshed the `input`, `server` and `multiple-devices` views in both languages from the worktree based on `8d103c2` after moving all screen placement to Deskflow. **Shared server** shows the default connection to an existing server and the configuration file field for optional automatic startup. Capture used `guidePointerScreenshot` and `guideSharedServiceScreenshot` with the same environment variables as above.
-- Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1140. File window at 760 × 460.
+- Refreshed both `server` screenshots from the worktree based on `9354222` using `guideSharedServiceScreenshot` to show **Service status**. The mock Bluetooth service is running and idle.
+- The same capture hook now shows **Allow multiple Bluetooth phones** in both `server` views. The option is unchecked by default.
+- Both `server` views were recaptured with `guideSharedServiceScreenshot` for the **Stop Bluetooth service** label.
+- Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1220. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions and button settings.
   `server` shows Deskflow connection and Bluetooth service settings. `aoa` shows USB without ADB.
@@ -47,3 +50,6 @@ update both guides when controls move or change.
 更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。
 本次用 `guideSharedServiceScreenshot` 重新采集了两张共享服务页截图，展示「启动蓝牙服务」入口。
 基于 `8d103c2` 的工作区更新中英文输入页、共享服务页和多设备截图。屏幕位置统一由 Deskflow 管理，「共享服务」展示默认连接已有服务，以及可选自动启动使用的配置文件栏。使用上述环境变量和 `guidePointerScreenshot`、`guideSharedServiceScreenshot` 采集。
+基于 `9354222` 的工作区使用 `guideSharedServiceScreenshot` 更新中英文共享服务页截图，展示运行中且空闲的模拟蓝牙服务。
+使用相同方式重新采集两张共享服务页截图，展示默认关闭的「允许多台蓝牙手机」。
+使用 `guideSharedServiceScreenshot` 更新两张共享服务页截图，展示「停止蓝牙服务」按钮。

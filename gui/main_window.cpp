@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.h"
 #include "audio_gain.h"
+#include "ble_limits.h"
 #include "transfer_dialog.h"
 #include "process_utils.h"
 #include "i18n.h"
@@ -20,6 +21,8 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -362,6 +365,19 @@ void MainWindow::changeEvent(QEvent *event)
     QMainWindow::changeEvent(event);
     if (event->type() == QEvent::LanguageChange && m_uiReady)
         retranslateUi();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_bleServiceStatus && m_bleStatusTimer) {
+        if (event->type() == QEvent::Show) {
+            m_bleStatusTimer->start();
+            QTimer::singleShot(0, this, &MainWindow::refreshBleServiceStatus);
+        } else if (event->type() == QEvent::Hide) {
+            m_bleStatusTimer->stop();
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 QWidget *MainWindow::pathField(QLineEdit *&field, const char *placeholderId, const char *dialogId)
@@ -770,6 +786,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         if (m_closing) QTimer::singleShot(0, this, &QWidget::close);
     });
     auto *serverBox = translated(new QGroupBox, "title", "otg.section.connection");
+    m_deskflowBox = serverBox;
     auto *serverForm = new QFormLayout(serverBox);
     m_manage = translated(new QCheckBox, "text", "otg.server.manage");
     m_manage->setObjectName("manageServer");
@@ -852,6 +869,11 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_bleIsolate = translated(new QCheckBox, "text", "otg.ble.isolate");
     m_bleIsolate->setObjectName("bleIsolate");
     bleForm->addRow(m_bleIsolate);
+    m_bleMulti = translated(new QCheckBox, "text", "otg.ble.multi_mode");
+    m_bleMulti->setObjectName("bleMultiDevice");
+    setTranslatedProperty(m_bleMulti, "toolTip", "otg.ble.multi_mode_hint");
+    bleForm->addRow(m_bleMulti);
+    connect(m_bleMulti, &QCheckBox::toggled, m_bleIsolate, &QWidget::setDisabled);
     m_bleLegacyHandles = translated(new QCheckBox, "text", "otg.ble.legacy_handles");
     m_bleLegacyHandles->setObjectName("bleLegacyHandles");
     setTranslatedProperty(m_bleLegacyHandles, "toolTip", "otg.ble.legacy_handles_hint");
@@ -859,6 +881,23 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
 #else
     bleForm->addRow(translated(new QLabel, "text", "otg.ble.default_adapter"));
 #endif
+    m_bleServiceStatus = translated(new QLabel, "text", "otg.ble.status_checking");
+    m_bleServiceStatus->setObjectName("bleServiceStatus");
+    m_bleServiceStatus->setWordWrap(true);
+    addTranslatedRow(bleForm, "otg.ble.status_label", m_bleServiceStatus);
+    if (m_adapter) {
+        m_bleStatusTimer = new QTimer(this);
+        m_bleStatusTimer->setInterval(2000);
+        m_bleServiceStatus->installEventFilter(this);
+        connect(m_bleStatusTimer, &QTimer::timeout, this, &MainWindow::refreshBleServiceStatus);
+        connect(m_adapter, &QLineEdit::textChanged, this, [this] {
+            ++m_bleStatusGeneration;
+            m_bleServiceIdle = false;
+            setTranslatedProperty(m_bleServiceStatus, "text", "otg.ble.status_checking");
+            m_stopBleService->setEnabled(false);
+        });
+        connect(m_adapter, &QLineEdit::editingFinished, this, &MainWindow::refreshBleServiceStatus);
+    }
     m_startBleService = translated(new QPushButton, "text", "otg.ble.start_service");
     m_startBleService->setObjectName("startBleService");
     bleForm->addRow(m_startBleService);
@@ -866,7 +905,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_stopBleService = translated(new QPushButton, "text", "otg.ble.stop_service");
     m_stopBleService->setObjectName("stopBleService");
     bleForm->addRow(m_stopBleService);
-    connect(m_stopBleService, &QPushButton::clicked, this, &MainWindow::stopIdleBleService);
+    connect(m_stopBleService, &QPushButton::clicked, this, &MainWindow::stopBleService);
     sharedLayout->addWidget(bleBox);
 #endif
     sharedLayout->addWidget(advancedBox);
@@ -1062,6 +1101,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         m_adapter->setText(sharedValue("sharedBle/adapter", "bleAdapter", "hci0").toString());
         m_bleIsolate->setChecked(sharedValue("sharedBle/isolate", "bleIsolate", false).toBool());
         m_bleLegacyHandles->setChecked(sharedValue("sharedBle/legacyHandles", "bleLegacyHandles", false).toBool());
+        m_bleMulti->setChecked(settings.value("sharedBle/multiDevice", false).toBool());
         // Save before a device-only update can discard the legacy profile fields.
         saveSharedBleSettings(settings);
     }
@@ -1203,6 +1243,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         }
         updateEnabled();
         updateDeviceList();
+        if (m_stoppingBleService) QTimer::singleShot(0, this, &MainWindow::finishBleServiceStop);
+        if (m_discoverMultipleBle && m_discoveryId.isEmpty() && m_records.contains(id) &&
+            m_records.value(id).value("transport") == "ble" && m_connections.state(id) == Session::State::Idle)
+            QTimer::singleShot(0, this, &MainWindow::continueBleDiscovery);
         if (m_closing && m_connections.settled())
             QTimer::singleShot(0, this, &QWidget::close);
     });
@@ -1213,7 +1257,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         if (current) selectDevice(current->data(Qt::UserRole).toString());
     });
     connect(m_connectAll, &QPushButton::clicked, this, &MainWindow::connectAll);
-    connect(m_disconnectAll, &QPushButton::clicked, &m_connections, &ConnectionManager::stopAll);
+    connect(m_disconnectAll, &QPushButton::clicked, this, [this] {
+        m_discoverMultipleBle = false;
+        m_connections.stopAll();
+    });
     connect(m_phone, &QLineEdit::editingFinished, this, [this] {
         storeDevice();
         updateDeviceList();
@@ -1447,7 +1494,7 @@ void MainWindow::updateDeviceList()
     updateTray();
 }
 
-ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) const
+ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile)
 {
     ConnectionOptions options;
     options.bridge = bridgeExecutable();
@@ -1500,8 +1547,17 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     }
     if (options.transport == "ble" && m_adapter) {
         options.adapter = m_adapter->text().trimmed();
-        options.bleIsolate = m_bleIsolate->isChecked();
+        options.preferDirectedBle = m_bleMulti->isChecked();
+        options.bleIsolate = !options.preferDirectedBle && m_bleIsolate->isChecked();
         options.bleLegacyHandles = m_bleLegacyHandles->isChecked();
+        if (options.preferDirectedBle) {
+            options.confirmSharedBleIsolation = [this](const QString &adapter) {
+                ConnectionOptions isolation;
+                isolation.adapter = adapter;
+                isolation.bleIsolate = true;
+                return confirmBleIsolation(isolation);
+            };
+        }
     }
     const bool absolute = options.mouseMode == "absolute";
     const double resolutionMultiplier = absolute ?
@@ -1586,10 +1642,11 @@ void MainWindow::updateEnabled()
     m_autoConnect.setReady(!m_closing && !m_companion.busy());
     updateAutoConnect();
     m_form->setEnabled((idle || bleDiscovery) && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy());
-    m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_stoppingBleService && !m_companion.busy());
+    const bool sharedEditable = sharedIdle && !m_closing && !m_stoppingBleService && !m_companion.busy();
+    m_deskflowBox->setEnabled(sharedEditable);
+    m_programForm->parentWidget()->setEnabled(sharedEditable);
     m_deskflowConfig->parentWidget()->setEnabled(m_manage->isChecked());
-    if (m_stopBleService)
-        m_stopBleService->setEnabled(m_adapter || m_connections.hasBleProvider());
+    updateBleServiceControls(sharedEditable);
     m_addDevice->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
     m_removeDevice->setEnabled(sharedIdle && m_records.size() > 1 && !m_session->hasBleProvider() && !m_closing && !m_companion.busy());
     m_deviceSidebar->setEnabled(!m_closing && !m_companion.busy());
@@ -2102,6 +2159,11 @@ void MainWindow::startBleService()
     if (!m_startBleService || m_closing || m_stoppingBleService || m_companion.busy() || m_connections.busy())
         return;
     storeDevice();
+    m_discoverMultipleBle = m_bleMulti && m_bleMulti->isChecked();
+    if (m_discoverMultipleBle) {
+        continueBleDiscovery();
+        return;
+    }
     QString id = m_selectedId;
     QVariantMap profile = m_records.value(id);
     if (profile.value("transport") != "ble") {
@@ -2117,6 +2179,81 @@ void MainWindow::startBleService()
     if (confirmBleIsolation(options)) m_connections.start(id, options);
 }
 
+void MainWindow::continueBleDiscovery()
+{
+    if (!m_discoverMultipleBle || m_closing || m_stoppingBleService ||
+        m_connections.activeBleSessions() >= OTG_BLE_MAX_PHONES ||
+        (!m_discoveryId.isEmpty() && m_connections.state(m_discoveryId) != Session::State::Idle))
+        return;
+    if (m_discoveryId.isEmpty()) m_discoveryId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_connections.addDevice(m_discoveryId);
+    auto options = connectionOptions({{"transport", "ble"}, {"phone", "discover-" + m_discoveryId}});
+    options.bleDiscovery = true;
+    m_connections.start(m_discoveryId, options);
+}
+
+void MainWindow::refreshBleServiceStatus()
+{
+    if (!m_adapter || !m_bleServiceStatus->isVisible() || isMinimized() || m_closing ||
+        m_stoppingBleService || m_bleStatusPending)
+        return;
+    const auto adapter = m_adapter->text().trimmed();
+    static const QRegularExpression adapterPattern("^hci[0-9]{1,5}$");
+    if (!adapterPattern.match(adapter).hasMatch() || adapter.mid(3).toUInt() >= 65535) {
+        setTranslatedProperty(m_bleServiceStatus, "text", "otg.ble.status_invalid_adapter");
+        return;
+    }
+    const auto program = bridgeExecutable();
+    if (program.isEmpty()) {
+        setTranslatedProperty(m_bleServiceStatus, "text", "otg.ble.status_query_failed");
+        return;
+    }
+    m_bleStatusPending = true;
+    const auto generation = m_bleStatusGeneration;
+    runCommand(this, program, {"--ble-status", "--adapter", adapter},
+               [this, generation](bool ok, const QString &output) {
+        m_bleStatusPending = false;
+        if (m_closing || m_stoppingBleService) return;
+        if (generation != m_bleStatusGeneration) {
+            refreshBleServiceStatus();
+            return;
+        }
+        const auto status = QJsonDocument::fromJson(output.toUtf8()).object();
+        const auto available = status.value("available");
+        const auto idle = status.value("idle");
+        const auto ready = status.value("ready");
+        m_bleServiceIdle = ok && status.value("version").toInt() == 2 && available.toBool() && idle.toBool();
+        const char *id = "otg.ble.status_query_failed";
+        if (status.value("version").toInt() == 2 && available.isBool()) {
+            if (!available.toBool())
+                id = "otg.ble.status_unavailable";
+            else if (ok && idle.isBool() && ready.isBool())
+                id = ready.toBool() ? "otg.ble.status_ready" :
+                     idle.toBool() ? "otg.ble.status_idle" : "otg.ble.status_in_use";
+        }
+        setTranslatedProperty(m_bleServiceStatus, "text", id);
+        updateBleServiceControls(!m_connections.busy() && m_connections.serverState() == DeskflowServer::State::Idle &&
+                                 !m_closing && !m_companion.busy());
+    }, 7000);
+}
+
+void MainWindow::updateBleServiceControls(bool sharedEditable)
+{
+    if (!m_bleServiceStatus) return;
+    m_startBleService->setEnabled(sharedEditable);
+    if (m_adapter) {
+        m_adapter->setEnabled(sharedEditable);
+        m_bleMulti->setEnabled(sharedEditable);
+        m_bleLegacyHandles->setEnabled(sharedEditable);
+        m_bleIsolate->setEnabled(sharedEditable && !m_bleMulti->isChecked());
+    } else if (!m_stoppingBleService) {
+        const auto statusId = m_connections.bleProviderStatusId();
+        setTranslatedProperty(m_bleServiceStatus, "text", statusId ? statusId : "otg.ble.status_stopped");
+    }
+    m_stopBleService->setEnabled(!m_closing && !m_stoppingBleService &&
+        (m_connections.activeBleSessions() || m_connections.hasBleProvider() || m_bleServiceIdle));
+}
+
 bool MainWindow::confirmBleIsolation(const ConnectionOptions &options)
 {
     return !options.bleIsolate || QMessageBox::warning(this, qtTrId("otg.ble.confirm_title"),
@@ -2126,7 +2263,7 @@ bool MainWindow::confirmBleIsolation(const ConnectionOptions &options)
 
 void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &identity)
 {
-    if (m_closing) return;
+    if (m_closing || m_stoppingBleService) return;
     storeDevice();
     QString id;
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
@@ -2156,7 +2293,7 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
         profile["bleIdentity"] = identity;
         profile["alias"] = profile["phone"] = name;
     }
-    if (m_discoveryId == id) m_discoveryId.clear();
+    if (m_discoveryId == sourceId) m_discoveryId.clear();
     m_pendingBleIdentities[id] = identity;
     if (id == m_selectedId) applyDeviceProfile(profile);
     persistDevices();
@@ -2164,6 +2301,7 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
     if (profile.value("bleAutoAttach", true).toBool())
         m_connections.attachBle(id, connectionOptions(profile));
     updateEnabled();
+    if (m_discoverMultipleBle) QTimer::singleShot(0, this, &MainWindow::continueBleDiscovery);
 }
 
 void MainWindow::connectDevice()
@@ -2189,27 +2327,44 @@ void MainWindow::connectDevice()
     m_connections.start(m_selectedId, options);
 }
 
-void MainWindow::stopIdleBleService()
+void MainWindow::stopBleService()
 {
     if (m_closing || !m_stopBleService->isEnabled()) return;
-    const auto adapter = m_adapter ? m_adapter->text().trimmed() : QString();
     if (QMessageBox::warning(this, qtTrId("otg.ble.stop_service"), qtTrId("otg.ble.stop_confirm"),
                              QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Ok ||
         m_closing || !m_stopBleService->isEnabled())
         return;
-    if (!m_adapter) {
-        m_connections.stopIdleBleProvider();
-        return;
-    }
     m_stoppingBleService = true;
+    m_discoverMultipleBle = false;
+    ++m_bleStatusGeneration;
+    setTranslatedProperty(m_bleServiceStatus, "text", "otg.ble.status_stopping");
     updateEnabled();
-    runCommand(this, bridgeExecutable(), {"--ble-stop-service", "--adapter", adapter},
-               [this](bool ok, const QString &output) {
-        appendLog(qtTrId(ok ? "otg.ble.stopped" : "otg.ble.stop_failed") + output);
+    m_connections.stopBle();
+    finishBleServiceStop();
+}
+
+void MainWindow::finishBleServiceStop()
+{
+    if (!m_stoppingBleService || m_connections.activeBleSessions() || m_connections.hasBleProvider() ||
+        m_bleStopQueryPending)
+        return;
+    const auto complete = [this](bool ok, const QString &detail = {}) {
+        appendLog(qtTrId(ok ? "otg.ble.stopped" : "otg.ble.stop_failed") + detail);
         m_stoppingBleService = false;
+        m_bleServiceIdle = false;
+        setTranslatedProperty(m_bleServiceStatus, "text", ok ? "otg.ble.status_stopped" : "otg.ble.status_query_failed");
         updateEnabled();
+        if (!ok) refreshBleServiceStatus();
         if (m_closing) QTimer::singleShot(0, this, &QWidget::close);
-    });
+    };
+    if (!m_adapter) { complete(true); return; }
+    const auto adapter = m_adapter->text().trimmed();
+    m_bleStopQueryPending = true;
+    runCommand(this, bridgeExecutable(), {"--ble-stop-service", "--adapter", adapter},
+               [this, complete](bool stopped, const QString &detail) {
+        m_bleStopQueryPending = false;
+        complete(stopped, stopped ? QString() : detail);
+    }, 17000);
 }
 
 QVariantMap MainWindow::deviceProfile() const
@@ -2325,6 +2480,7 @@ void MainWindow::saveSharedBleSettings(QSettings &settings) const
     settings.setValue("sharedBle/adapter", m_adapter->text().trimmed());
     settings.setValue("sharedBle/isolate", m_bleIsolate->isChecked());
     settings.setValue("sharedBle/legacyHandles", m_bleLegacyHandles->isChecked());
+    settings.setValue("sharedBle/multiDevice", m_bleMulti->isChecked());
 }
 
 void MainWindow::saveSettings()
