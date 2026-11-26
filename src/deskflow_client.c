@@ -938,16 +938,18 @@ static df_socket tcp_connect(const char *host, uint16_t port)
     return fd;
 }
 
-df_client *df_client_connect_ex(const char *host, uint16_t port, const char *name,
-                                int32_t screen_w, int32_t screen_h,
-                                const df_client_callbacks *cbs, void *ud,
-                                const df_client_tls_options *tls)
+df_client *df_client_connect_attempt(const char *host, uint16_t port, const char *name,
+                                     int32_t screen_w, int32_t screen_h,
+                                     const df_client_callbacks *cbs, void *ud,
+                                     const df_client_tls_options *tls, bool *unavailable)
 {
+    if (unavailable) *unavailable = false;
     if (df_socket_init() != 0) {
         return NULL;
     }
     df_socket fd = tcp_connect(host, port);
     if (fd == DF_INVALID_SOCKET) {
+        if (unavailable) *unavailable = true;
         df_socket_cleanup();
         return NULL;
     }
@@ -978,6 +980,7 @@ df_client *df_client_connect_ex(const char *host, uint16_t port, const char *nam
     uint8_t *hello = NULL;
     int hello_len = recv_packet(fd, &hello);
     if (hello_len < 11) {
+        if (unavailable && hello_len == 0) *unavailable = true;
         LOG_ERR("failed to read server hello\n");
         free(hello);
         goto fail;
@@ -1025,6 +1028,14 @@ fail:
     df_socket_cleanup();
     free(c);
     return NULL;
+}
+
+df_client *df_client_connect_ex(const char *host, uint16_t port, const char *name,
+                                int32_t screen_w, int32_t screen_h,
+                                const df_client_callbacks *cbs, void *ud,
+                                const df_client_tls_options *tls)
+{
+    return df_client_connect_attempt(host, port, name, screen_w, screen_h, cbs, ud, tls, NULL);
 }
 
 df_client *df_client_connect(const char *host, uint16_t port, const char *name,
@@ -1274,6 +1285,7 @@ static int handle_message(df_client *c, const char code[4], struct msg *m)
         return -1;
     }
     if (memcmp(code, "EUNK", 4) == 0) {
+        if (!c->accepted && m->pos == m->len) return DF_RUN_UNKNOWN_SCREEN;
         LOG_ERR("server refused our screen name\n");
         return -1;
     }
@@ -1362,7 +1374,7 @@ int df_client_run(df_client *c, volatile sig_atomic_t *stop)
             break;
         }
         if (h > 0) {
-            result = 0; /* server asked us to close (CBYE) */
+            result = h == DF_RUN_UNKNOWN_SCREEN ? DF_RUN_UNKNOWN_SCREEN : 0;
             break;
         }
 

@@ -93,10 +93,19 @@ df_client *df_client_connect_ex(const char *host, uint16_t port, const char *nam
                                 const df_client_callbacks *cbs, void *ud,
                                 const df_client_tls_options *tls);
 
+/* As above, distinguishing an unavailable server (no TCP listener or hello EOF) from TLS/protocol errors
+ * when reconnecting while the server applies its new screen layout. */
+df_client *df_client_connect_attempt(const char *host, uint16_t port, const char *name,
+                                     int32_t screen_w, int32_t screen_h,
+                                     const df_client_callbacks *cbs, void *ud,
+                                     const df_client_tls_options *tls, bool *unavailable);
+
+enum { DF_RUN_UNKNOWN_SCREEN = 2 };
+
 /*
  * Run the message loop until the server closes the connection, an error
  * occurs, or *stop (if non-NULL) becomes non-zero.  Returns 0 on clean
- * shutdown, non-zero otherwise.
+ * shutdown, DF_RUN_UNKNOWN_SCREEN for EUNK before acceptance, or -1 on error.
  */
 int df_client_run(df_client *c, volatile sig_atomic_t *stop);
 

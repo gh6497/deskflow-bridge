@@ -143,7 +143,7 @@ def receive(sock):
 
 
 cli, audio, clipboard = sys.argv[1:]
-cases = ['plain', 'drop', 'reject', 'cancel-handshake', 'denied', 'cancel-probe',
+cases = ['plain', 'drop', 'reject', 'approve-screen', 'cancel-approval', 'cancel-handshake', 'denied', 'cancel-probe',
          'unlock-space', 'unlock-swipe', 'unlock-unlocked', 'unlock-unknown', 'unlock-cancel']
 if clipboard == 'ON': cases.append('clipboard')
 if audio == 'ON' and clipboard == 'ON': cases.append('both')
@@ -178,9 +178,24 @@ for mode in cases:
                     connection.sendall(b'\0\0\0\x0bBar')  # Incomplete frame must remain cancellable.
                 else:
                     packet(connection, b'Barrier' + struct.pack('>HH', 1, 6))
-                    assert receive(connection).startswith(b'Barrier')
+                    hello = receive(connection)
+                    assert hello.startswith(b'Barrier')
+                    if mode in ('approve-screen', 'cancel-approval'):
+                        for attempt in range(2):
+                            packet(connection, b'EUNK')
+                            connection.close()
+                            connection, _ = listener.accept(); connection.settimeout(5)
+                            if attempt == 1 and mode == 'approve-screen':
+                                # Applying the layout restarts Deskflow's listener.
+                                connection.close()  # The old core exits before hello.
+                                connection, _ = listener.accept(); connection.settimeout(5)
+                            packet(connection, b'Barrier' + struct.pack('>HH', 1, 6))
+                            assert receive(connection) == hello
                     if mode == 'reject':
+                        packet(connection, b'EBSY')
+                    elif mode == 'cancel-approval':
                         packet(connection, b'EUNK')
+                        assert connection.recv(1) == b''
                     else:
                         packet(connection, b'QINF')
                         assert receive(connection).startswith(b'DINF')
@@ -225,7 +240,10 @@ for mode in cases:
             else:
                 out, err = proc.communicate(b'stop\n', timeout=6)
             events = [json.loads(line)['event'] for line in out.splitlines()]
-            connected = mode in ('plain', 'clipboard', 'both', 'drop') or mode.startswith('unlock')
+            connected = mode in ('plain', 'approve-screen', 'clipboard', 'both', 'drop') or mode.startswith('unlock')
+            if mode in ('approve-screen', 'cancel-approval'):
+                assert events.count('waiting-for-screen') >= 2, events
+                assert 'connected' not in events[:events.index('waiting-for-screen')], events
             assert ('connected' in events) == connected, (mode, events, err.decode())
             assert 'usb-ready' not in events and b'fake scrcpy diagnostic' not in out
             calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]

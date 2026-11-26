@@ -686,12 +686,6 @@ static void cb_mouse_wheel(void *ud, int16_t x, int16_t y)
     otg_bridge_mouse_wheel(&s->bridge, x, y);
 }
 
-static void cb_disconnected(void *ud)
-{
-    app_state *s = ud;
-    if (!s->transport_owner) g_stop = 1;
-}
-
 static int cb_idle(void *ud)
 {
     /* Detect a USB unplug even while no HID event is in flight.  Returning
@@ -800,6 +794,59 @@ static int cb_tick_interval(void *ud, int configured_ms)
      * intermittently. Avoid turning the whole session into a 1 ms polling
      * loop just because the default side-button actions are enabled. */
     return s->bridge.side_swipe_pending ? 1 : configured_ms;
+}
+
+/* Deskflow closes the unknown screen's socket while its GUI is asking where
+ * to place it. Keep the HID, ADB and audio resources owned by the outer session. */
+static int run_deskflow(app_state *s, const struct app_options *opts, const df_client_callbacks *cbs)
+{
+    bool waiting_for_screen = false;
+    unsigned unavailable_attempts = 0;
+    for (;;) {
+        bool unavailable;
+        df_client *client = df_client_connect_attempt(opts->host, (uint16_t)opts->port, opts->name,
+            s->bridge.screen_w, s->bridge.screen_h, cbs, s, &opts->tls, &unavailable);
+        if (client) {
+            s->client = client;
+            df_client_enable_clipboard(client, opts->clipboard && !s->clipboard_error);
+            fprintf(stderr, "INFO: Deskflow handshake with %s:%u as \"%s\"\n", opts->host, opts->port, opts->name);
+            const int result = df_client_run(client, &g_stop);
+            s->client = NULL;
+            s->held_key_count = 0;
+            df_client_disconnect(client);
+            if (result == DF_RUN_UNKNOWN_SCREEN) {
+                if (!waiting_for_screen)
+                    fprintf(stderr, "INFO: waiting for screen \"%s\" to be added to the Deskflow server; retrying automatically\n", opts->name);
+                waiting_for_screen = true;
+                unavailable_attempts = 0;
+                gui_event("waiting-for-screen");
+            } else {
+                // Applying the layout restarts the core. A pending handshake can
+                // see EOF or CBYE before the replacement listener is ready.
+                if (result || !waiting_for_screen || s->deskflow_connected) return result;
+                unavailable = true;
+            }
+        } else if (!waiting_for_screen || !unavailable) {
+            return 1;
+        }
+        if (unavailable && ++unavailable_attempts >= 5) return 1;
+
+        // Retry every two seconds. Continue draining UHID/clipboard and the BLE
+        // service lease, and notice GUI cancellation or device removal promptly.
+        for (unsigned elapsed = 0; elapsed < 2000; elapsed += 50) {
+            if (app_stop_requested() || cb_idle(s) ||
+                (s->transport_owner && !otg_bridge_ready(&s->bridge))) return 0;
+#ifdef _WIN32
+            if (g_ble_stop_event && WaitForSingleObject(g_ble_stop_event, 0) == WAIT_OBJECT_0) {
+                g_stop = 1;
+                return 0;
+            }
+            Sleep(50);
+#else
+            poll(NULL, 0, 50);
+#endif
+        }
+    }
 }
 
 static void destroy_transport_owner(app_state *s)
@@ -1523,7 +1570,6 @@ int main(int argc, char **argv)
         .on_mouse_move = cb_mouse_move,
         .on_mouse_rel_move = cb_mouse_rel_move,
         .on_mouse_wheel = cb_mouse_wheel,
-        .on_disconnected = cb_disconnected,
         .on_idle = cb_idle,
         .on_tick = base_tick_interval || side_button_actions ? cb_tick : NULL,
         .on_tick_interval_ms = side_button_actions ? cb_tick_interval : NULL,
@@ -1597,17 +1643,7 @@ int main(int argc, char **argv)
         }
         state.display_pending = false;
         state.unlock_lock_query_pending = false;
-        df_client *client=df_client_connect_ex(opts.host,(uint16_t)opts.port,opts.name,state.bridge.screen_w,state.bridge.screen_h,
-                                               &cbs,&state,&opts.tls);
-        if(client) {
-            state.client = client;
-            df_client_enable_clipboard(client, opts.clipboard && !state.clipboard_error);
-            fprintf(stderr,"INFO: connected to deskflow server %s:%u as \"%s\"\n",opts.host,opts.port,opts.name);
-            ret=df_client_run(client,&g_stop);
-            state.client = NULL;
-            state.held_key_count = 0;
-            df_client_disconnect(client);
-        } else ret=1;
+        ret = run_deskflow(&state, &opts, &cbs);
         otg_display_monitor_destroy(state.display); state.display = NULL;
         state.display_pending = false;
         if (uhid) otg_bridge_close(&state.bridge);

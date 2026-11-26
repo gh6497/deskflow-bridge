@@ -46,6 +46,10 @@ static void check_acceptance(df_socket fd)
     CHECK(handle_message(&client, "DSOP", &msg) == -1);
     CHECK(count == 1);
     CHECK(handle_message(&client, "EUNK", &msg) == -1);
+    struct msg empty = {0};
+    CHECK(handle_message(&client, "EUNK", &empty) == DF_RUN_UNKNOWN_SCREEN);
+    client.accepted = 1;
+    CHECK(handle_message(&client, "EUNK", &empty) == -1);
     CHECK(count == 1);
 }
 

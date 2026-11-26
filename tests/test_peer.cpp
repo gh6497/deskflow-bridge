@@ -415,6 +415,7 @@ int main(int argc, char **argv)
         if (serial == "crash") QTimer::singleShot(600, &app, [] { std::_Exit(12); });
         if (uhid) output("{\"event\":\"uhid-ready\"}\n");
         else if (!ble) output("{\"event\":\"usb-ready\",\"usb-id\":\"1:2\"}\n");
+        if (serial == "slow") output("{\"event\":\"waiting-for-screen\"}\n");
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_RECONNECT") &&
             !qEnvironmentVariableIsSet("OTG_TEST_BLE_WAIT")) {
             QTimer::singleShot(250, &app, [] { output("{\"event\":\"disconnected\"}\n"); });

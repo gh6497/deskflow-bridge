@@ -105,7 +105,7 @@ deskflow 的 `PacketStreamFilter` 给**每条消息**都加一个 4 字节大端
 server 会发 `SECN`（安全输入通知）、`DFTR`、`DDRG` 等，
 这些对本程序无用，**忽略并回 CNOP 即可**。`handle_message` 的 default 分支已按此处理。
 协议 1.8 的 `LSYN` 可以在握手时到达；兼容连续语言码和逗号分隔两种格式，记录可用语言但不猜当前布局，坏列表不影响连接。
-只有 `EICV`/`EBSY`/`EUNK`/`EBAD` 才是真错误，才 `return -1` 断连。
+`EICV`/`EBSY`/`EBAD` 是错误。首次 `DSOP` 前的 `EUNK` 表示服务端尚未添加此屏幕，服务端弹窗后关闭当前 TCP；各传输保留手机会话，间隔重试新握手，等待期间 GUI 可取消。已接受会话中的 `EUNK` 仍按错误处理。
 
 ### 4. AOA HID 控制请求
 
