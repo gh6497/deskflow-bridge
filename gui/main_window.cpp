@@ -251,6 +251,7 @@ void MainWindow::retranslateUi()
     m_sideButton2Action->setItemText(2, qtTrId("otg.side_button.swipe_down"));
     m_uhidAccess->setItemText(0, qtTrId("otg.uhid.usb_access"));
     m_uhidAccess->setItemText(1, qtTrId("otg.uhid.wireless_access"));
+    if (m_uhidUsbSerial->isReadOnly()) m_uhidUsbSerial->setToolTip(qtTrId("otg.uhid.usb_serial_locked"));
     setProfileTransport(m_transport);
     QSignalBlocker languageBlocker(m_language);
     m_language->setItemText(0, qtTrId("otg.language.chinese"));
@@ -1117,6 +1118,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         auto profile = deviceProfile();
         if (m_transport == "uhid") {
             profile.remove("uhidAccess");
+            profile.remove("uhidUsbSerialLocked");
             migrateUhidTarget(profile);
         }
         m_records.insert(m_selectedId, profile);
@@ -1144,6 +1146,12 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         }
     }
     settings.endArray();
+    for (auto &profile : m_records) {
+        if (profile.value("transport") == "uhid" && !profile.contains("uhidUsbSerialLocked")) {
+            const auto key = autoConnectKey(profile);
+            profile["uhidUsbSerialLocked"] = !key.second.isEmpty() && m_profiles.contains(key);
+        }
+    }
     if (m_adapter) {
         const auto sharedValue = [&](const char *sharedKey, const char *oldKey, const QVariant &fallback) {
             return settings.value(sharedKey, legacyBle.value(oldKey, settings.value(oldKey, fallback)));
@@ -1285,6 +1293,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         updateConnectionStatus();
         const auto state = m_connections.state(id);
         if (state == Session::State::Connected) {
+            if (lockConnectedUhidUsbSerial(id)) persistDevices();
             if (m_unsavedDevices.remove(id)) {
                 if (id == m_selectedId) storeDevice();
                 persistDevices();
@@ -1703,6 +1712,7 @@ void MainWindow::addDevice()
         profile["adbSerial"] = "";
         profile["adbEnabled"] = uhid();
         profile["uhidUsbSerial"] = uhid() ? serial->text().trimmed() : QString();
+        profile["uhidUsbSerialLocked"] = false;
         profile["uhidWirelessTarget"] = uhid() ? address->text().trimmed() : QString();
         profile["uhidAccess"] = access->currentData();
         profile["originalWidth"] = width->value();
@@ -1753,6 +1763,7 @@ void MainWindow::addDevice()
     }
 
     m_records[id] = profile;
+    lockConnectedUhidUsbSerial(id);
     if (profile.value("transport") == "usb" || profile.value("uhidAccess") == "usb") rememberDevice(profile);
     persistDevices();
     selectDevice(id);
@@ -2050,6 +2061,9 @@ void MainWindow::updateEnabled()
     m_serial->setEnabled(!ble);
     m_adbEnabled->setEnabled(!uhid);
     m_adbSerial->setEnabled(adbFeatures);
+    const bool uhidUsbSerialLocked = uhid && m_records.value(m_selectedId).value("uhidUsbSerialLocked").toBool();
+    m_uhidUsbSerial->setReadOnly(uhidUsbSerialLocked);
+    m_uhidUsbSerial->setToolTip(uhidUsbSerialLocked ? qtTrId("otg.uhid.usb_serial_locked") : QString());
     m_adb->setEnabled(true);
     m_adbTest->setEnabled(adbFeatures && !m_adb->text().trimmed().isEmpty() &&
                            !adbTargetForCurrentDevice().isEmpty() && idle);
@@ -2544,15 +2558,20 @@ void MainWindow::finishBleServiceStop()
 
 QVariantMap MainWindow::deviceProfile() const
 {
+    const auto saved = m_records.value(m_selectedId);
+    const bool uhidUsbSerialLocked = saved.value("uhidUsbSerialLocked").toBool();
+    const auto uhidUsbSerial = uhidUsbSerialLocked ? saved.value("uhidUsbSerial").toString() :
+                               m_uhidUsbSerial->text().trimmed();
     return {{"serial", m_serial->text().trimmed()},
             {"adbSerial", m_adbSerial->text().trimmed()},
-            {"uhidUsbSerial", m_uhidUsbSerial->text().trimmed()},
+            {"uhidUsbSerial", uhidUsbSerial},
+            {"uhidUsbSerialLocked", uhidUsbSerialLocked},
             {"uhidWirelessTarget", m_uhidWirelessTarget->text().trimmed()},
             {"uhidAccess", m_uhidAccess->currentData()},
             {"adbEnabled", m_adbEnabled->isChecked()},
             {"alias", m_alias->text().trimmed()},
             {"transport", m_transport},
-            {"bleIdentity", m_records.value(m_selectedId).value("bleIdentity").toString()},
+            {"bleIdentity", saved.value("bleIdentity").toString()},
             {"bleAutoAttach", m_bleAutoAttach->isChecked()},
             {"autoConnect", m_autoConnectEnabled->isChecked()},
             {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},
@@ -2621,6 +2640,22 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_deviceStatus->setText(!supportsTransport(m_transport) ? qtTrId("otg.multi.transport_unavailable") :
                             m_transport == "ble" ? qtTrId(bleSetupHint) : QString());
     m_loadingDevice = false;
+}
+
+bool MainWindow::lockConnectedUhidUsbSerial(const QString &id)
+{
+    auto profile = m_records.find(id);
+    if (profile == m_records.end() || profile->value("uhidUsbSerialLocked").toBool()) return false;
+    const auto serial = m_connections.activeUhidTarget(id);
+    if (!isUsbAdbSerial(serial)) return false;
+
+    (*profile)["uhidUsbSerial"] = serial;
+    (*profile)["uhidUsbSerialLocked"] = true;
+    if (id == m_selectedId) {
+        const QSignalBlocker blocker(m_uhidUsbSerial);
+        m_uhidUsbSerial->setText(serial);
+    }
+    return true;
 }
 
 void MainWindow::rememberDevice(const QVariantMap &profile)

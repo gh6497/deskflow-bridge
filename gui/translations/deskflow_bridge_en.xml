@@ -73,6 +73,7 @@
   <message id="otg.uhid.usb_access"><source>USB ADB</source><translation>USB ADB</translation></message>
   <message id="otg.uhid.wireless_access"><source>Wireless ADB</source><translation>Wireless ADB</translation></message>
   <message id="otg.uhid.usb_serial"><source>USB ADB serial</source><translation>USB ADB serial</translation></message>
+  <message id="otg.uhid.usb_serial_locked"><source>This serial is locked after a successful USB ADB connection.</source><translation>This serial is locked after a successful USB ADB connection.</translation></message>
   <message id="otg.uhid.wireless_target"><source>Wireless ADB address</source><translation>Wireless ADB address</translation></message>
   <message id="otg.uhid.wireless_hint"><source>Connection address, e.g. 192.0.2.10:39833</source><translation>Connection address, e.g. 192.0.2.10:39833</translation></message>
   <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>Enter ADB target manually</translation></message>

@@ -73,6 +73,7 @@
   <message id="otg.uhid.usb_access"><source>USB ADB</source><translation>USB ADB</translation></message>
   <message id="otg.uhid.wireless_access"><source>Wireless ADB</source><translation>无线 ADB</translation></message>
   <message id="otg.uhid.usb_serial"><source>USB ADB serial</source><translation>USB ADB 序列号</translation></message>
+  <message id="otg.uhid.usb_serial_locked"><source>This serial is locked after a successful USB ADB connection.</source><translation>首次通过 USB ADB 连接成功后，序列号固定为只读。</translation></message>
   <message id="otg.uhid.wireless_target"><source>Wireless ADB address</source><translation>无线 ADB 地址</translation></message>
   <message id="otg.uhid.wireless_hint"><source>Connection address, e.g. 192.0.2.10:39833</source><translation>连接地址，例如 192.0.2.10:39833</translation></message>
   <message id="otg.uhid.manual"><source>Enter ADB target manually</source><translation>手动填写 ADB 目标</translation></message>
