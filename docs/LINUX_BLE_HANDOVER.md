@@ -2,19 +2,21 @@
 
 ## 接手摘要
 
-**当前版支持从手机发起配对和连接。GUI 自动发现手机身份并按身份复用或创建配置，用户不需要填写手机蓝牙地址。第 1～8 节保留历史记录，
+**当前版默认使用 Linux 多机共享定向服务。GUI 自动发现手机身份并按身份复用或创建配置，用户不需要填写手机蓝牙地址。第 1～8 节保留历史记录，
 当前用法见下文。不要擅自停止仍在使用的蓝牙会话。**
 
 ```bash
-deskflow-bridge --ble-service --adapter hci0
-# 在另一个终端启动桥接，再从手机蓝牙设置连接电脑当前的蓝牙名称
-deskflow-bridge --transport ble --ble-session --adapter hci0 --name android --width 1080 --height 2400
+# GUI 会启动共享服务并管理多台手机
+deskflow-bridge-gui
+# CLI 会话接入已经运行的共享服务
+deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 \
+    --ble-peer AA:BB:CC:DD:EE:FF --name android --width 1080 --height 2400
 ```
 
-服务通过 Linux 只读 `HCIGETCONNLIST` 核对唯一的 LE 链路、本机的 peripheral 角色及匹配的
-BlueZ `Device1`。经典蓝牙同时在线时，两路订阅必须来自该手机的 LE 链路。BlueZ 通过
-`AcquireNotify` 提供对端和链路信息，再回退到 `StartNotify` 发送通知，保留常驻服务内的订阅
-连续性。设备已配对后，自动模式记住其 `Device1.Address`。常驻服务保留期间，原手机的 LE
+共享服务通过 Linux 只读 `HCIGETCONNLIST` 核对每条 LE 链路、本机的 peripheral 角色及匹配的
+BlueZ `Device1`。经典蓝牙同时在线时，每台手机的两路订阅必须来自对应 LE 链路。BlueZ 通过
+`AcquireNotify` 提供对端和链路信息，再回退到 `StartNotify` 发送通知，服务为每台手机保留独立
+的定向输入通道。设备已配对后，自动模式记住其 `Device1.Address`。常驻服务保留期间，原手机的 LE
 链路重连可复用原订阅。若手机只使用缓存而未重新订阅新服务，请从手机端重新连接蓝牙。
 
 常驻服务保留已核验的设备身份。更换手机时由 GUI 等待新设备并建立对应配置。IPC 仍是 v2，服务可通过
@@ -34,7 +36,7 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 ```
 
 切换布局前显式停止空闲服务，手机可能需要重新发现 HID 服务。布局在 GATT 注册期间固定。
-若手机选择了经典蓝牙连接，可用独立的仅 BLE 模式验证。这会暂时断开适配器上的其他连接。
+共享服务启动时会由监督器将选定适配器切换到仅 BLE 模式，这会暂时断开适配器上的其他连接。
 
 2026-11-24 在 Linux Mint 22.3、BlueZ 5.72、Intel AX210 与 OPPO R17 上验证。原布局在仅 BLE
 模式下能完成加密连接和描述符读取，抓包只看到 `0x000b` 的 CCCD 写入，重新配对后仍未就绪。
@@ -102,7 +104,7 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 | --- | --- |
 | `src/bridge.h/.c` | `otg_hid_transport_ops`，默认 AOA 适配器、共享描述符/报告编码、输入复位 |
 | `platform/linux/ble_hid.h/.c` | GIO/BlueZ GATT、广告、HID 报告、Device1 在线/配对状态、坐标合并与 IPC |
-| `platform/linux/ble_supervisor.h/.c` | 原生 root 隔离父进程，MGMT 快照/切换/核对恢复、runuser 子进程、锁 |
+| `platform/linux/ble_supervisor.h/.c` | 共享服务的 root 监督进程，MGMT 快照/切换/核对恢复、runuser 子进程、锁 |
 | `platform/linux/ble_link.h/.c` | root 父进程的 HCI 连接/加密/更新事件监控、低延迟请求及实际间隔通知 |
 | `platform/linux/ble_session.h/.c` | 普通用户常驻 GATT 服务、私有 Unix IPC 会话、EOF/lease 清理及空闲状态检查 |
 | `src/main.c` | 新 CLI 参数、BLE 等待与 Deskflow TCP 重连；USB 仍使用原有单次连接流程 |
@@ -135,8 +137,8 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 
 ### 原生监督与恢复
 
-- `--ble-isolate` 是显式、需 sudo 的 CLI 选项，可能断开该适配器上的全部蓝牙连接。
-  默认 USB、普通 `--transport ble` 不会静默切换模式。GUI 没有新增 BLE 控件。
+- Linux GUI 默认通过共享服务启动监督器，可能断开该适配器上的全部蓝牙连接。
+  独立单机隔离入口已移除。默认 USB 和普通 BLE 会话不会静默切换模式。
 - root 父进程使用 Linux MGMT API，不调用 Python、btmgmt，不改配置文件、不重启 bluetoothd。
   使用固定的 `/usr/sbin/runuser` 以 sudo 发起者的普通用户身份运行自己的桥接子进程。
 - `/run/deskflow-bridge-ble-hciN.lock` 防并发；root 专用 `.state` 快照绑定适配器地址。
@@ -144,14 +146,14 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 - 正常退出/可捕获信号触发恢复。普通桥接子进程 SIGKILL 后，存活的常驻服务/父进程可清理；
   root supervisor 自身 SIGKILL、断电不能自动清理；`/run` 不跨重启持久化。
 - `--ble-restore` 仅识别原生 `.state`，不读取旧 Python 实验脚本的 JSON 文件。
-- `platform/linux/ble_link.c` 仅对唯一、已加密、本机为 peripheral 的已观测 LE 链路请求 7.5～15ms。
+- `platform/linux/ble_link.c` 对共享服务中的唯一、已加密、本机为 peripheral 的已观测 LE 链路请求 7.5～15ms。
   通过专用 Unix datagram FD 传递 `ready:hciN` 和实测间隔，不接受子进程指定 HCI 命令/句柄。
 - Command Status 成功只表示请求被接受；必须看到 LE Connection Update Complete 才能确认
   新参数。拒绝或 5 秒未确认时保留链路，不无限重试。
 
 ## 3. 新会话启动与检查
 
-先检查 `git status`、分支和已有 PR；本分支未发布。不要启动第二个隔离进程。
+先检查 `git status`、分支和已有 PR；本分支未发布。不要启动第二个共享服务。
 如果旧 Python 隔离入口仍在运行，先正常结束、等待它恢复完毕。不要直接删其恢复快照。
 
 ```bash
@@ -159,9 +161,7 @@ cmake -S . -B build -DBUILD_BLE=ON -DBUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 
-sudo ./build/deskflow-bridge --transport ble --ble-isolate --adapter hci0 \
-  --host 127.0.0.1 --port 24800 --name android \
-  --width 1080 --height 2340
+./build/deskflow-bridge-gui
 ```
 
 只需要 USB、或系统没有 GIO 开发包时：`-DBUILD_BLE=OFF`，不会查找 pkg-config/GLib。
@@ -285,8 +285,8 @@ sudo ./build/deskflow-bridge --ble-restore --adapter hci0
 
 - `--ble-service`：普通用户前台服务，不隐式安装/后台运行；首次会话才创建 BlueZ GATT，
   空闲时不广告、不修改名称、不发送输入，但保留应用及真实订阅状态。
-- `--transport ble --ble-session`：通过同 UID 的私有 Unix seqpacket 接入；可叠加原生
-  `--ble-isolate`。只有 root supervisor 切换/恢复模式，常驻服务永不运行 MGMT/HCI 命令。
+- `--transport ble --ble-session`：通过同 UID 的私有 Unix seqpacket 接入共享服务。只有 root
+  supervisor 切换/恢复模式，常驻服务永不运行 MGMT/HCI 命令。
 - 目录 0700、socket 0600；SO_PEERCRED 核对双方 UID、版本/包长校验、单会话占用，
   root 仅可读取 idle 状态，不可接管会话发送输入。旧 socket 在持有本适配器锁后才清理。
 - 会话正常关闭、IPC EOF 或 5 秒无 IPC 时：松键/结束范围、清除待发移动、停广告、恢复名称；
@@ -315,7 +315,7 @@ Alias=`len-mint`、ActiveInstances=0、`.state` 已清理。这是本轮旧实�
 
 已启动普通用户 `--ble-service --adapter hci0`，确认仅处于监听/空闲状态，目录 0700、
 socket 0600；日志 `/tmp/opencode/ble-native-review/resident-aEMphpoG/service.log`。
-新桥接会话尚未启动，等待用户在终端 sudo 启动 `--ble-session --ble-isolate` 并抓包。
+新桥接会话尚未启动，等待用户在 GUI 中启动共享定向会话并抓包。
 
 随后用户启动首个新会话并点击手机已有配对设备：电脑 Connected=yes，手机显示“已保存”。
 `resident-aEMphpoG/start.log` 表明已有 LTK 回复成功、AES-CCM 加密成功、HID 服务/特征/CCC

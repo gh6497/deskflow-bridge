@@ -201,9 +201,6 @@ private slots:
             o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.adapter = "hci65535";
         });
 #elif defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
-        row("windows-isolation", "otg.error.ble_isolate_windows", [](auto &o) {
-            o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.bleIsolate = true;
-        });
         row("windows-adapter", "otg.error.ble_adapter_windows", [](auto &o) {
             o.transport = "ble"; o.blePeer = "AA:BB:CC:DD:EE:FF"; o.adapter = "hci0";
         });
@@ -756,14 +753,23 @@ private slots:
         ConnectionOptions usb;
         usb.bridge = peerPath(); usb.manageServer = false; usb.serial = "A"; usb.phone = "a";
         auto ble = usb; ble.transport = "ble"; ble.serial.clear(); ble.phone = "b";
+        ble.blePeer = "AA:BB:CC:DD:EE:FF";
+#ifdef Q_OS_LINUX
+        ble.preferDirectedBle = true;
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
+        const auto restoreBle = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
+#endif
         QVERIFY(manager.start("usb", usb));
         QVERIFY(manager.start("ble", ble));
         QTRY_COMPARE(manager.state("usb"), Session::State::Connected);
         QTRY_COMPARE(manager.state("ble"), Session::State::Connected);
         auto other = ble; other.phone = "c"; other.blePeer = "11:22:33:44:55:66";
-        QVERIFY(!manager.start("other", other));
+        QVERIFY(manager.start("other", other));
+        QTRY_COMPARE(manager.state("other"), Session::State::Connected);
         manager.stop("ble");
         QTRY_COMPARE(manager.state("ble"), Session::State::Idle);
+        manager.stop("other");
+        QTRY_COMPARE(manager.state("other"), Session::State::Idle);
         QCOMPARE(manager.state("usb"), Session::State::Connected);
         manager.shutdown();
         QTRY_VERIFY(manager.settled());
@@ -786,7 +792,7 @@ private slots:
         options.blePeer = "AA:BB:CC:DD:EE:01";
         options.preferDirectedBle = true;
         QStringList confirmed;
-        options.confirmSharedBleIsolation = [&confirmed](const QString &adapter) {
+        options.confirmSharedBleService = [&confirmed](const QString &adapter) {
             confirmed << adapter;
             return true;
         };
@@ -830,7 +836,7 @@ private slots:
         manager.addDevice("a"); manager.addDevice("b"); manager.addDevice("c");
         ConnectionOptions a;
         a.bridge = peerPath(); a.manageServer = false; a.transport = "ble";
-        a.blePeer = "AA:BB:CC:DD:EE:01"; a.phone = "k20";
+        a.blePeer = "AA:BB:CC:DD:EE:01"; a.phone = "k20"; a.preferDirectedBle = true;
         auto b = a; b.phone = "r17"; b.blePeer = a.blePeer.toLower();
         QVERIFY(manager.start("a", a));
         QVERIFY(!manager.start("b", b));
@@ -1129,6 +1135,10 @@ private slots:
         options.bridge = peerPath();
         options.transport = "ble";
         options.blePeer = "AA:BB:CC:DD:EE:FF";
+#ifdef Q_OS_LINUX
+        options.preferDirectedBle = true;
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
+#endif
         Session session;
         QSignalSpy usb(&session, &Session::usbAttached);
         qputenv("OTG_TEST_BLE_RECONNECT", "1");
@@ -1153,13 +1163,13 @@ private slots:
         qputenv("OTG_TEST_BLE_STATUS", "busy");
         session.start(options);
         QTRY_COMPARE(session.state(), Session::State::Idle);
-        QVERIFY(session.statusMessage().contains("已有会话"));
-        qunsetenv("OTG_TEST_BLE_STATUS");
+        QCOMPARE(session.statusMessage(), qtTrId("otg.multi.stop_single_service"));
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
         options.bleLegacyHandles = true;
         session.start(options);
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QCOMPARE(session.statusMessage(), qtTrId("otg.ble.handle_layout_mismatch"));
-        qputenv("OTG_TEST_BLE_STATUS", "legacy");
+        qputenv("OTG_TEST_BLE_STATUS", "directed-legacy");
         session.start(options);
         QTRY_COMPARE(session.state(), Session::State::Connected);
         session.stop();
@@ -1184,10 +1194,6 @@ private slots:
         QCOMPARE(session.state(), Session::State::Idle);
 #ifdef Q_OS_WIN
         options.mouseMode = "absolute";
-        options.bleIsolate = true;
-        session.start(options);
-        QCOMPARE(session.state(), Session::State::Idle);
-        options.bleIsolate = false;
         options.adapter = "hci0";
         session.start(options);
         QCOMPARE(session.state(), Session::State::Idle);

@@ -83,11 +83,7 @@ Session::Session(QObject *parent, std::shared_ptr<BleStartupCoordinator> bleStar
         fail("otg.error.connection_timeout");
     });
     connect(&m_killBridge, &QTimer::timeout, this, [this] {
-        // Never SIGKILL a privileged supervisor: it owns mode recovery.
-        if (m_options.transport == "ble" && m_options.bleIsolate) {
-            emit log(qtTrId("otg.ble.recovery_wait"));
-            return;
-        }
+        // The bridge child is unprivileged. The shared supervisor owns adapter recovery.
         emit log(qtTrId("otg.log.bridge_killed"));
         m_bridge.kill();
     });
@@ -342,7 +338,7 @@ void Session::start(const ConnectionOptions &options)
         fail(error);
         return;
     }
-    if (options.unlockAdb && options.transport == "ble" && options.bleIsolate) {
+    if (options.unlockAdb && options.transport == "ble") {
         /* pkexec deliberately drops arbitrary environment variables. Keep
          * the PIN out of argv and hand it to the unprivileged child through
          * a private temporary file whose path survives the supervisor. */
@@ -365,10 +361,6 @@ void Session::start(const ConnectionOptions &options)
         return;
     }
 #elif defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
-    if (ble && options.bleIsolate) {
-        fail("otg.error.ble_isolate_windows");
-        return;
-    }
     if (ble && !options.adapter.isEmpty()) {
         fail("otg.error.ble_adapter_windows");
         return;
@@ -410,8 +402,7 @@ void Session::prepareBle(bool started, int attempts)
                 fail("otg.multi.stop_single_service");
                 return;
             }
-            if (m_directedBle && (m_options.bleIsolate ||
-                (m_options.blePeer.isEmpty() && !m_options.bleDiscovery))) {
+            if (m_directedBle && (m_options.blePeer.isEmpty() && !m_options.bleDiscovery)) {
                 fail("otg.multi.directed_required");
                 return;
             }
@@ -514,13 +505,13 @@ void Session::launchDirectedBle(const QString &token, const QString &logPath)
     m_bleStartup->pending = launch;
     m_bleLaunch = launch;
     const auto generation = m_generation;
-    const auto confirm = m_options.confirmSharedBleIsolation;
+    const auto confirm = m_options.confirmSharedBleService;
     if (confirm && !confirm(launch->adapter)) {
-        launch->error = "otg.ble.shared_isolation_cancelled";
+        launch->error = "otg.ble.shared_service_cancelled";
         return;
     }
     if (generation != m_generation || m_state != State::Starting) {
-        launch->error = "otg.ble.shared_isolation_cancelled";
+        launch->error = "otg.ble.shared_service_cancelled";
         return;
     }
 
@@ -561,7 +552,7 @@ void Session::launchDirectedBle(const QString &token, const QString &logPath)
         launch->detail = service.errorString();
         return;
     }
-    emit log(qtTrId("otg.ble.starting_shared_isolation").arg(launch->adapter));
+    emit log(qtTrId("otg.ble.starting_shared_service").arg(launch->adapter));
 }
 #endif
 
@@ -702,7 +693,7 @@ void Session::launchBridge()
         if (m_options.autoRotate) args << "--auto-rotate";
         if (m_options.adbSerial.isEmpty()) args << "--adb-serial" << m_options.serial;
     }
-    if (ble && m_options.bleIsolate && m_options.unlockAdb)
+    if (ble && m_options.unlockAdb)
         args << "--unlock-pin-file" << m_unlockPinFile.fileName();
     if (m_options.tls) {
         args << "--tls";
@@ -717,14 +708,8 @@ void Session::launchBridge()
         setState(State::Starting, "otg.ble.waiting");
 #ifdef Q_OS_LINUX
         args << "--ble-session" << "--adapter" << m_options.adapter;
-        if (m_directedBle) args << "--ble-directed-session";
+        args << "--ble-directed-session";
         if (m_options.bleLegacyHandles) args << "--ble-legacy-handles";
-        if (m_options.bleIsolate) {
-            args.prepend(m_options.bridge);
-            args << "--ble-isolate";
-            m_bridge.start("/usr/bin/pkexec", args);
-            return;
-        }
 #endif
     } else if (m_options.transport == "uhid") {
         args << "--transport" << "uhid";

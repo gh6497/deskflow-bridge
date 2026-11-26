@@ -239,8 +239,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   重连/休眠/进程重启已验收。Redmi Android14 ROM 的 LHDC 白名单超91字节导致
   配对时蓝牙崩溃，未修改手机配置。用法与限制见 `docs/WINDOWS_BLE.md`。
 
-- Linux BLE 实验后端通过 `sudo deskflow-bridge --transport ble --ble-isolate` 原生启动，
-  不依赖 Python。`platform/linux/ble_supervisor.c` 使用 Linux MGMT API 快照/隔离/核对恢复，
+- Linux BLE 共享服务由 GUI 通过监督器原生启动，不依赖 Python。`platform/linux/ble_supervisor.c` 使用 Linux MGMT API 快照/切换/核对恢复，
   通过 `/usr/sbin/runuser` 降权运行自己的桥接子进程；父进程用 `platform/linux/ble_link.c` 监控 HCI。
   桥接通过继承的 Unix datagram FD（`OTG_BLE_LATENCY_FD`）传递订阅就绪
   与实测连接间隔。只对唯一、已加密、本机为 peripheral 的已观测 LE 连接请求 7.5～15ms；
@@ -261,8 +260,8 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   `test_ble_supervisor.c` mock MGMT 验证恢复，`test_ble_link.c` 验证实际 HCI 确认，
   `test_ble_pointer.c` 验证坐标/状态屏障与已配对 CCC 保留重连。历史 Python 仅作回归参考。
   构建/模拟不等于真机免重配或硬件恢复验证完成，仍需用户实测确认。
-  新实验路径：普通用户前台 `--ble-service --adapter hciN` 保持 GATT 注册，
-  桥接通过 `--transport ble --ble-session` 接入，可叠加 `--ble-isolate`。
+  共享服务由普通用户 `--ble-service` 保持 GATT 注册，桥接通过
+  `--transport ble --ble-session --ble-directed-session` 接入。独立单机隔离入口已移除。
   `platform/linux/ble_session.c` 使用私有 Unix seqpacket、双方 UID/版本/包长核对和独占会话；
   断开/EOF/5 秒无 IPC 释放输入、停广告、恢复名称，不注销 GATT。父进程在模式恢复前
   通过只读状态检查空闲；失败保留快照。仅支持 absolute、固定描述符，禁止伪造 CCC。
@@ -429,7 +428,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   键鼠 Value 信号定向发送给 BlueZ。多条 LE 链路、链路不可核对，或经典蓝牙在线但订阅无法
   归属时关闭输入。
   GUI 蓝牙模式不扫描 ADB/USB，不使用 USB 自动连接；后台启动/复用普通用户服务，退出保留服务。
-  仅 BLE 隔离默认关闭，须确认全适配器断连影响，再用 `/usr/bin/pkexec` 认证；监督器识别
+  共享 Linux 服务启动须确认全适配器断连影响，再用 `/usr/bin/pkexec` 认证；监督器识别
   PKEXEC_UID/SUDO_UID，继承桥接 stdin，实现取消/EOF 优雅恢复；GUI 不强杀特权恢复进程。
   DEB 根据 BUILD_FEATURES.json 添加运行依赖和可选用户 systemd 单元，但安装不自动启动服务。
   GUI/新身份门控的离线通过不代表提权、缓存迁移、系统重启或完整真机输入验收完成。
@@ -440,8 +439,8 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   旧版 AOSP HID Host 会将 CCCD 查找用的特征句柄截成 8 位。Linux `--ble-legacy-handles` 使用
   `0x0040..0x0051`，默认布局为 `0x0100..0x0111`。常驻服务和桥接会话须使用相同布局，IPC v2
   用独立接入操作核对兼容模式，保留旧版标准模式和状态查询。GUI 在「共享服务 → 蓝牙服务」
-  统一设置适配器、仅 BLE 模式和低句柄布局，切换前显式停止空闲服务。连接方式和手机地址按设备保存。
-  仅 BLE 隔离单独控制经典蓝牙链路。2026-11-24，OPPO R17 在 BlueZ 5.72、低句柄
+  统一设置适配器、低句柄布局，切换前显式停止空闲服务。连接方式和手机地址按设备保存。
+  共享服务在启动时统一使用仅 BLE 模式。2026-11-24，OPPO R17 在 BlueZ 5.72、低句柄
   与仅 BLE 模式组合下，已由用户确认键盘和鼠标工作正常。
 
 - `-DBUILD_GUI=ON` 启用 Qt Widgets 桌面端；默认 OFF 保留纯 C 构建。GUI 支持 Linux、macOS、Windows。
@@ -474,9 +473,9 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   UHID 首次经 USB ADB 到达 Deskflow Connected 后锁定该配置的序列号。旧配置仅在存在对应的成功 USB UHID 记录时迁移为只读。
   AOA/UHID 的「添加设备」窗口负责刷新、选择目标和首次连接。等待或失败时保留窗口供重试，取消只停止该窗口发起的会话。
   首次 Deskflow Connected 后才加入设备列表和保存。蓝牙仍由共享服务发现，首次接入 Deskflow 后保存配置。
-  多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）；Windows 多机须显式开启共享 provider 模式。
-  Linux 多机 BLE 使用 `--ble-service --ble-multi TOKEN --ble-isolate` 与 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
-  GUI 多设备选项默认关闭。启用后有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。
+  多 USB 可与 BLE 共存。Linux BLE 服务默认使用共享定向模式，Windows 多机须显式开启共享 provider 模式。
+  Linux 多机 BLE 使用 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
+  GUI Linux 默认有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。
   每个会话保留唯一身份和屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和
   该连接的两条通知 FD 发送。不能将未重建的 FD 当作已恢复的 CCC，不能回退全局 Value 广播。
   隔离由共享服务监督器持有。GUI 共用一次启动确认和管理员认证，通过启动管道取消尚未接入的服务。
