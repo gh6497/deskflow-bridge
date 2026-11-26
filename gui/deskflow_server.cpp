@@ -3,6 +3,7 @@
 #include "device_info.h"
 #include "process_utils.h"
 #include <QFile>
+#include <QFileInfo>
 #include <QSettings>
 #include <QTcpServer>
 
@@ -87,10 +88,6 @@ void DeskflowServer::start(const ServerOptions &options)
         fail("otg.error.computer_screen_name");
         return;
     }
-    if (options.configuration.isEmpty()) {
-        fail("otg.error.server_layout_required");
-        return;
-    }
     if (options.port < 1 || options.port > 65535) {
         fail("otg.error.port_range");
         return;
@@ -98,6 +95,19 @@ void DeskflowServer::start(const ServerOptions &options)
     if (options.program.isEmpty()) {
         fail("otg.error.deskflow_program_required");
         return;
+    }
+    if (options.configFile.isEmpty()) {
+        fail("otg.error.deskflow_config_required");
+        return;
+    }
+    QFileInfo config(options.configFile);
+    m_options.configFile = config.absoluteFilePath();
+    {
+        QFile file(m_options.configFile);
+        if (!config.isFile() || !file.open(QIODevice::ReadOnly)) {
+            fail("otg.error.deskflow_config_unreadable", m_options.configFile);
+            return;
+        }
     }
     QTcpServer check;
     if (!check.listen(QHostAddress::LocalHost, quint16(options.port))) {
@@ -116,14 +126,7 @@ void DeskflowServer::start(const ServerOptions &options)
 
 void DeskflowServer::launch(const QString &help)
 {
-    if (!m_directory.isValid()) { fail("otg.error.write_layout"); return; }
-    const auto layout = m_directory.filePath("screens.conf");
-    QFile file(layout);
-    const auto bytes = m_options.configuration.toUtf8();
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(bytes) != bytes.size()) {
-        fail("otg.error.write_layout", file.errorString()); return;
-    }
-    file.close();
+    if (!m_directory.isValid()) { fail("otg.error.write_settings"); return; }
     const auto path = m_directory.filePath("deskflow.ini");
     QSettings settings(path, QSettings::IniFormat);
     settings.clear();
@@ -138,7 +141,7 @@ void DeskflowServer::launch(const QString &help)
     if (m_options.tls && !m_options.tlsCertificate.isEmpty())
         settings.setValue("security/certificate", m_options.tlsCertificate);
     settings.setValue("server/externalConfig", true);
-    settings.setValue("server/externalConfigFile", layout);
+    settings.setValue("server/externalConfigFile", m_options.configFile);
     settings.setValue("server/enableClipboard", false);
     settings.setValue("log/level", 3);
     settings.sync();
@@ -148,7 +151,7 @@ void DeskflowServer::launch(const QString &help)
         args = {"server", "--settings", path};
     } else if (help.contains("--config") && help.contains("--name") &&
                help.contains("--address") && help.contains("--no-daemon")) {
-        args = {"--no-daemon", "--name", m_options.computer, "--config", layout,
+        args = {"--no-daemon", "--name", m_options.computer, "--config", m_options.configFile,
                 "--address", "127.0.0.1:" + QString::number(m_options.port)};
         if (m_options.tls) {
             if (help.contains("--enable-crypto")) args << "--enable-crypto";
@@ -158,7 +161,6 @@ void DeskflowServer::launch(const QString &help)
         else if (help.contains("--settings")) args << "--settings" << path;
         else if (!help.contains("--enable-crypto")) { fail("otg.error.disable_tls"); return; }
     } else { fail("otg.error.deskflow_interface"); return; }
-    emit log(qtTrId("otg.log.screen_config") + m_options.configuration);
     m_process.start(m_options.program, args);
 }
 

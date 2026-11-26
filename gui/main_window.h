@@ -82,11 +82,8 @@ private:
     void selectDevice(const QString &id);
     void storeDevice();
     void updateDeviceList();
-    void updateScreenNeighbors();
-    void updateLayoutWarning();
     void connectAll();
     ConnectionOptions connectionOptions(const QVariantMap &profile) const;
-    QString layoutConfiguration() const;
     void persistDevices();
     void updateAutoConnect();
     void regenerateTlsCertificate();
@@ -96,7 +93,8 @@ private:
     QString adbTargetForCurrentDevice() const;
     void appendLog(const QString &text, const QString &id = {});
     void refreshLog();
-    QWidget *pathField(QLineEdit *&field, const char *placeholderId);
+    QWidget *pathField(QLineEdit *&field, const char *placeholderId,
+                       const char *dialogId = nullptr);
     struct TextBinding {
         QPointer<QObject> object;
         QByteArray property;
@@ -116,8 +114,7 @@ private:
     QTabWidget *m_tabs;
     QWidget *m_deviceBox, *m_sharedBox;
     QLineEdit *m_alias;
-    QComboBox *m_neighbor;
-    QLabel *m_layoutWarning, *m_summary;
+    QLabel *m_summary;
     QPushButton *m_connectAll, *m_disconnectAll, *m_addDevice, *m_removeDevice;
     UsbAutoConnect m_autoConnect, m_adbAutoConnect;
     CompanionApp m_companion;
@@ -142,7 +139,7 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QAction *m_trayDisconnect = nullptr;
     QWidget *m_form;
-    QComboBox *m_devices, *m_direction, *m_mouseMode, *m_middleButtonAction, *m_rightButtonAction,
+    QComboBox *m_devices, *m_mouseMode, *m_middleButtonAction, *m_rightButtonAction,
               *m_sideButton1Action, *m_sideButton2Action;
     QCheckBox *m_unlockEnabled, *m_unlockWithSpace, *m_absolutePerAxis;
     QLineEdit *m_unlockPin;
@@ -157,7 +154,7 @@ private:
     QPushButton *m_stopBleService = nullptr;
     QPushButton *m_startBleService = nullptr;
     bool m_stoppingBleService = false;
-    QLineEdit *m_serial, *m_adbSerial, *m_adb, *m_deskflow, *m_host, *m_computer, *m_phone;
+    QLineEdit *m_serial, *m_adbSerial, *m_adb, *m_deskflow, *m_deskflowConfig, *m_host, *m_computer, *m_phone;
     QLineEdit *m_tlsCert, *m_tlsFingerprint, *m_tlsFingerprintFile;
     QComboBox *m_tlsKeyLength;
     QPushButton *m_tlsRegenerateCertificate;

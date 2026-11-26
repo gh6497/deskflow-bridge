@@ -31,8 +31,7 @@ Windows CI 也编译此 CLI 后端并执行不访问蓝牙的回归测试。
 ### GUI 构建与使用
 
 安装 Qt 6.8+ 后，在上述配置中改用 `-DBUILD_GUI=ON`，并通过 `-DCMAKE_PREFIX_PATH`
-指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，在「共享服务 → 蓝牙服务」点击「启动蓝牙服务」，再从手机蓝牙设置配对或连接电脑。自动发现的设备配置中，连接方式固定为低功耗蓝牙。GUI 可自动配置并
-启动自己管理的 Deskflow server，也可使用已有的明文 server；蓝牙模式不调用 ADB、不自动连接 USB。
+指定 Qt 前缀。启动 `build-win-ble/Release/deskflow-bridge-gui.exe`，在「共享服务 → 蓝牙服务」点击「启动蓝牙服务」，再从手机蓝牙设置配对或连接电脑。自动发现的设备配置中，连接方式固定为低功耗蓝牙。屏幕布局在 Deskflow 中设置。GUI 可直接使用已有服务，也可使用从 Deskflow 导出的服务端配置自动启动本机服务。蓝牙模式不调用 ADB、不自动连接 USB。
 
 GUI 使用 `--gui --gui-ble-control --gui-ble-auto --transport ble` 前台子进程。蓝牙身份由 provider 自动发现，GUI 根据身份选择或创建设备配置。子进程不接收 `--adapter`、
 `--ble-session`、隔离/提权或 `--background` 参数。等待配对无固定超时，可随时点「断开」取消；

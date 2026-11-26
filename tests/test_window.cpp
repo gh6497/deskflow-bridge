@@ -799,8 +799,6 @@ private slots:
         QTest::newRow("right button") << QStringLiteral("rightButtonAction");
         QTest::newRow("side button 1") << QStringLiteral("sideButton1Action");
         QTest::newRow("side button 2") << QStringLiteral("sideButton2Action");
-        QTest::newRow("screen position") << QStringLiteral("screenPosition");
-        QTest::newRow("screen neighbor") << QStringLiteral("screenNeighbor");
         QTest::newRow("TLS key length") << QStringLiteral("tlsKeyLength");
         QTest::newRow("log filter") << QStringLiteral("logFilter");
     }
@@ -1301,9 +1299,17 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings settings;
         settings.setValue("adb", "");
-        settings.setValue("deskflow", QCoreApplication::applicationDirPath() + "/test_peer");
+        settings.setValue("deskflow", testPeerPath());
         settings.setValue("manageServer", true);
         settings.setValue("language", "zh_CN");
+        settings.setValue("direction", "left"); // Legacy setting must not affect the exported layout.
+        QFile config(settingsDir.filePath("Deskflow screens.conf"));
+        const QByteArray contents = "section: screens\n  computer:\n  android:\n  android2:\nend\n\n"
+                                    "section: links\n  computer:\n    down = android2\n    right = android\n"
+                                    "  android2:\n    up = computer\n  android:\n    left = computer\nend\n";
+        QVERIFY(config.open(QIODevice::WriteOnly));
+        QCOMPARE(config.write(contents), contents.size());
+        config.close();
         QTcpServer allocator;
         QVERIFY(allocator.listen(QHostAddress::LocalHost));
         const auto port = allocator.serverPort(); allocator.close();
@@ -1321,20 +1327,24 @@ private slots:
             auto *width = window.findChild<QSpinBox *>("screenWidth");
             auto *audio = window.findChild<QCheckBox *>("audioEnabled");
             auto *manageServer = window.findChild<QCheckBox *>("manageServer");
-            auto *neighbor = window.findChild<QComboBox *>("screenNeighbor");
-            auto *direction = window.findChild<QComboBox *>("screenPosition");
-            auto *layoutWarning = window.findChild<QLabel *>("layoutWarning");
+            auto *configFile = window.findChild<QLineEdit *>("deskflowConfigFile");
             auto *connectButton = window.findChild<QPushButton *>("connectButton");
             QVERIFY(manager && list && tabs && serial && screenName && alias && width && audio);
-            QVERIFY(manageServer && neighbor && direction && layoutWarning);
+            QVERIFY(manageServer && configFile);
             QCOMPARE(tabs->count(), 2);
             QCOMPARE(tabs->tabText(0), QStringLiteral("设备配置"));
             QCOMPARE(tabs->tabText(1), QStringLiteral("共享服务"));
             QVERIFY(tabs->widget(1)->isAncestorOf(manageServer));
-            QCOMPARE(neighbor->parentWidget(), screenName->parentWidget());
-            QCOMPARE(direction->parentWidget(), screenName->parentWidget());
-            QVERIFY(!window.findChild<QWidget *>("screenLayoutCanvas"));
-            QVERIFY(layoutWarning->isHidden());
+            QVERIFY(tabs->widget(0)->isAncestorOf(screenName));
+            QVERIFY(tabs->widget(1)->isAncestorOf(configFile));
+            QVERIFY(!window.findChild<QWidget *>("screenNeighbor"));
+            QVERIFY(!window.findChild<QWidget *>("screenPosition"));
+            QVERIFY(configFile->isEnabled());
+            manageServer->setChecked(false);
+            QVERIFY(!configFile->isEnabled());
+            manageServer->setChecked(true);
+            QVERIFY(configFile->isEnabled());
+            configFile->setText(config.fileName());
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(true);
             QCOMPARE(list->count(), 1);
             serial->setText("A"); alias->setText("Redmi K20 Pro"); width->setValue(1234);
@@ -1342,20 +1352,10 @@ private slots:
             QCOMPARE(list->count(), 2);
             QCOMPARE(screenName->text(), "android2");
             QCOMPARE(alias->text(), "android2");
-            QCOMPARE(neighbor->currentData().toString(), "android");
-            neighbor->setCurrentIndex(neighbor->findData("computer"));
-            QVERIFY(!layoutWarning->isHidden()); // Both devices would use the computer's right edge.
-            manageServer->setChecked(false);
-            QVERIFY(!neighbor->isEnabled() && !direction->isEnabled());
-            QVERIFY(layoutWarning->isHidden());
-            manageServer->setChecked(true);
-            QVERIFY(neighbor->isEnabled() && direction->isEnabled());
-            QVERIFY(!layoutWarning->isHidden());
-            neighbor->setCurrentIndex(neighbor->findData("android"));
-            direction->setCurrentIndex(direction->findData("down"));
-            QVERIFY(layoutWarning->isHidden());
+            QCOMPARE(configFile->text(), config.fileName());
             const auto secondId = list->currentItem()->data(Qt::UserRole).toString();
             QVERIFY(secondId != "initial");
+            tabs->setCurrentIndex(0);
             auto *transport = window.findChild<QComboBox *>("transportSelector");
             transport->setCurrentIndex(transport->findData("usb"));
             window.findChild<QCheckBox *>("adbEnabled")->setChecked(false);
@@ -1364,6 +1364,7 @@ private slots:
             QTRY_COMPARE(manager->state(secondId), Session::State::Connected);
             QVERIFY(list->isEnabled());
             QVERIFY(!manageServer->isEnabled());
+            QVERIFY(!configFile->isEnabled());
             QVERIFY(!audio->isEnabled());
             QVERIFY(!window.findChild<QPushButton *>("addDeviceButton")->isEnabled());
             for (int i = 0; i < list->count(); ++i)
@@ -1372,7 +1373,6 @@ private slots:
             QCOMPARE(width->value(), 1234);
             QVERIFY(serial->isEnabled());
             QVERIFY(audio->isEnabled()); // Another device's connection must not lock this option.
-            QVERIFY(!neighbor->isEnabled() && !direction->isEnabled());
             connectButton->click();
             QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
             QVERIFY(!audio->isEnabled());
@@ -1380,7 +1380,6 @@ private slots:
             QVERIFY(window.findChild<QLabel *>("connectionSummary")->text().contains("2 / 2"));
             auto *logFilter = window.findChild<QComboBox *>("logFilter");
             auto *log = window.findChild<QPlainTextEdit *>("runtimeLog");
-            QVERIFY(log->toPlainText().contains("    down = android2\n"));
             manager->session("initial")->log("ONLY_A");
             manager->session(secondId)->log("ONLY_B");
             logFilter->setCurrentIndex(logFilter->findData(secondId));
@@ -1403,17 +1402,32 @@ private slots:
             window.findChild<QAction *>("trayQuit")->trigger();
             QTRY_VERIFY(manager->settled());
         }
+        QVERIFY(!settings.contains("direction"));
+        settings.beginReadArray("devices");
+        settings.setArrayIndex(0);
+        auto legacy = settings.value("profile").toMap();
+        settings.endArray();
+        legacy["neighbor"] = "android2";
+        legacy["direction"] = "left";
+        settings.beginWriteArray("devices", 2);
+        settings.setArrayIndex(0);
+        settings.setValue("profile", legacy);
+        settings.endArray();
         AutoConnectTestWindow restored;
         QCOMPARE(restored.findChild<QListWidget *>("deviceSidebar")->count(), 2);
         QCOMPARE(restored.findChild<QLineEdit *>("usbSerial")->text(), "A");
         QCOMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 1234);
+        QCOMPARE(restored.findChild<QLineEdit *>("deskflowConfigFile")->text(), config.fileName());
         auto *list = restored.findChild<QListWidget *>("deviceSidebar");
         list->setCurrentRow(1);
-        QCOMPARE(restored.findChild<QComboBox *>("screenNeighbor")->currentData().toString(), "android");
-        QCOMPARE(restored.findChild<QComboBox *>("screenPosition")->currentData().toString(), "down");
         restored.findChild<QPushButton *>("removeDeviceButton")->click();
         QCOMPARE(list->count(), 1);
         restored.findChild<QAction *>("trayQuit")->trigger();
+        settings.beginReadArray("devices");
+        settings.setArrayIndex(0);
+        const auto saved = settings.value("profile").toMap();
+        settings.endArray();
+        QVERIFY(!saved.contains("neighbor") && !saved.contains("direction"));
     }
     void systemThemePalette()
     {
@@ -2212,15 +2226,24 @@ private slots:
             settings.setValue("transport", "usb");
             AutoConnectTestWindow window;
             window.available = false;
-            window.resize(1100, 1080);
+            window.resize(1100, 1140);
             window.findChild<QLineEdit *>("adbExecutable")->setText("/usr/bin/adb");
             window.findChild<QLineEdit *>("deskflowExecutable")->setText("/usr/bin/deskflow-core");
             auto *tabs = window.findChild<QTabWidget *>("deviceTabs");
             tabs->setCurrentIndex(1);
             window.show();
             QCoreApplication::processEvents();
+            QTRY_VERIFY(window.findChild<QComboBox *>("deviceSelector")->isEnabled());
             const auto suffix = language == "en" ? "en.png" : "zh-CN.png";
             QVERIFY(window.grab().save(QDir(capture).filePath(QString("server-") + suffix)));
+            window.findChild<QPushButton *>("addDeviceButton")->click();
+            tabs->setCurrentIndex(0);
+            window.resize(1100, 955);
+            auto *scroll = qobject_cast<QScrollArea *>(tabs->widget(0));
+            QVERIFY(scroll);
+            scroll->ensureWidgetVisible(window.findChild<QLineEdit *>("screenName"), 0, 12);
+            QCoreApplication::processEvents();
+            QVERIFY(window.grab().save(QDir(capture).filePath(QString("multiple-devices-") + suffix)));
             window.close();
         }
     }

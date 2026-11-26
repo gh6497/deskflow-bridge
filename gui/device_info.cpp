@@ -5,9 +5,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QMap>
-#include <QSet>
-#include <QPoint>
 
 bool isUsbAdbSerial(const QString &serial)
 {
@@ -97,71 +94,4 @@ int parseRotation(const QString &text)
 bool validScreenName(const QString &name)
 {
     return QRegularExpression("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$").match(name).hasMatch();
-}
-
-QString serverConfiguration(const QString &computer, const QString &phone,
-                            const QString &direction)
-{
-    return serverConfiguration(computer, QList<ScreenLink>{{phone, computer, direction}});
-}
-
-QString serverConfiguration(const QString &computer, const QList<ScreenLink> &screens)
-{
-    const QStringList directions{"left", "right", "up", "down"};
-    if (!validScreenName(computer) || screens.isEmpty())
-        return {};
-    QStringList names{computer};
-    QSet<QString> unique{computer.toLower()};
-    for (const auto &screen : screens) {
-        if (!validScreenName(screen.name) || unique.contains(screen.name.toLower()))
-            return {};
-        unique.insert(screen.name.toLower());
-        names.append(screen.name);
-    }
-    QMap<QString, QMap<QString, QString>> links;
-    for (const auto &screen : screens) {
-        const int index = directions.indexOf(screen.direction);
-        if (index < 0 || !names.contains(screen.neighbor) || screen.neighbor == screen.name)
-            return {};
-        const auto reverse = directions[index ^ 1];
-        if (links[screen.neighbor].contains(screen.direction) || links[screen.name].contains(reverse))
-            return {};
-        links[screen.neighbor][screen.direction] = screen.name;
-        links[screen.name][reverse] = screen.neighbor;
-    }
-    QSet<QString> reached{computer};
-    QMap<QString, QPoint> positions{{computer, {0, 0}}};
-    QSet<QPoint> occupied{QPoint()};
-    QStringList pending{computer};
-    while (!pending.isEmpty()) {
-        const auto source = pending.takeFirst();
-        const auto edges = links.value(source);
-        for (auto edge = edges.cbegin(); edge != edges.cend(); ++edge) {
-            const auto target = edge.value();
-            if (!reached.contains(target)) {
-                const auto direction = edge.key();
-                const QPoint step = direction == "left" ? QPoint(-1, 0) : direction == "right" ? QPoint(1, 0) :
-                    direction == "up" ? QPoint(0, -1) : QPoint(0, 1);
-                const auto point = positions.value(source) + step;
-                if (occupied.contains(point)) return {};
-                positions[target] = point;
-                occupied.insert(point);
-                reached.insert(target);
-                pending.append(target);
-            }
-        }
-    }
-    if (reached.size() != names.size())
-        return {};
-    QString config = "section: screens\n";
-    for (const auto &name : names) config += "  " + name + ":\n";
-    config += "end\n\nsection: links\n";
-    for (const auto &name : names) {
-        config += "  " + name + ":\n";
-        for (const auto &direction : directions) {
-            if (links.value(name).contains(direction))
-                config += "    " + direction + " = " + links.value(name).value(direction) + "\n";
-        }
-    }
-    return config + "end\n";
 }

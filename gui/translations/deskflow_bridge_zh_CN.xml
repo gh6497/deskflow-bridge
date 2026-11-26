@@ -158,12 +158,10 @@
   <message id="otg.label.motion_multiplier"><source>Movement multiplier</source><translation>移动距离倍率</translation></message>
   <message id="otg.label.virtual_size"><source>Bridge / Deskflow size</source><translation>桥接 / Deskflow 尺寸</translation></message>
   <message id="otg.section.connection"><source>2  Deskflow connection</source><translation>2  Deskflow 连接</translation></message>
-  <message id="otg.server.manage"><source>Configure and start local Deskflow automatically</source><translation>自动配置并启动本机 Deskflow</translation></message>
-  <message id="otg.position.right"><source>Right</source><translation>右侧</translation></message>
-  <message id="otg.position.left"><source>Left</source><translation>左侧</translation></message>
-  <message id="otg.position.up"><source>Above</source><translation>上方</translation></message>
-  <message id="otg.position.down"><source>Below</source><translation>下方</translation></message>
-  <message id="otg.label.position"><source>Screen position</source><translation>屏幕位置</translation></message>
+  <message id="otg.server.manage"><source>Start local Deskflow automatically</source><translation>自动启动本机 Deskflow</translation></message>
+  <message id="otg.server.config_file"><source>Deskflow configuration file</source><translation>Deskflow 配置文件</translation></message>
+  <message id="otg.server.config_hint"><source>Server configuration exported from Deskflow</source><translation>从 Deskflow 导出的服务端配置</translation></message>
+  <message id="otg.server.config_select"><source>Select a Deskflow server configuration</source><translation>选择 Deskflow 服务端配置</translation></message>
   <message id="otg.label.computer_name"><source>Computer screen name</source><translation>电脑屏幕名称</translation></message>
   <message id="otg.label.phone_name"><source>Phone screen name</source><translation>手机屏幕名称</translation></message>
   <message id="otg.label.server_address"><source>Server address</source><translation>服务地址</translation></message>
@@ -344,7 +342,8 @@
   <message id="otg.error.ble_adapter"><source>Bluetooth adapter is invalid. Use hci followed by an index from 0 to 65534, for example hci0 (at most five digits).</source><translation>蓝牙适配器无效。请使用 hci 加 0～65534 的编号，例如 hci0（编号最多五位）。</translation></message>
   <message id="otg.error.ble_isolate_windows"><source>Bluetooth isolation is not supported on Windows. Disable Bluetooth isolation.</source><translation>Windows 不支持蓝牙隔离。请关闭蓝牙隔离选项。</translation></message>
   <message id="otg.error.ble_adapter_windows"><source>Windows Bluetooth LE only supports the default adapter. Clear the Bluetooth adapter field.</source><translation>Windows 低功耗蓝牙仅支持默认适配器。请清空蓝牙适配器栏。</translation></message>
-  <message id="otg.error.server_layout_required"><source>Deskflow screen layout is empty or invalid. Check the screen names, adjacent screens and positions under Device settings → Screen and display.</source><translation>Deskflow 屏幕布局为空或无效。请在「设备配置 → 屏幕与显示」检查屏幕名称、相邻屏幕和屏幕位置。</translation></message>
+  <message id="otg.error.deskflow_config_required"><source>Select a server configuration exported from Deskflow under Shared server, or turn off automatic startup.</source><translation>请在「共享服务」选择从 Deskflow 导出的服务端配置，或关闭自动启动。</translation></message>
+  <message id="otg.error.deskflow_config_unreadable"><source>Could not read the Deskflow configuration file at %1.</source><translation>无法读取 Deskflow 配置文件 %1。</translation></message>
   <message id="otg.error.deskflow_program_required"><source>Deskflow executable is empty. Select the installed deskflow-core or deskflow-server under Shared server.</source><translation>Deskflow 程序路径为空。请在共享服务中选择已安装的 deskflow-core 或 deskflow-server。</translation></message>
   <message id="otg.error.scrcpy_runtime"><source>Audio/clipboard runtime files are missing: scrcpy-server or SCRCPY_VERSION.txt. Rebuild or reinstall the complete GUI.</source><translation>缺少音频/剪贴板运行文件：scrcpy-server 或 SCRCPY_VERSION.txt。请重新构建或安装完整 GUI。</translation></message>
   <message id="otg.error.port_in_use"><source>Port already in use. Stop the existing Deskflow server, change the port, or connect to an existing server.</source><translation>端口已被占用：停止原 Deskflow 服务、修改端口，或选择连接已有服务。</translation></message>
@@ -353,14 +352,10 @@
 </source><translation>[Deskflow 参数检测]
 </translation></message>
   <message id="otg.error.screen_names"><source>Computer and phone names must differ and contain only letters, digits, underscores, dots or hyphens.</source><translation>电脑/手机名称必须不同，且仅包含字母、数字、下划线、点或连字符。</translation></message>
-  <message id="otg.error.write_layout"><source>Could not write Deskflow screen configuration: %1</source><translation>无法写入 Deskflow 屏幕配置：%1</translation></message>
   <message id="otg.error.write_settings"><source>Could not write Deskflow startup settings.</source><translation>无法写入 Deskflow 启动设置。</translation></message>
    <message id="otg.error.disable_tls"><source>This Deskflow startup interface cannot explicitly disable TLS. Connect to an existing server instead.</source><translation>此 Deskflow 启动接口无法显式关闭 TLS，请使用连接已有服务模式。</translation></message>
   <message id="otg.error.tls_interface"><source>This Deskflow startup interface cannot enable TLS. Connect to an existing server instead.</source><translation>此 Deskflow 启动接口无法显式开启 TLS，请使用连接已有服务模式。</translation></message>
   <message id="otg.error.deskflow_interface"><source>Unrecognized Deskflow startup interface. Select deskflow-core / deskflow-server, or connect to an existing server.</source><translation>未识别的 Deskflow 启动接口。请选择 deskflow-core / deskflow-server，或连接已有服务。</translation></message>
-  <message id="otg.log.screen_config"><source>Using an independent screen configuration:
-</source><translation>使用独立屏幕配置：
-</translation></message>
   <message id="otg.log.usb_initializing"><source>Initializing USB HID and waiting for Deskflow to accept the screen…</source><translation>正在初始化 USB HID 并等待 Deskflow 接受屏幕…</translation></message>
   <message id="otg.error.bridge_output"><source>Invalid bridge status output.</source><translation>桥接状态输出无效。</translation></message>
   <message id="otg.status.connected"><source>Connected — move the mouse toward the phone to control it</source><translation>已连接 — 将鼠标移到手机一侧即可控制</translation></message>
@@ -376,18 +371,15 @@
   <message id="otg.multi.connect_all"><source>Connect all</source><translation>全部连接</translation></message>
   <message id="otg.multi.disconnect_all"><source>Disconnect all</source><translation>全部断开</translation></message>
   <message id="otg.multi.alias"><source>Display name</source><translation>显示名称</translation></message>
-  <message id="otg.multi.neighbor"><source>Adjacent screen</source><translation>相邻屏幕</translation></message>
-  <message id="otg.multi.invalid_layout"><source>Invalid layout: check unique screen names, adjacent screens, occupied edges and connectivity to the computer.</source><translation>布局无效：请检查屏幕名唯一、相邻屏幕有效、边缘未占用，且所有设备均与电脑连通。</translation></message>
   <message id="otg.multi.duplicate_device"><source>This USB device or screen name is already in use.</source><translation>此 USB 设备或屏幕名称已被其他连接使用。</translation></message>
   <message id="otg.multi.ble_limit"><source>Only one BLE phone is supported. Stop the other BLE session and its idle Windows provider first.</source><translation>目前仅支持一台 BLE 手机。请先断开其他 BLE 会话，并停止其空闲的 Windows 蓝牙服务。</translation></message>
-  <message id="otg.multi.shared_locked"><source>The shared server or layout is in use. Disconnect all devices and wait for shutdown before changing it.</source><translation>共享服务或布局正在使用中，请先全部断开并等待清理完成，再进行修改。</translation></message>
+  <message id="otg.multi.shared_locked"><source>The shared server settings are in use. Disconnect all devices and wait for shutdown before changing them.</source><translation>共享服务设置正在使用中，请先全部断开并等待服务停止，再进行修改。</translation></message>
   <message id="otg.multi.connected"><source>Connected</source><translation>已连接</translation></message>
   <message id="otg.multi.summary"><source>%1 / %2 devices connected · %3</source><translation>%1 / %2 台设备已连接 · %3</translation></message>
   <message id="otg.multi.server_running"><source>Shared Deskflow running</source><translation>共享 Deskflow 运行中</translation></message>
   <message id="otg.multi.server_stopped"><source>Shared Deskflow stopped or starting</source><translation>共享 Deskflow 已停止或正在启动</translation></message>
   <message id="otg.multi.external_server"><source>External Deskflow server</source><translation>使用外部 Deskflow 服务</translation></message>
   <message id="otg.multi.remove_device"><source>Remove device</source><translation>移除设备</translation></message>
-  <message id="otg.multi.remove_dependency"><source>Other screens are linked to this device. Change their adjacent screen before removing it.</source><translation>其他屏幕仍与此设备相邻。请先修改它们的相邻屏幕，再移除此设备。</translation></message>
   <message id="otg.multi.failed"><source>Connection failed — see status or logs</source><translation>连接失败，请查看状态或日志</translation></message>
   <message id="otg.multi.all_logs"><source>All devices</source><translation>全部设备</translation></message>
   <message id="otg.multi.service_logs"><source>Shared service</source><translation>共享服务</translation></message>

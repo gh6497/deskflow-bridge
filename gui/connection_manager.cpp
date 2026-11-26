@@ -139,14 +139,13 @@ bool ConnectionManager::reject(const QString &id, const char *message)
     return false;
 }
 
-bool ConnectionManager::start(const QString &id, const ConnectionOptions &options, const QString &layout)
+bool ConnectionManager::start(const QString &id, const ConnectionOptions &options)
 {
     if (m_shutdown || !m_devices.contains(id) || state(id) != Session::State::Idle) return false;
     if (!validScreenName(options.phone))
         return reject(id, "otg.error.phone_screen_name");
-    if (options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
+    if (options.manageServer && options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
         return reject(id, "otg.error.screen_names");
-    if (options.manageServer && layout.isEmpty()) return reject(id, "otg.multi.invalid_layout");
     bool requireDirected = false;
     for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {
         if (it.key() == id) continue;
@@ -177,13 +176,12 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
             options.tlsCertificate != m_shared.tlsCertificate ||
             options.tlsFingerprint != m_shared.tlsFingerprint ||
             options.tlsFingerprintFile != m_shared.tlsFingerprintFile ||
-            (options.manageServer && layout != m_layout))
+            (options.manageServer && options.deskflowConfig != m_shared.deskflowConfig))
             return reject(id, "otg.multi.shared_locked");
         if (m_server.state() == DeskflowServer::State::Stopping)
             return reject(id, "otg.multi.shared_locked");
     } else {
         m_shared = options;
-        m_layout = layout;
     }
     auto &entry = m_devices[id];
     entry.options = options;
@@ -194,7 +192,7 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
     emit changed(id);
     if (options.bleDiscovery || !options.manageServer || m_server.state() == DeskflowServer::State::Running) launchPending();
     else if (m_server.state() == DeskflowServer::State::Idle)
-        m_server.start({options.deskflow, options.computer, layout, options.port,
+        m_server.start({options.deskflow, options.computer, options.deskflowConfig, options.port,
                         options.tls, options.tlsCertificate});
     return true;
 }
@@ -233,7 +231,7 @@ void ConnectionManager::configureWaitingBle()
     }
 }
 
-bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &options, const QString &layout)
+bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &options)
 {
     if (!m_devices.contains(id) || options.transport != "ble" ||
         state(id) != Session::State::Starting || !m_devices[id].waitingForBleAttach)
@@ -242,10 +240,9 @@ bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &op
         if (m_server.state() != DeskflowServer::State::Idle)
             return false;
         m_shared = options;
-        m_layout = layout;
         m_devices[id].options = options;
         m_devices[id].waitingForBleAttach = true;
-        m_server.start({options.deskflow, options.computer, layout, options.port,
+        m_server.start({options.deskflow, options.computer, options.deskflowConfig, options.port,
                         options.tls, options.tlsCertificate});
         return true;
     }

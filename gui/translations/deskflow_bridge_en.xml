@@ -158,12 +158,10 @@
   <message id="otg.label.motion_multiplier"><source>Movement multiplier</source><translation>Movement multiplier</translation></message>
   <message id="otg.label.virtual_size"><source>Bridge / Deskflow size</source><translation>Bridge / Deskflow size</translation></message>
   <message id="otg.section.connection"><source>2  Deskflow connection</source><translation>2  Deskflow connection</translation></message>
-  <message id="otg.server.manage"><source>Configure and start local Deskflow automatically</source><translation>Configure and start local Deskflow automatically</translation></message>
-  <message id="otg.position.right"><source>Right</source><translation>Right</translation></message>
-  <message id="otg.position.left"><source>Left</source><translation>Left</translation></message>
-  <message id="otg.position.up"><source>Above</source><translation>Above</translation></message>
-  <message id="otg.position.down"><source>Below</source><translation>Below</translation></message>
-  <message id="otg.label.position"><source>Screen position</source><translation>Screen position</translation></message>
+  <message id="otg.server.manage"><source>Start local Deskflow automatically</source><translation>Start local Deskflow automatically</translation></message>
+  <message id="otg.server.config_file"><source>Deskflow configuration file</source><translation>Deskflow configuration file</translation></message>
+  <message id="otg.server.config_hint"><source>Server configuration exported from Deskflow</source><translation>Server configuration exported from Deskflow</translation></message>
+  <message id="otg.server.config_select"><source>Select a Deskflow server configuration</source><translation>Select a Deskflow server configuration</translation></message>
   <message id="otg.label.computer_name"><source>Computer screen name</source><translation>Computer screen name</translation></message>
   <message id="otg.label.phone_name"><source>Phone screen name</source><translation>Phone screen name</translation></message>
   <message id="otg.label.server_address"><source>Server address</source><translation>Server address</translation></message>
@@ -344,7 +342,8 @@
   <message id="otg.error.ble_adapter"><source>Bluetooth adapter is invalid. Use hci followed by an index from 0 to 65534, for example hci0 (at most five digits).</source><translation>Bluetooth adapter is invalid. Use hci followed by an index from 0 to 65534, for example hci0 (at most five digits).</translation></message>
   <message id="otg.error.ble_isolate_windows"><source>Bluetooth isolation is not supported on Windows. Disable Bluetooth isolation.</source><translation>Bluetooth isolation is not supported on Windows. Disable Bluetooth isolation.</translation></message>
   <message id="otg.error.ble_adapter_windows"><source>Windows Bluetooth LE only supports the default adapter. Clear the Bluetooth adapter field.</source><translation>Windows Bluetooth LE only supports the default adapter. Clear the Bluetooth adapter field.</translation></message>
-  <message id="otg.error.server_layout_required"><source>Deskflow screen layout is empty or invalid. Check the screen names, adjacent screens and positions under Device settings → Screen and display.</source><translation>Deskflow screen layout is empty or invalid. Check the screen names, adjacent screens and positions under Device settings → Screen and display.</translation></message>
+  <message id="otg.error.deskflow_config_required"><source>Select a server configuration exported from Deskflow under Shared server, or turn off automatic startup.</source><translation>Select a server configuration exported from Deskflow under Shared server, or turn off automatic startup.</translation></message>
+  <message id="otg.error.deskflow_config_unreadable"><source>Could not read the Deskflow configuration file at %1.</source><translation>Could not read the Deskflow configuration file at %1.</translation></message>
   <message id="otg.error.deskflow_program_required"><source>Deskflow executable is empty. Select the installed deskflow-core or deskflow-server under Shared server.</source><translation>Deskflow executable is empty. Select the installed deskflow-core or deskflow-server under Shared server.</translation></message>
   <message id="otg.error.scrcpy_runtime"><source>Audio/clipboard runtime files are missing: scrcpy-server or SCRCPY_VERSION.txt. Rebuild or reinstall the complete GUI.</source><translation>Audio/clipboard runtime files are missing: scrcpy-server or SCRCPY_VERSION.txt. Rebuild or reinstall the complete GUI.</translation></message>
   <message id="otg.error.port_in_use"><source>Port already in use. Stop the existing Deskflow server, change the port, or connect to an existing server.</source><translation>Port already in use. Stop the existing Deskflow server, change the port, or connect to an existing server.</translation></message>
@@ -353,14 +352,10 @@
 </source><translation>[Deskflow argument detection]
 </translation></message>
   <message id="otg.error.screen_names"><source>Computer and phone names must differ and contain only letters, digits, underscores, dots or hyphens.</source><translation>Computer and phone names must differ and contain only letters, digits, underscores, dots or hyphens.</translation></message>
-  <message id="otg.error.write_layout"><source>Could not write Deskflow screen configuration: %1</source><translation>Could not write Deskflow screen configuration: %1</translation></message>
   <message id="otg.error.write_settings"><source>Could not write Deskflow startup settings.</source><translation>Could not write Deskflow startup settings.</translation></message>
    <message id="otg.error.disable_tls"><source>This Deskflow startup interface cannot explicitly disable TLS. Connect to an existing server instead.</source><translation>This Deskflow startup interface cannot explicitly disable TLS. Connect to an existing server instead.</translation></message>
   <message id="otg.error.tls_interface"><source>This Deskflow startup interface cannot enable TLS. Connect to an existing server instead.</source><translation>This Deskflow startup interface cannot enable TLS. Connect to an existing server instead.</translation></message>
   <message id="otg.error.deskflow_interface"><source>Unrecognized Deskflow startup interface. Select deskflow-core / deskflow-server, or connect to an existing server.</source><translation>Unrecognized Deskflow startup interface. Select deskflow-core / deskflow-server, or connect to an existing server.</translation></message>
-  <message id="otg.log.screen_config"><source>Using an independent screen configuration:
-</source><translation>Using an independent screen configuration:
-</translation></message>
   <message id="otg.log.usb_initializing"><source>Initializing USB HID and waiting for Deskflow to accept the screen…</source><translation>Initializing USB HID and waiting for Deskflow to accept the screen…</translation></message>
   <message id="otg.error.bridge_output"><source>Invalid bridge status output.</source><translation>Invalid bridge status output.</translation></message>
   <message id="otg.status.connected"><source>Connected — move the mouse toward the phone to control it</source><translation>Connected — move the mouse toward the phone to control it</translation></message>
@@ -376,18 +371,15 @@
   <message id="otg.multi.connect_all"><source>Connect all</source><translation>Connect all</translation></message>
   <message id="otg.multi.disconnect_all"><source>Disconnect all</source><translation>Disconnect all</translation></message>
   <message id="otg.multi.alias"><source>Display name</source><translation>Display name</translation></message>
-  <message id="otg.multi.neighbor"><source>Adjacent screen</source><translation>Adjacent screen</translation></message>
-  <message id="otg.multi.invalid_layout"><source>Invalid layout: check unique screen names, adjacent screens, occupied edges and connectivity to the computer.</source><translation>Invalid layout: check unique screen names, adjacent screens, occupied edges and connectivity to the computer.</translation></message>
   <message id="otg.multi.duplicate_device"><source>This USB device or screen name is already in use.</source><translation>This USB device or screen name is already in use.</translation></message>
   <message id="otg.multi.ble_limit"><source>Only one BLE phone is supported. Stop the other BLE session and its idle Windows provider first.</source><translation>Only one BLE phone is supported. Stop the other BLE session and its idle Windows provider first.</translation></message>
-  <message id="otg.multi.shared_locked"><source>The shared server or layout is in use. Disconnect all devices and wait for shutdown before changing it.</source><translation>The shared server or layout is in use. Disconnect all devices and wait for shutdown before changing it.</translation></message>
+  <message id="otg.multi.shared_locked"><source>The shared server settings are in use. Disconnect all devices and wait for shutdown before changing them.</source><translation>The shared server settings are in use. Disconnect all devices and wait for shutdown before changing them.</translation></message>
   <message id="otg.multi.connected"><source>Connected</source><translation>Connected</translation></message>
   <message id="otg.multi.summary"><source>%1 / %2 devices connected · %3</source><translation>%1 / %2 devices connected · %3</translation></message>
   <message id="otg.multi.server_running"><source>Shared Deskflow running</source><translation>Shared Deskflow running</translation></message>
   <message id="otg.multi.server_stopped"><source>Shared Deskflow stopped or starting</source><translation>Shared Deskflow stopped or starting</translation></message>
   <message id="otg.multi.external_server"><source>External Deskflow server</source><translation>External Deskflow server</translation></message>
   <message id="otg.multi.remove_device"><source>Remove device</source><translation>Remove device</translation></message>
-  <message id="otg.multi.remove_dependency"><source>Other screens are linked to this device. Change their adjacent screen before removing it.</source><translation>Other screens are linked to this device. Change their adjacent screen before removing it.</translation></message>
   <message id="otg.multi.failed"><source>Connection failed — see status or logs</source><translation>Connection failed — see status or logs</translation></message>
   <message id="otg.multi.all_logs"><source>All devices</source><translation>All devices</translation></message>
   <message id="otg.multi.service_logs"><source>Shared service</source><translation>Shared service</translation></message>

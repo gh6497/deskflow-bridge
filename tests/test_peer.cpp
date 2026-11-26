@@ -286,6 +286,10 @@ int main(int argc, char **argv)
             layoutPath = args.value(args.indexOf("--config") + 1);
             port = args.value(args.indexOf("--address") + 1).section(':', -1).toInt();
         }
+        const auto expectedConfig = qEnvironmentVariable("OTG_TEST_DESKFLOW_CONFIG");
+        if (!expectedConfig.isEmpty() && (layoutPath != expectedConfig ||
+            (args.contains("--config") && args.value(args.indexOf("--config") + 1) != expectedConfig)))
+            return 3;
         QFile layout(layoutPath);
         if (!layout.open(QIODevice::ReadOnly) || !layout.readAll().contains("section: links"))
             return 3;
