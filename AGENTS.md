@@ -211,6 +211,19 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   main/bridge + fake BLE/Deskflow 验证创建次数、重复连接、更新参数、释放确认、超时及 EOF，均不访问硬件。
   身份读取在线 BluetoothLEDevice 地址及已配对状态，通知定向发送；
   失联/订阅变化清队列并断开 Deskflow，恢复先释放输入；退出释放为尽力而为。
+  Windows GUI 实验性多机选项默认关闭。开启后由 ConnectionManager 创建唯一
+  `--ble-win-multi-service TOKEN` 子进程，手机桥接以 `--ble-win-session TOKEN` 接入。
+  `ble_win_pipe.h`/`ble_win_multi.inc` 提供同用户 ACL、进程用户核对、版本/长度/描述符校验的
+  私有命名管道。共享一份 GATT，每台手机独立 worker/64条队列/epoch/通知，最多8个名额，
+  包括保留的空闲会话。订阅增减仅撤销相关手机，通知再次核对实时订阅并指定该客户端。
+  不可放宽原单机路径的唯一订阅门控，不可改成无目标 NotifyValueAsync。
+  停止服务/退出先收完各手机释放，再结束共享进程；stdin EOF 也关闭它自己的会话。
+  `ble_win_multi` 使用真实管道/进程加 fake GATT，验证身份互斥、隔离、掉线、超时和EOF；
+  Qt覆盖多机发现/参数/退出，仍不代表多手机真机验收。
+  多机身份查询不得阻塞发送线程：已选手机复用在线对象，新发现跳过已归属订阅；
+  `ble_win_metadata.h` 约束单条在途核对、取消完成后重试和3秒配对核验有效期。
+  元数据超时保留 IPC/GATT，核验过期暂停输入并尽力释放，恢复时先释放；就绪变化期间的
+  在途IPC旧报告丢弃并回not-ready，不能按协议错误关闭。真实通知超时仍须失败隔离。
   WinRT 等待按会话 epoch 取消并记录操作名；断线取消不算致命超时。Cancel 不等于完成，
   旧通知真正完成/取消前不得恢复 ready 或发送新通知；5 秒仍未结束则失败退出。
   当前 Windows 排障版状态屏障通知30ms、纯指针移动15ms（均非实测interval），降低切屏
@@ -455,7 +468,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   UHID 首次经 USB ADB 到达 Deskflow Connected 后锁定该配置的序列号。旧配置仅在存在对应的成功 USB UHID 记录时迁移为只读。
   AOA/UHID 的「添加设备」窗口负责刷新、选择目标和首次连接。等待或失败时保留窗口供重试，取消只停止该窗口发起的会话。
   首次 Deskflow Connected 后才加入设备列表和保存。蓝牙仍由共享服务发现，首次接入 Deskflow 后保存配置。
-  多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）。
+  多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）；Windows 多机须显式开启共享 provider 模式。
   Linux 多机 BLE 使用 `--ble-service --ble-multi TOKEN --ble-isolate` 与 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
   GUI 多设备选项默认关闭。启用后有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。
   每个会话保留唯一身份和屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和

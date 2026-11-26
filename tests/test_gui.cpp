@@ -718,8 +718,10 @@ private slots:
     }
     void sharedServerCrash()
     {
-        qputenv("OTG_TEST_SERVER_EXIT_MS", "1000");
-        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_SERVER_EXIT_MS"); });
+        QTemporaryDir dir;
+        const auto trigger = dir.filePath("crash");
+        qputenv("OTG_TEST_SERVER_EXIT_TRIGGER", trigger.toUtf8());
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_SERVER_EXIT_TRIGGER"); });
         QTcpServer allocator;
         QVERIFY(allocator.listen(QHostAddress::LocalHost));
         ConnectionOptions a;
@@ -735,6 +737,8 @@ private slots:
         QVERIFY(manager.start("b", b));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+        QFile crash(trigger);
+        QVERIFY(crash.open(QIODevice::WriteOnly)); crash.close();
         QTRY_VERIFY(manager.settled());
         QVERIFY(!manager.status("a").isEmpty());
     }
@@ -843,6 +847,111 @@ private slots:
         manager.shutdown(); QTRY_VERIFY(manager.settled());
     }
 #endif
+    void windowsBleMultiSessions()
+    {
+#ifndef OTG_GUI_HAVE_BLE_WIN
+        QSKIP("Windows BLE only");
+#endif
+        QTemporaryDir dir;
+        const auto path = dir.filePath("broker.jsonl");
+        qputenv("OTG_TEST_BLE_BROKER_LOG", path.toUtf8());
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_BROKER_LOG"); });
+        ConnectionManager manager;
+        ConnectionOptions options;
+        options.transport = "ble"; options.manageServer = false;
+        options.bridge = peerPath(); options.preferDirectedBle = true;
+        for (int i = 0; i < 8; ++i) {
+            const auto id = QString::number(i);
+            manager.addDevice(id);
+            options.phone = "phone-" + id;
+            options.blePeer = QString("AA:BB:CC:DD:EE:%1").arg(i, 2, 16, QLatin1Char('0'));
+            QVERIFY2(manager.start(id, options), qPrintable(id + ": " + manager.status(id)));
+        }
+        for (int i = 0; i < 8; ++i) QTRY_COMPARE(manager.state(QString::number(i)), Session::State::Connected);
+        QCOMPARE(manager.reservedBleSessions(), 8);
+        manager.addDevice("ninth"); options.phone = "ninth"; options.blePeer = "AA:BB:CC:DD:EE:99";
+        QVERIFY(!manager.start("ninth", options));
+        QCOMPARE(manager.status("ninth"), qtTrId("otg.ble.multi_full"));
+        manager.stop("0"); QTRY_COMPARE(manager.state("0"), Session::State::Idle);
+        QCOMPARE(manager.state("1"), Session::State::Connected);
+        QCOMPARE(manager.reservedBleSessions(), 8);
+        options.phone = "phone-0"; options.blePeer = "AA:BB:CC:DD:EE:00";
+        QVERIFY(manager.start("0", options)); QTRY_COMPARE(manager.state("0"), Session::State::Connected);
+        QFile log(path); QVERIFY(log.open(QIODevice::ReadOnly));
+        QCOMPARE(log.readAll().trimmed().split('\n').size(), 1);
+        manager.stopBle(); QTRY_VERIFY(manager.settled());
+    }
+    void windowsBleMultiManagedServer()
+    {
+#ifndef OTG_GUI_HAVE_BLE_WIN
+        QSKIP("Windows BLE only");
+#endif
+        QTemporaryDir dir;
+        QTemporaryFile config(dir.filePath("screens.XXXXXX.conf"));
+        QVERIFY(writeDeskflowConfig(config));
+        qputenv("OTG_TEST_HELP", "modern");
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_HELP"); });
+        QTcpServer allocator;
+        QVERIFY(allocator.listen(QHostAddress::LocalHost));
+        ConnectionOptions options;
+        options.port = allocator.serverPort(); allocator.close();
+        options.transport = "ble"; options.preferDirectedBle = true;
+        options.bridge = options.deskflow = peerPath(); options.deskflowConfig = config.fileName();
+        ConnectionManager manager;
+        manager.addDevice("a"); manager.addDevice("b");
+        bool premature = false;
+        connect(&manager, &ConnectionManager::changed, this, [&](const QString &id) {
+            if (manager.state(id) == Session::State::Connected && manager.serverState() != DeskflowServer::State::Running)
+                premature = true;
+        });
+        options.phone = "a"; options.blePeer = "AA:BB:CC:DD:EE:01";
+        QVERIFY(manager.start("a", options));
+        options.phone = "b"; options.blePeer = "AA:BB:CC:DD:EE:02";
+        QVERIFY(manager.start("b", options));
+        QTRY_COMPARE(manager.state("a"), Session::State::Connected);
+        QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+        QVERIFY(!premature);
+        manager.shutdown(); QTRY_VERIFY(manager.settled());
+    }
+    void windowsBleMultiStartup_data()
+    {
+        QTest::addColumn<int>("scenario");
+        QTest::newRow("cancel-startup") << 0;
+        QTest::newRow("service-crash") << 1;
+        QTest::newRow("missing-program") << 2;
+    }
+    void windowsBleMultiStartup()
+    {
+#ifndef OTG_GUI_HAVE_BLE_WIN
+        QSKIP("Windows BLE only");
+#endif
+        QFETCH(int, scenario);
+        QTemporaryDir dir;
+        const auto trigger = dir.filePath("crash");
+        qputenv("OTG_TEST_BLE_SERVICE_READY_DELAY", scenario == 0 ? "500" : "0");
+        if (scenario == 1) qputenv("OTG_TEST_BLE_SERVICE_EXIT_TRIGGER", trigger.toUtf8());
+        const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_BLE_SERVICE_READY_DELAY"); qunsetenv("OTG_TEST_BLE_SERVICE_EXIT_TRIGGER");
+        });
+        ConnectionManager manager;
+        manager.addDevice("a"); manager.addDevice("b");
+        ConnectionOptions options;
+        options.transport = "ble"; options.manageServer = false; options.preferDirectedBle = true;
+        options.bridge = scenario == 2 ? "missing-ble-test-program" : peerPath();
+        options.phone = "a"; options.blePeer = "AA:BB:CC:DD:EE:01";
+        QVERIFY(manager.start("a", options));
+        if (scenario == 0) manager.stopBle();
+        if (scenario == 1) {
+            options.phone = "b"; options.blePeer = "AA:BB:CC:DD:EE:02";
+            QVERIFY(manager.start("b", options));
+            QTRY_COMPARE(manager.state("a"), Session::State::Connected);
+            QTRY_COMPARE(manager.state("b"), Session::State::Connected);
+            QFile crash(trigger);
+            QVERIFY(crash.open(QIODevice::WriteOnly)); crash.close();
+        }
+        QTRY_VERIFY(manager.settled());
+        if (scenario != 0) QVERIFY(manager.hasFailure("a"));
+    }
     void windowsBleProviderReuse()
     {
 #ifdef OTG_TEST_NATIVE_BLE_PEER

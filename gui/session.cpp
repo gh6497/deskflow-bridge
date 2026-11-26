@@ -223,6 +223,7 @@ static QString adbTarget(const ConnectionOptions &options)
 static QStringList fixedBleSettings(const ConnectionOptions &options)
 {
     QStringList settings;
+    if (!options.windowsBleToken.isEmpty()) settings << "multi" << options.windowsBleToken;
     if (options.tls)
         settings << "tls" << options.tlsCertificate << options.tlsFingerprint << options.tlsFingerprintFile;
     if (!adbRequired(options)) return settings;
@@ -731,6 +732,7 @@ void Session::launchBridge()
         args << "--serial" << m_options.serial;
     }
     if (windowsBle()) {
+        if (!m_options.windowsBleToken.isEmpty()) args << "--ble-win-session" << m_options.windowsBleToken;
         m_bleProvider.setProcessEnvironment(environment);
         m_bleActive = true;
         if (hasBleProvider()) {
@@ -879,7 +881,9 @@ bool Session::configureBle(const ConnectionOptions &options)
 {
     if (m_state != State::Starting || !m_bleDiscovery || options.transport != "ble") return false;
     if (options.phone.isEmpty()) return false;
+    const auto token = m_options.windowsBleToken;
     m_options = options;
+    m_options.windowsBleToken = token;
     const auto host = options.manageServer ? QStringLiteral("127.0.0.1") : options.host;
     const auto command = QString("attach\t%1\t%2\t%3\t%4\t%5%6\n")
         .arg(host).arg(options.port).arg(options.phone).arg(options.width).arg(options.height)

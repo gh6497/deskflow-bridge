@@ -21,6 +21,7 @@ public:
     bool settled() const;
     bool hasBleProvider() const;
     int activeBleSessions() const;
+    int reservedBleSessions() const;
     const char *bleProviderStatusId() const;
     DeskflowServer::State serverState() const { return m_server.state(); }
     bool start(const QString &id, const ConnectionOptions &options);
@@ -48,10 +49,16 @@ private:
     void configureWaitingBle();
     void connectSession(Session *session, const QString &id);
     void update(const QString &id);
+    void finishWindowsBleStop();
     bool reject(const QString &id, const char *message);
     QMap<QString, Entry> m_devices;
     std::shared_ptr<BleStartupCoordinator> m_bleStartup = std::make_shared<BleStartupCoordinator>();
     DeskflowServer m_server;
     ConnectionOptions m_shared;
     bool m_shutdown = false;
+    QProcess m_windowsBleService;
+    QTimer m_windowsBleDeadline;
+    QString m_windowsBleToken, m_windowsBleProgram;
+    QByteArray m_windowsBleEvents;
+    bool m_windowsBleReady = false, m_windowsBleStopping = false;
 };

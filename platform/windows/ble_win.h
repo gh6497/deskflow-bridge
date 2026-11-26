@@ -12,6 +12,9 @@ struct otg_hid_transport_ops;
 /* peer optionally selects the paired phone reported by Windows. NULL selects
  * the first paired phone that connects and subscribes to both HID reports. */
 struct otg_ble_win *otg_ble_win_create(const char *peer);
+/* GUI-owned shared provider; the private pipe accepts only the current user. */
+struct otg_ble_win *otg_ble_win_create_session(const char *peer, const char *token);
+int otg_ble_win_multi_service_run(const char *token);
 const struct otg_hid_transport_ops *otg_ble_win_ops(void);
 void otg_ble_win_destroy(struct otg_ble_win *ble);
 const char *otg_ble_win_identity(struct otg_ble_win *ble);

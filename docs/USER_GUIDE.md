@@ -6,7 +6,7 @@
 
 This guide is for people installing and using the desktop app. No compilation is needed. You still look at the phone's own display: this project does not mirror its picture or turn it into an extended monitor for computer windows.
 
-> Screenshots show the current, actual Linux GUI with demo devices and files. `TEST123`, addresses, installation paths and resolutions are examples; use your own values. Windows/macOS may look different, and some options depend on the platform and package version. Screenshots are not evidence of phone compatibility.
+> Screenshots show the actual Linux GUI, or Windows GUI where specified, with demo devices and files. `TEST123`, addresses, installation paths and resolutions are examples; use your own values. Appearance and options depend on the platform and package version. Screenshots are not evidence of phone compatibility.
 
 ## Contents
 
@@ -314,7 +314,17 @@ Only one profile can use a Deskflow screen at a time. Only one profile for that 
 
 To remove a device, select it in the list and click **Remove device** after it has disconnected. Other phones can stay connected. Keep at least one device in the list. If Windows is still keeping the device's Bluetooth service running, click **Stop Bluetooth service** first. To change **Shared server** settings, disconnect all devices first.
 
-Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. The experimental Linux service allows up to eight BLE phone sessions on one adapter. The number of simultaneous connections depends on the controller, and this hardware combination has been tested with two phones. Each phone has its own screen. Input follows the pointer.
+Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. Experimental multi-device mode on Linux and Windows allows up to eight BLE phone sessions on one adapter. Actual capacity depends on the controller. Linux has been tested with two phones; Windows multi-device input still needs hardware validation. Each phone has its own screen. Input follows the pointer.
+
+**Connecting multiple BLE phones on Windows**
+
+![Windows shared Bluetooth service with the multi-phone option off](screenshots/server-windows-en.png)
+
+1. Stop the existing Bluetooth service. Under **Shared server → Bluetooth service**, enable **Allow multiple Bluetooth phones**, then click **Start Bluetooth service**. The option is off by default and can only change while the service is stopped.
+2. Pair or connect each phone to the PC from its Bluetooth settings. The GUI discovers each phone and gives it a separate profile and Deskflow screen name. Add those screens in Deskflow if prompted.
+3. Disconnect and reconnect individual phones with their device controls. The shared service stays running; other phones and USB/UHID sessions keep working. **Stop Bluetooth service** stops all Bluetooth sessions. Exiting the GUI also stops its shared service.
+
+Windows uses the default adapter and its existing name. A stopped device session can keep its Bluetooth slot until the service stops. Slow or disconnected phones have separate queues. This experimental feature has offline regression coverage, but simultaneous input and reconnection on real phones are not yet verified.
 
 **Connecting multiple BLE phones on Linux**
 
@@ -375,6 +385,7 @@ The phone can open and check the Bluetooth link without ADB. Its home screen sho
 | Automatic startup asks for a Deskflow configuration file | Arrange the screens in Deskflow, export the server configuration and select it under **Shared server**. You can also turn off automatic startup and start the server in Deskflow |
 | Port already in use | Check for a manually started Deskflow server. Use existing-server mode or another free port for automatic startup |
 | Linux Bluetooth service unavailable | Check **Service status** for the selected adapter under **Shared server → Bluetooth service**. If starting the service fails, open the service log at the path shown in the runtime log |
+| Windows multi-phone log says `verify multi subscriber: timed out` | Use the updated desktop build: identity checks wait and retry automatically while keeping the Bluetooth service. Input for that phone may pause while its identity is checked; other phones keep their own sessions. If the bridge still exits, save the complete log from startup to the error. |
 | Deskflow asks to add the phone screen on first connection | Accept the prompt on the server, place the screen in its layout, and apply the changes. The bridge retries automatically for USB AOA, ADB + UHID and Bluetooth. If it keeps waiting, check that the screen name shown in the bridge matches the server layout exactly. Click **Disconnect** to cancel. |
 | Connected, but cannot move onto the phone | Check the screen name and layout in Deskflow. If using automatic startup, make sure it uses the latest export. Also check Deskflow's input-capture/Accessibility permissions and any screen-switch lock |
 | No phone pointer or no response to clicks | Check logs for UHID unavailable or USB errors. Start with absolute mode; try relative mode after disconnecting for an incompatible device |

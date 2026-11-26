@@ -21,6 +21,7 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Both languages of `aoa`, `device`, `input` and `multiple-devices` were recaptured from the worktree based on `8978eab`. The connection type is read-only and the UHID page has separate USB and wireless ADB targets. The capture used `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
 - `add-device` shows USB ADB discovery and the first connection in the same window. The matching main-window screenshots were refreshed after moving discovery into the dialog. Both languages were captured with `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
 - Both `add-device` screenshots were recaptured with `guidePointerScreenshot` from the worktree based on `b3b40be`. The mock ADB model fills the display name `Pixel Test` and the phone screen name `Pixel_Test`.
+- Added `server-windows-en.png` and `server-windows-zh-CN.png` for the Windows multi-phone option, from the worktree based on `a18ff54`. Capture uses `OTG_TEST_WINDOWS_BLE_SCREENSHOTS` with `test_window guideWindowsBleScreenshot`, Qt 6.8.3 offscreen on Windows and `QT_QPA_FONTDIR=C:/Windows/Fonts`, isolated settings and fake processes. Paths are examples; no Bluetooth adapter is accessed. Existing Linux screenshots are retained.
 - Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1220. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions and button settings.
@@ -59,3 +60,4 @@ update both guides when controls move or change.
 基于 `8978eab` 的工作区，用离屏测试 `guideSharedServiceScreenshot` 和 `guidePointerScreenshot` 更新中英文 AOA、设备、输入和多设备截图。连接方式为只读，UHID 页面分别显示有线和无线 ADB 目标。
 用相同的离屏测试采集中英文 `add-device`，展示在添加窗口内刷新 USB ADB 设备并完成首次连接。同步更新了对应的主窗口截图。
 基于 `b3b40be` 的工作区，用 `guidePointerScreenshot` 重新采集中英文 `add-device` 截图。模拟 ADB 型号对应显示名称 `Pixel Test` 和手机屏幕名称 `Pixel_Test`。
+基于 `a18ff54` 的工作区，新增中英文 `server-windows` 实际窗口截图，展示 Windows「允许多台蓝牙手机」选项。使用 `OTG_TEST_WINDOWS_BLE_SCREENSHOTS` 和 `test_window guideWindowsBleScreenshot`，Windows Qt 6.8.3 离屏、`QT_QPA_FONTDIR=C:/Windows/Fonts`、隔离配置与模拟进程，路径均为示例，不访问蓝牙硬件；保留已有 Linux 截图。

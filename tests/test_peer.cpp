@@ -42,6 +42,17 @@ static void appendArgumentsLog(const QString &path, const QStringList &args)
     appendLog(path, QJsonDocument(QJsonArray::fromStringList(args)).toJson(QJsonDocument::Compact) + '\n');
 }
 
+static void exitWhenRequested(QCoreApplication &app, const char *variable)
+{
+    const auto path = qEnvironmentVariable(variable);
+    if (path.isEmpty()) return;
+    auto *timer = new QTimer(&app);
+    QObject::connect(timer, &QTimer::timeout, &app, [path] {
+        if (QFile::exists(path)) QCoreApplication::exit(11);
+    });
+    timer->start(20);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -154,6 +165,20 @@ int main(int argc, char **argv)
         }
         output(text);
         return 0;
+    }
+    if (args.contains("--ble-win-multi-service")) {
+        const auto log = qEnvironmentVariable("OTG_TEST_BLE_BROKER_LOG");
+        if (!log.isEmpty()) appendArgumentsLog(log, args.mid(1));
+        const int delay = qEnvironmentVariableIntValue("OTG_TEST_BLE_SERVICE_READY_DELAY");
+        QTimer::singleShot(delay, &app, [] { output("{\"event\":\"ble-multi-ready\"}\n"); });
+        const int exitDelay = qEnvironmentVariableIntValue("OTG_TEST_BLE_SERVICE_EXIT_MS");
+        if (exitDelay > 0) QTimer::singleShot(exitDelay, &app, &QCoreApplication::quit);
+        exitWhenRequested(app, "OTG_TEST_BLE_SERVICE_EXIT_TRIGGER");
+        std::thread([&app] {
+            (void)std::getchar();
+            QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);
+        }).detach();
+        return app.exec();
     }
     if (qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
         (args.contains("--ble-status") || args.contains("--ble-service"))) return 10;
@@ -299,6 +324,7 @@ int main(int argc, char **argv)
         if (!logPath.isEmpty()) appendLog(logPath, "server\n");
         const int exitDelay = qEnvironmentVariableIntValue("OTG_TEST_SERVER_EXIT_MS");
         if (exitDelay > 0) QTimer::singleShot(exitDelay, &app, [] { QCoreApplication::exit(11); });
+        exitWhenRequested(app, "OTG_TEST_SERVER_EXIT_TRIGGER");
         QString layoutPath;
         int port = 0;
         if (args.contains("--settings")) {

@@ -2,9 +2,58 @@
 #include "connection_manager.h"
 #include "device_info.h"
 #include "ble_limits.h"
+#include <QUuid>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 ConnectionManager::ConnectionManager(QObject *parent) : QObject(parent)
 {
+    m_windowsBleDeadline.setSingleShot(true);
+    connect(&m_windowsBleDeadline, &QTimer::timeout, this, [this] { m_windowsBleService.kill(); });
+    connect(&m_windowsBleService, &QProcess::readyReadStandardError, this, [this] {
+        emit log({}, QString::fromUtf8(m_windowsBleService.readAllStandardError()));
+    });
+    connect(&m_windowsBleService, &QProcess::readyReadStandardOutput, this, [this] {
+        m_windowsBleEvents += m_windowsBleService.readAllStandardOutput();
+        if (m_windowsBleEvents.size() > 65536) { m_windowsBleService.kill(); return; }
+        int end;
+        while ((end = m_windowsBleEvents.indexOf('\n')) >= 0) {
+            auto object = QJsonDocument::fromJson(m_windowsBleEvents.left(end)).object();
+            m_windowsBleEvents.remove(0, end + 1);
+            if (object.value("event") == "ble-multi-ready" && !m_windowsBleStopping) {
+                m_windowsBleDeadline.stop();
+                m_windowsBleReady = true;
+                launchPending();
+                emit changed({});
+            }
+        }
+        finishWindowsBleStop();
+    });
+    const auto ended = [this] {
+        m_windowsBleDeadline.stop();
+        const bool expected = m_windowsBleStopping;
+        m_windowsBleReady = m_windowsBleStopping = false;
+        m_windowsBleToken.clear();
+        m_windowsBleProgram.clear();
+        if (!expected) {
+            for (auto it = m_devices.begin(); it != m_devices.end(); ++it) {
+                if (it->options.windowsBleToken.isEmpty()) continue;
+                it->errorId = "otg.ble.service_failed";
+                it->errorDetail = m_windowsBleService.error() == QProcess::FailedToStart ?
+                    m_windowsBleService.errorString() : QString::number(m_windowsBleService.exitCode());
+                it->pending = false;
+                it->waitingForBleAttach = false;
+                it->session->stopBleProvider();
+                it->session->stop();
+            }
+        }
+        if (!busy()) m_server.stop();
+        emit changed({});
+    };
+    connect(&m_windowsBleService, &QProcess::finished, this, ended);
+    connect(&m_windowsBleService, &QProcess::errorOccurred, this, [ended](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) ended();
+    });
     connect(&m_server, &DeskflowServer::ready, this, [this] {
         launchPending();
         configureWaitingBle();
@@ -68,6 +117,7 @@ bool ConnectionManager::bindBleDiscovery(const QString &sourceId, const QString 
 
 ConnectionManager::~ConnectionManager()
 {
+    m_windowsBleService.disconnect(this);
     // QObject deletes children after members. Disconnect first so a QProcess
     // destructor cannot call into an already destroyed device map.
     m_server.disconnect(this);
@@ -135,6 +185,7 @@ bool ConnectionManager::busy() const
 
 bool ConnectionManager::hasBleProvider() const
 {
+    if (m_windowsBleService.state() != QProcess::NotRunning) return true;
     for (const auto &entry : m_devices) if (entry.session->hasBleProvider()) return true;
     return false;
 }
@@ -147,11 +198,26 @@ int ConnectionManager::activeBleSessions() const
     return count;
 }
 
+int ConnectionManager::reservedBleSessions() const
+{
+    int count = 0;
+    for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it)
+        if ((it->options.transport == "ble" && state(it.key()) != Session::State::Idle) ||
+            it->session->hasBleProvider()) ++count;
+    return count;
+}
+
 const char *ConnectionManager::bleProviderStatusId() const
 {
+    for (const auto &entry : m_devices)
+        if (entry.options.transport == "ble" && entry.session->state() == Session::State::Connected)
+            return "otg.ble.status_connected";
     for (const auto &entry : m_devices) {
         if (const auto id = entry.session->bleProviderStatusId()) return id;
     }
+    if (m_windowsBleService.state() != QProcess::NotRunning)
+        return m_windowsBleStopping ? "otg.ble.status_stopping" :
+            m_windowsBleReady ? "otg.ble.status_idle" : "otg.ble.status_starting";
     return nullptr;
 }
 
@@ -176,9 +242,15 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
         return reject(id, "otg.error.phone_screen_name");
     if (options.manageServer && options.phone.compare(options.computer, Qt::CaseInsensitive) == 0)
         return reject(id, "otg.error.screen_names");
-#if defined(Q_OS_LINUX) && defined(OTG_GUI_HAVE_BLE)
+#if defined(OTG_GUI_HAVE_BLE) || defined(OTG_GUI_HAVE_BLE_WIN)
     if (options.transport == "ble" && activeBleSessions() >= OTG_BLE_MAX_PHONES)
         return reject(id, "otg.ble.multi_full");
+#endif
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    if (options.transport == "ble" && !session(id)->hasBleProvider() && reservedBleSessions() >= OTG_BLE_MAX_PHONES)
+        return reject(id, "otg.ble.multi_full");
+    if (options.transport == "ble" && !options.preferDirectedBle && !m_windowsBleToken.isEmpty())
+        return reject(id, "otg.multi.ble_limit");
 #endif
     bool requireDirected = false;
     for (auto it = m_devices.cbegin(); it != m_devices.cend(); ++it) {
@@ -199,6 +271,11 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
             if (!options.blePeer.isEmpty() && !options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
                 return reject(id, "otg.multi.duplicate_device");
             requireDirected = true;
+#elif defined(OTG_GUI_HAVE_BLE_WIN)
+            if (!options.preferDirectedBle || !it->options.preferDirectedBle)
+                return reject(id, "otg.multi.ble_limit");
+            if (!options.blePeer.isEmpty() && !options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
+                return reject(id, "otg.multi.duplicate_device");
 #else
             return reject(id, "otg.multi.ble_limit");
 #endif
@@ -224,6 +301,22 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
     entry.errorId.clear();
     entry.errorDetail.clear();
     entry.pending = true;
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    if (options.transport == "ble" && options.preferDirectedBle) {
+        if (m_windowsBleStopping || (!m_windowsBleProgram.isEmpty() && m_windowsBleProgram != options.bridge)) {
+            entry.pending = false;
+            return reject(id, "otg.ble.provider_target");
+        }
+        if (m_windowsBleToken.isEmpty()) {
+            m_windowsBleToken = QUuid::createUuid().toString(QUuid::Id128);
+            m_windowsBleProgram = options.bridge;
+            m_windowsBleEvents.clear();
+            m_windowsBleService.start(options.bridge, {"--ble-win-multi-service", m_windowsBleToken});
+            m_windowsBleDeadline.start(15000);
+        }
+        entry.options.windowsBleToken = m_windowsBleToken;
+    }
+#endif
     emit changed(id);
     if (options.bleDiscovery || !options.manageServer || m_server.state() == DeskflowServer::State::Running) launchPending();
     else if (m_server.state() == DeskflowServer::State::Idle)
@@ -236,6 +329,9 @@ void ConnectionManager::launchPending()
 {
     for (auto it = m_devices.begin(); it != m_devices.end(); ++it) {
         if (!it->pending) continue;
+        if (!it->options.windowsBleToken.isEmpty() && !m_windowsBleReady) continue;
+        if (it->options.manageServer && !it->options.bleDiscovery &&
+            m_server.state() != DeskflowServer::State::Running) continue;
         auto options = it->options;
         options.host = options.manageServer ? "127.0.0.1" : options.host;
         options.manageServer = false; // The manager, never a child session, owns the shared server.
@@ -273,6 +369,7 @@ bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &op
         return false;
     if (m_server.state() == DeskflowServer::State::Stopping) return false;
     m_devices[id].options = options;
+    if (options.preferDirectedBle) m_devices[id].options.windowsBleToken = m_windowsBleToken;
     if (options.manageServer && m_server.state() == DeskflowServer::State::Idle) {
         m_server.start({options.deskflow, options.computer, options.deskflowConfig, options.port,
                         options.tls, options.tlsCertificate});
@@ -285,6 +382,7 @@ bool ConnectionManager::attachBle(const QString &id, const ConnectionOptions &op
 
 void ConnectionManager::update(const QString &id)
 {
+    finishWindowsBleStop();
     if (!busy()) m_server.stop();
     emit changed(id);
 }
@@ -311,6 +409,7 @@ void ConnectionManager::stopAll()
 
 void ConnectionManager::stopBle()
 {
+    m_windowsBleStopping = m_windowsBleService.state() != QProcess::NotRunning;
     const auto ids = m_devices.keys();
     for (const auto &id : ids) {
         const auto &entry = m_devices[id];
@@ -318,13 +417,26 @@ void ConnectionManager::stopBle()
         if (entry.options.transport == "ble") stop(id);
     }
     if (!busy()) m_server.stop();
+    finishWindowsBleStop();
+}
+
+void ConnectionManager::finishWindowsBleStop()
+{
+    if (!m_windowsBleStopping || m_windowsBleService.state() == QProcess::NotRunning) return;
+    for (const auto &entry : m_devices)
+        if (entry.session->hasBleProvider() ||
+            (entry.options.transport == "ble" && entry.session->state() != Session::State::Idle)) return;
+    m_windowsBleService.closeWriteChannel();
+    if (!m_windowsBleDeadline.isActive()) m_windowsBleDeadline.start(15000);
 }
 
 void ConnectionManager::shutdown()
 {
     m_shutdown = true;
+    m_windowsBleStopping = m_windowsBleService.state() != QProcess::NotRunning;
     for (auto &entry : m_devices) entry.pending = false;
     for (auto &entry : m_devices) entry.session->shutdown();
     if (!busy()) m_server.stop();
+    finishWindowsBleStop();
     emit changed({});
 }

@@ -58,6 +58,7 @@ struct ConnectionOptions {
     bool bleLegacyHandles = false;
     bool requireDirectedBle = false;
     bool preferDirectedBle = false;
+    QString windowsBleToken; // Private GUI-owned shared provider, never persisted.
     QString blePrivilegeProgram = "/usr/bin/pkexec";
     std::function<bool(const QString &)> confirmSharedBleIsolation;
     int port = 24800;

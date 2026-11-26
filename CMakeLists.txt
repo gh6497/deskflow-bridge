@@ -230,7 +230,7 @@ if(BUILD_BLE_WIN)
   target_compile_definitions(deskflow-bridge PRIVATE OTG_HAVE_BLE_WIN=1 NOMINMAX WIN32_LEAN_AND_MEAN)
   # VS generators cannot separate target-wide C/C++ warning options reliably.
   set_source_files_properties(platform/windows/ble_win.cpp PROPERTIES COMPILE_OPTIONS "/W4;/WX;/EHsc;/utf-8")
-  target_link_libraries(deskflow-bridge PRIVATE windowsapp)
+  target_link_libraries(deskflow-bridge PRIVATE windowsapp advapi32)
 endif()
 if(BUILD_BLE)
   if(NOT LINUX)
