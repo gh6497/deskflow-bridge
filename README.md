@@ -37,7 +37,7 @@ You must install [Deskflow](https://github.com/deskflow/deskflow) separately. Th
 1. Install and start Deskflow on the computer that owns the keyboard and mouse.
 2. Add the phone as a screen in Deskflow and place it next to the computer screen.
 3. Start `deskflow-bridge-gui`. For USB or ADB, click **Add device** and choose its connection type. The type is fixed for that profile.
-4. For USB or ADB, select the phone and set its dimensions in **Add device**, then click **Connect** in that window. The device appears in the list after Deskflow connects. For Bluetooth, click **Start Bluetooth service** under **Shared server**, then connect from the phone.
+4. For USB or ADB, select the phone and set its dimensions in **Add device**. When ADB reports a device model, the window suggests a display name and a phone screen name. Make sure the screen name matches the Deskflow layout, then click **Connect**. The device appears in the list after Deskflow connects. For Bluetooth, click **Start Bluetooth service** under **Shared server**, then connect from the phone.
 5. Move the mouse across the configured edge to enter the phone. Move it back to return to the computer.
 
 The [illustrated user guide](docs/USER_GUIDE.md) covers installation, the first connection, permissions, troubleshooting, optional features, and multi-device setups. The [Chinese user guide](docs/USER_GUIDE.zh-CN.md) is also available.

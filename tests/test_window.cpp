@@ -166,8 +166,149 @@ private slots:
         QCOMPARE(list->count(), 0);
         addTestDevice(window, "uhid", {}, true);
         QCOMPARE(list->count(), 1);
+        QCOMPARE(window.findChild<QLineEdit *>("screenName")->text(), "Pixel_Test");
+        QCOMPARE(window.findChild<QLineEdit *>("deviceAlias")->text(), "Pixel Test");
         QVERIFY(window.findChild<QLabel *>("deviceTransport")->text().contains("UHID"));
         QVERIFY(window.findChild<QLineEdit *>("uhidUsbSerial")->isReadOnly());
+        window.findChild<QAction *>("trayQuit")->trigger();
+#endif
+    }
+
+    void addDeviceNames_data()
+    {
+        QTest::addColumn<QString>("transport");
+        QTest::addColumn<QString>("target");
+        QTest::newRow("aoa") << QStringLiteral("usb") << QStringLiteral("TEST123");
+#ifdef OTG_GUI_HAVE_UHID
+        QTest::newRow("wired") << QStringLiteral("uhid") << QStringLiteral("TEST123");
+        QTest::newRow("wireless") << QStringLiteral("uhid") << QStringLiteral("192.0.2.10:5555");
+#endif
+    }
+
+    void addDeviceNames()
+    {
+        QFETCH(QString, transport);
+        QFETCH(QString, target);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("adb", testPeerPath());
+        settings.setValue("computer", "pixel_test");
+        settings.setValue("phone", "Pixel_Test-2");
+        settings.setValue("manageServer", false);
+        const QByteArray devices = "List of devices attached\n";
+        const auto entry = target.toUtf8() + " device model:Pixel_Test\n";
+        qputenv("OTG_TEST_ADB_DEVICES", devices + entry);
+        const auto cleanup = qScopeGuard([] { qunsetenv("OTG_TEST_ADB_DEVICES"); });
+        AutoConnectTestWindow window;
+        auto *list = window.findChild<QListWidget *>("deviceSidebar");
+        const auto initialCount = list->count();
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+            QVERIFY(dialog);
+            auto rejectOnFailure = qScopeGuard([&] { dialog->reject(); });
+            auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+            method->setCurrentIndex(method->findData(transport));
+            const bool wireless = target.contains(':');
+            if (wireless) dialog->findChild<QComboBox *>("newDeviceAdbAccess")->setCurrentIndex(1);
+            auto *field = dialog->findChild<QLineEdit *>(wireless ? "newDeviceWirelessTarget" : "newDeviceUsbSerial");
+            auto *refresh = dialog->findChild<QPushButton *>("newDeviceRefresh");
+            auto *screen = dialog->findChild<QComboBox *>("newDeviceScreen");
+            auto *alias = dialog->findChild<QLineEdit *>("newDeviceAlias");
+            const auto fallback = screen->currentText();
+            refresh->click();
+            QTRY_VERIFY(refresh->isEnabled());
+            QCOMPARE(field->text(), target);
+            QCOMPARE(screen->currentText(), "Pixel_Test-3");
+            QCOMPARE(alias->text(), "Pixel Test");
+
+            field->setText(wireless ? "192.0.2.11:5555" : "UNMATCHED");
+            QCOMPARE(screen->currentText(), fallback);
+            QVERIFY(alias->text().isEmpty());
+            field->setText(target);
+            screen->setCurrentIndex(screen->findText("Pixel_Test-2"));
+            alias->selectAll();
+            QTest::keyClicks(alias, "My phone");
+            refresh->click();
+            QTRY_VERIFY(refresh->isEnabled());
+            QCOMPARE(screen->currentText(), "Pixel_Test-2");
+            QCOMPARE(alias->text(), "My phone");
+
+            auto *connect = dialog->findChild<QPushButton *>("newDeviceConnect");
+            QVERIFY(connect->isEnabled());
+            QTimer::singleShot(2500, dialog, [dialog] { dialog->reject(); });
+            rejectOnFailure.dismiss();
+            connect->click();
+        });
+        window.findChild<QPushButton *>("addDeviceButton")->click();
+        QCOMPARE(list->count(), initialCount + 1);
+        QCOMPARE(window.findChild<QLineEdit *>("screenName")->text(), "Pixel_Test-2");
+        QCOMPARE(window.findChild<QLineEdit *>("deviceAlias")->text(), "My phone");
+        QCOMPARE(settings.beginReadArray("devices"), initialCount + 1);
+        settings.setArrayIndex(initialCount);
+        const auto profile = settings.value("profile").toMap();
+        settings.endArray();
+        QCOMPARE(profile.value("phone").toString(), "Pixel_Test-2");
+        QCOMPARE(profile.value("alias").toString(), "My phone");
+        window.findChild<QAction *>("trayQuit")->trigger();
+        QTRY_VERIFY(window.findChild<ConnectionManager *>()->settled());
+    }
+
+    void wirelessNameWithoutRefresh()
+    {
+#ifdef OTG_GUI_HAVE_UHID
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings().setValue("adb", testPeerPath());
+        const auto logPath = dir.filePath("adb.log");
+        qputenv("OTG_TEST_UHID_LOG", logPath.toUtf8());
+        qputenv("OTG_TEST_WIRELESS_MODEL", "Pixel 8 Pro\r\n");
+        const auto cleanup = qScopeGuard([] {
+            qunsetenv("OTG_TEST_UHID_LOG");
+            qunsetenv("OTG_TEST_WIRELESS_MODEL");
+        });
+        AutoConnectTestWindow window;
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = window.findChild<QDialog *>("addDeviceDialog");
+            QVERIFY(dialog);
+            const auto reject = qScopeGuard([&] { dialog->reject(); });
+            auto *method = dialog->findChild<QComboBox *>("newDeviceTransport");
+            method->setCurrentIndex(method->findData("uhid"));
+            dialog->findChild<QComboBox *>("newDeviceAdbAccess")->setCurrentIndex(1);
+            auto *address = dialog->findChild<QLineEdit *>("newDeviceWirelessTarget");
+            auto *screen = dialog->findChild<QComboBox *>("newDeviceScreen");
+            auto *alias = dialog->findChild<QLineEdit *>("newDeviceAlias");
+            auto *connect = dialog->findChild<QPushButton *>("newDeviceConnect");
+            const auto fallback = screen->currentText();
+
+            address->setText("192.0.2.10:5555");
+            QVERIFY(!connect->isEnabled());
+            QTRY_COMPARE(screen->currentText(), "Pixel_8_Pro");
+            QCOMPARE(alias->text(), "Pixel 8 Pro");
+            QVERIFY(connect->isEnabled());
+
+            address->setText("192.0.2.11:5555"); // No online ADB device at this address.
+            QCOMPARE(screen->currentText(), fallback);
+            QVERIFY(alias->text().isEmpty());
+            QTRY_VERIFY(connect->isEnabled());
+            QCOMPARE(screen->currentText(), fallback);
+
+            address->setText("192.0.2.10:5555");
+            screen->setEditText("my-existing-screen");
+            QTRY_COMPARE(alias->text(), "Pixel 8 Pro");
+            QCOMPARE(screen->currentText(), "my-existing-screen");
+        });
+        window.findChild<QPushButton *>("addDeviceButton")->click();
+        QFile log(logPath);
+        QVERIFY(log.open(QIODevice::ReadOnly));
+        const auto commands = log.readAll();
+        QVERIFY(commands.contains("[\"-s\",\"192.0.2.10:5555\",\"shell\",\"getprop\",\"ro.product.model\"]"));
+        QVERIFY(commands.contains("[\"-s\",\"192.0.2.11:5555\",\"shell\",\"getprop\",\"ro.product.model\"]"));
+        QVERIFY(!commands.contains("[\"connect\"") && !commands.contains("[\"pair\""));
         window.findChild<QAction *>("trayQuit")->trigger();
 #endif
     }

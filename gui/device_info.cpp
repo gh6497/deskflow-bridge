@@ -16,26 +16,20 @@ bool isUsbAdbSerial(const QString &serial)
            !serial.contains("._tcp", Qt::CaseInsensitive) && !serial.contains(whitespace);
 }
 
-QList<AndroidDevice> parseDevices(const QString &text)
+QList<AndroidDevice> parseAdbDevices(const QString &text)
 {
     QList<AndroidDevice> result;
     for (const QString &line : text.split('\n')) {
         const auto fields = line.simplified().split(' ');
         if (fields.size() < 2 || line.startsWith("List ") || line.startsWith('*'))
             continue;
-        const QString serial = fields[0];
-        // AOA requires a physical USB transport, never an emulator or TCP ADB.
-        if (serial.startsWith("emulator-") || serial.contains(':') ||
-            serial.contains("._adb-tls-"))
-            continue;
         if (fields[1] != "device" && fields[1] != "offline" &&
             fields[1] != "unauthorized" && fields[1] != "no")
             continue;
-        AndroidDevice device{serial, {}, fields[1]};
-        for (const QString &field : fields) {
+        AndroidDevice device{fields[0], {}, fields[1]};
+        for (const QString &field : fields)
             if (field.startsWith("model:"))
-                device.model = field.mid(6).replace('_', ' ');
-        }
+                device.model = field.mid(6).replace('_', ' ').trimmed();
         result.append(device);
     }
     return result;
@@ -94,4 +88,14 @@ int parseRotation(const QString &text)
 bool validScreenName(const QString &name)
 {
     return QRegularExpression("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$").match(name).hasMatch();
+}
+
+QString screenNameForAdbModel(const QString &model)
+{
+    static const QRegularExpression invalidCharacters("[^A-Za-z0-9_.-]");
+    auto name = model;
+    name.replace(invalidCharacters, "_");
+    name.truncate(63);
+    if (name.startsWith('.') || name.startsWith('-')) name[0] = '_';
+    return name;
 }

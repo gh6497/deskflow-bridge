@@ -128,12 +128,13 @@ If your server uses TLS, enable TLS and enter its server fingerprint. If it also
 
 ### Step 4: Add and connect the device
 
-![Add device window with USB ADB discovery and connection controls](screenshots/add-device-en.png)
+![Add device window showing the display and screen names suggested for a USB ADB device](screenshots/add-device-en.png)
 
-1. Click **Add device**. Choose **ADB + UHID** and **USB ADB**, then enter the screen name you set in Deskflow.
+1. Click **Add device** and choose **ADB + UHID** and **USB ADB**.
 2. Click **Refresh devices** and select the phone marked **Online**. If the list contains a single device and it is online, the window fills its **USB ADB serial** automatically.
-3. Click **Read screen size** or enter the phone's width and height for its current orientation. Click **Connect** in the same window.
-4. Wait for the window to close and the device to appear in the list. If Deskflow reports an error, correct it and retry in the window, or click **Cancel** to discard the new device.
+3. The ADB model fills **Display name** and suggests a **Phone screen name**. For example, `Pixel Test` becomes `Pixel_Test` for Deskflow. If the suggested screen name is already in use by a saved profile, the suggestion adds a numeric suffix. You can edit both names or choose an existing screen name to reuse its layout. Use the exact same screen name in Deskflow.
+4. Click **Read screen size** or enter the phone's width and height for its current orientation. Click **Connect** in the same window.
+5. Wait for the window to close and the device to appear in the list. If Deskflow reports an error, correct it and retry in the window, or click **Cancel** to discard the new device.
 
 ### Step 5: Try it
 
@@ -155,6 +156,8 @@ This mode can provide keyboard and mouse control with a data cable, without ADB 
 2. Click **Add device**, choose **USB (AOA HID)** and enter the matching screen name.
 3. Plug in the phone, click **Refresh devices** and select the matching USB device. If it is not found, check the cable and USB permissions. You can also enter the phone's USB serial manually.
 4. Enter the phone's width and height for its current orientation, then click **Connect** in the same window. The device appears in the list after Deskflow connects.
+
+If an online ADB device with the same USB serial is available when you refresh, its model is used to suggest names. Without a matching model, use the default screen name or enter your own.
 
 Linux needs USB access permissions; see [Linux USB permissions](../README.md#rootless-usb-access-on-linux-udev-rule). Allow accessory access if macOS requests it. Windows AOA needs a libusb-compatible driver, which may conflict with existing ADB/file-transfer drivers. Read [Windows USB guidance](WINDOWS_USB.md) before changing drivers, or use ADB + UHID instead.
 
@@ -291,7 +294,7 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 1. Put the phone and computer on the same reachable network and enable **Developer options → Wireless debugging** on the phone.
 2. For a new device, open **Add device**, choose **ADB + UHID** and **Wireless ADB**, then open **Wireless ADB setup**. For a saved device, open the helper in its settings. Choose pairing with a code on the phone.
 3. Select the discovered pairing address or enter the IP and port shown in the phone's pairing dialog. Enter its six-digit pairing code and pair.
-4. Then select the connection address and port shown on the phone's main **Wireless debugging** page. In an ADB + UHID profile, a successful connection fills **Wireless ADB address** and selects **Wireless ADB**. If you already know the connection address, enter it directly and select **Wireless ADB**.
+4. Use the connection address and port shown on the phone's main **Wireless debugging** page. In **Add device**, entering the address or returning from a successful **Wireless ADB setup** connection fills the name suggestions once ADB can read the phone's model. You can also use **Refresh devices** to select an online phone. If the phone is offline, use the setup helper to bring it online before reading its model, or enter the names yourself.
 5. Read dimensions and click **Connect**. The profile keeps both targets and remembers your last selection. Disconnect before switching. Inserting a USB cable leaves an active wireless session in place.
 
 **Pairing and connection ports can differ.** Addresses/ports may also change after switching networks or restarting wireless debugging. Update the target if needed. The companion's wireless ADB helper opens system settings; it cannot approve authorization for you.
