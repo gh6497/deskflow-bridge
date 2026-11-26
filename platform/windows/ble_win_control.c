@@ -30,7 +30,8 @@ static bool command(struct otg_ble_control *c)
         if (i == 12) return false;
         *tab = 0; p = tab + 1;
     }
-    if (strcmp(fields[0], "resume") || c->phase != OTG_BLE_IDLE ||
+    const bool discover = !strcmp(fields[0], "discover");
+    if ((!discover && strcmp(fields[0], "resume")) || c->phase != OTG_BLE_IDLE ||
         !*fields[1] || strlen(fields[1]) >= sizeof(c->host) ||
         !*fields[3] || strlen(fields[3]) >= sizeof(c->name)) return false;
     for (const char *n = fields[3]; *n; ++n)
@@ -60,6 +61,7 @@ static bool command(struct otg_ble_control *c)
     c->sensitivity_centi = fields[11] ? number(fields[11], 1000) : 100;
     c->absolute_per_axis = fields[12] != NULL;
     c->phase = OTG_BLE_ACTIVE;
+    c->discover = discover;
     return true;
 }
 

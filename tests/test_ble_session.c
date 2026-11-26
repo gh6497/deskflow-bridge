@@ -8,6 +8,7 @@ static void stop_signal(int signal_number){(void)signal_number;stop_service=1;}
 
 struct otg_ble_hid {
     bool application,advertising,active,connected,subscribed[2];
+    char identity[18];
     uint8_t report[2][8];
     uint64_t interval;
 };
@@ -78,7 +79,7 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b,bool enabled)
 }
 void otg_ble_hid_set_interval(struct otg_ble_hid *b,uint64_t us){b->interval=us;}
 const char *otg_ble_hid_identity(const struct otg_ble_hid *b)
-{return b && fake_ready((void *)b) ? "AA:BB:CC:DD:EE:FF" : NULL;}
+{return b && b->identity[0] ? b->identity : NULL;}
 bool otg_ble_hid_set_peer(struct otg_ble_hid *b,const char *address)
 {(void)b;return strlen(address)==17;}
 
@@ -112,6 +113,19 @@ static void test_packets(void)
     CHECK(socket_path(getuid(),"hci0",dir,sizeof(dir),&address));
     CHECK(!socket_path(getuid(),"hci0/../../x",dir,sizeof(dir),&address));
     CHECK(!valid_adapter("hci65535") && !valid_adapter("hci-1"));
+}
+
+static void test_reconnect_discovered_phone(void)
+{
+    struct otg_ble_hid hid = {0};
+    struct service s = {.client = -1, .hid = &hid, .clean = true};
+    struct message peer = {.operation = SELECT_PEER, .size = 17, .data = "aa:bb:cc:dd:ee:ff"};
+    CHECK(!handle_session(&s, &peer)); // No verified phone yet.
+    strcpy(hid.identity, "AA:BB:CC:DD:EE:FF"); // Retained after the discovering session detached.
+    CHECK(handle_session(&s, &peer));
+    CHECK(!s.peer[0]); // The automatic service remains reusable in discovery mode.
+    peer.data[0] = '0';
+    CHECK(!handle_session(&s, &peer));
 }
 
 static void test_sessions(void)
@@ -453,6 +467,7 @@ static void test_multi_stale_reports(void)
 
 int main(void)
 {
+    test_reconnect_discovered_phone();
     test_packets();test_sessions();test_client_rpc(false);test_client_rpc(true);
     test_async_reports();test_service_process(false);test_service_process(true);
     test_multi_process(false);test_multi_process(true);

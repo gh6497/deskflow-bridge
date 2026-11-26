@@ -1598,6 +1598,9 @@ private slots:
         settings.setValue("mouseMode", "relative");
         settings.setValue("manageServer", false);
         settings.setValue("language", "zh_CN");
+        const auto commandLog = settingsDir.filePath("ble-commands.jsonl");
+        qputenv("OTG_TEST_BLE_COMMANDS", commandLog.toUtf8());
+        const auto clearLog = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_COMMANDS"); });
         AutoConnectTestWindow window;
         window.show();
         QCoreApplication::processEvents();
@@ -1640,6 +1643,36 @@ private slots:
         QVERIFY(serial->text().isEmpty()); // No startup ADB scan in BLE mode.
         session->stop();
         QTRY_COMPARE(session->state(), Session::State::Idle);
+        QVERIFY(button->isEnabled());
+        QCOMPARE(button->text(), QStringLiteral("重新接入 Deskflow"));
+        window.findChild<QSpinBox *>("screenWidth")->setValue(720);
+        window.findChild<QSpinBox *>("screenHeight")->setValue(1600);
+        window.findChild<QComboBox *>("rightButtonAction")->setCurrentIndex(0); // normal
+        autoAttach->setChecked(false);
+        button->click();
+        QVERIFY(!button->isEnabled());
+        QTRY_COMPARE(session->state(), Session::State::Connected);
+        QVERIFY(!autoAttach->isChecked());
+        QFile commands(commandLog);
+        QVERIFY(commands.open(QIODevice::ReadOnly));
+        const auto lines = commands.readAll().trimmed().split('\n');
+        QCOMPARE(lines.size(), 2);
+        const auto reconnect = QJsonDocument::fromJson(lines.last()).array().toVariantList();
+#ifdef Q_OS_WIN
+        QCOMPARE(reconnect.value(0).toString(), "resume");
+        QCOMPARE(reconnect.value(4).toString(), "720");
+        QCOMPARE(reconnect.value(5).toString(), "1600");
+        QCOMPARE(reconnect.value(7).toString(), "normal");
+#else
+        QVERIFY(!reconnect.contains("--gui-ble-auto"));
+        for (const auto &option : QList<QPair<QString, QString>>{{"--ble-peer", "AA:BB:CC:DD:EE:FF"},
+                 {"--width", "720"}, {"--height", "1600"}, {"--right-button-action", "normal"}}) {
+            QVERIFY(reconnect.contains(option.first));
+            QCOMPARE(reconnect.value(reconnect.indexOf(option.first) + 1).toString(), option.second);
+        }
+#endif
+        session->stop();
+        QTRY_COMPARE(session->state(), Session::State::Idle);
         const auto screenshot = qEnvironmentVariable("OTG_TEST_BLE_SCREENSHOT");
         if (!screenshot.isEmpty()) QVERIFY(window.grab().save(screenshot));
 #if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
@@ -1661,7 +1694,8 @@ private slots:
         QCOMPARE(settings.value("transport").toString(), "ble");
         QVERIFY(settings.value("blePeer").toString().isEmpty());
         AutoConnectTestWindow restored;
-        QVERIFY(restored.findChild<QCheckBox *>("bleAutoAttach")->isChecked());
+        QVERIFY(!restored.findChild<QCheckBox *>("bleAutoAttach")->isChecked());
+        QCOMPARE(restored.findChild<QSpinBox *>("screenWidth")->value(), 720);
         QVERIFY(restored.findChild<QCheckBox *>("absolutePerAxis")->isChecked());
 #ifdef Q_OS_LINUX
         QCOMPARE(settings.value("sharedBle/adapter").toString(), "hci1");

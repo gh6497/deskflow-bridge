@@ -1566,7 +1566,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     if (options.transport == "ble") {
         options.bleIdentity = profile.value("bleIdentity").toString().trimmed().toUpper();
         options.bleAutoAttach = profile.value("bleAutoAttach", true).toBool();
-        options.blePeer.clear();
+        options.blePeer = options.bleIdentity;
     }
     if (options.transport == "ble" && m_adapter) {
         options.adapter = m_adapter->text().trimmed();
@@ -1673,9 +1673,11 @@ void MainWindow::updateEnabled()
     m_connectAll->setEnabled(connectable && !m_closing && !m_scanning && !m_stoppingBleService &&
                              !m_companion.busy() && m_connections.serverState() != DeskflowServer::State::Stopping);
     m_disconnectAll->setEnabled(m_connections.busy() && !m_closing);
-    m_connect->setEnabled(!ble && idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy() &&
+    const bool knownBle = ble && m_startBleService && !m_records.value(m_selectedId).value("bleIdentity").toString().isEmpty();
+    setTranslatedProperty(m_connect, "text", knownBle ? "otg.ble.reconnect" : "otg.action.connect");
+    m_connect->setEnabled(idle && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy() &&
                           m_connections.serverState() != DeskflowServer::State::Stopping &&
-                          (ble || !(uhid ? m_adbSerial : m_serial)->text().trimmed().isEmpty()));
+                          (ble ? knownBle : !(uhid ? m_adbSerial : m_serial)->text().trimmed().isEmpty()));
     m_disconnect->setEnabled(!idle && m_connections.state(m_selectedId) != Session::State::Stopping);
     m_host->setEnabled(!m_manage->isChecked());
     m_tlsCert->parentWidget()->setEnabled(m_tls->isChecked());
@@ -2183,10 +2185,14 @@ void MainWindow::startBleService()
     }
     auto options = connectionOptions(profile);
     options.bleDiscovery = true;
-    if (options.bleIsolate && QMessageBox::warning(this, qtTrId("otg.ble.confirm_title"),
+    if (confirmBleIsolation(options)) m_connections.start(id, options, layoutConfiguration());
+}
+
+bool MainWindow::confirmBleIsolation(const ConnectionOptions &options)
+{
+    return !options.bleIsolate || QMessageBox::warning(this, qtTrId("otg.ble.confirm_title"),
         qtTrId("otg.ble.confirm").arg(options.adapter), QMessageBox::Ok | QMessageBox::Cancel,
-        QMessageBox::Cancel) != QMessageBox::Ok) return;
-    m_connections.start(id, options, layoutConfiguration());
+        QMessageBox::Cancel) == QMessageBox::Ok;
 }
 
 void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &identity)
@@ -2248,9 +2254,10 @@ void MainWindow::connectDevice()
     if (m_closing || m_scanning || m_stoppingBleService || m_companion.busy() ||
         m_connections.state(m_selectedId) != Session::State::Idle)
         return;
-    if (m_transport->currentData() == "ble") return;
     saveSettings();
     auto options = connectionOptions(deviceProfile());
+    if (options.transport == "ble" && (!m_startBleService || options.blePeer.isEmpty() || !confirmBleIsolation(options)))
+        return;
     if (options.bridge.isEmpty()) {
         m_sessionStatus = false;
         setTranslatedProperty(m_status, "text", "otg.error.bridge_not_found");

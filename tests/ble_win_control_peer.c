@@ -36,12 +36,13 @@ static bool send_report(void *ctx, uint16_t id, const uint8_t *data, uint16_t si
 }
 static bool poll_report(void *ctx) { (void)ctx; return true; }
 static bool ready(void *ctx) { (void)ctx; return !getenv("OTG_TEST_NATIVE_BLE_WAIT"); }
+static const char *identity(void *ctx) { return ready(ctx) ? "AA:BB:CC:DD:EE:FF" : NULL; }
 static void close_report(void *ctx) { (void)ctx; }
 struct otg_ble_win *otg_ble_win_create(const char *peer)
 { (void)peer; memset(&provider, 0, sizeof(provider)); trace("provider-created"); return &provider; }
 const struct otg_hid_transport_ops *otg_ble_win_ops(void)
 {
-    static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report, NULL};
+    static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report, identity};
     return &ops;
 }
 void otg_ble_win_destroy(struct otg_ble_win *b) { (void)b; trace("provider-closed"); }

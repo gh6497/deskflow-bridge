@@ -46,7 +46,10 @@ int main(void)
     assert(feed(&c, "resume\tlocalhost\t24800\tandroid\t1080\t1920\thome\tback\tswipe-up\tswipe-down\t25\t250\tper-axis\n"));
     assert(c.absolute_per_axis);
     c.phase = OTG_BLE_IDLE;
+    assert(feed(&c, "discover\tlocalhost\t24800\tandroid\t1080\t1920\thome\n") && c.discover);
+    c.phase = OTG_BLE_IDLE;
     assert(feed(&c, resume));
+    assert(!c.discover);
     assert(c.middle_button_home && !c.right_button_back); /* Legacy resume also clears an old Back setting. */
     assert(!c.absolute_per_axis);
     const char *invalid[] = {
