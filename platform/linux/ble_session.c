@@ -196,12 +196,18 @@ static bool handle_session(struct service *s,const struct message *m)
         /* Empty selection explicitly opts in to automatic binding. Older v2
          * services reject it, preventing use of their legacy peer selection. */
         if(!m->size)return !s->peer[0];
-        if(m->size!=17 || (s->hid && !s->peer[0]))return false;
+        if(m->size!=17)return false;
         for(unsigned i=0;i<17;i++) {
             if(i%3==2 ? m->data[i]!=':' : !g_ascii_isxdigit(m->data[i]))return false;
         }
         char peer[18];memcpy(peer,m->data,17);peer[17]=0;
         for(unsigned i=0;i<17;i++)peer[i]=g_ascii_toupper(peer[i]);
+        if (s->hid && !s->peer[0]) {
+            /* Automatic selection pinned the identity in the GATT backend. A
+             * saved profile can reuse that exact binding, even while offline. */
+            const char *identity = otg_ble_hid_identity(s->hid);
+            return identity && !strcmp(identity, peer);
+        }
         if((s->peer[0] && strcmp(s->peer,peer)) ||
            (s->hid && !otg_ble_hid_set_peer(s->hid,peer)))return false;
         memcpy(s->peer,peer,sizeof(peer));

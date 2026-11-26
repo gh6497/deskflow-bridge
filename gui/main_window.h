@@ -63,6 +63,7 @@ private:
     void readDisplayFromAdb();
     void connectDevice();
     void startBleService();
+    bool confirmBleIsolation(const ConnectionOptions &options);
     void stopIdleBleService();
     void saveSettings();
     void saveSharedBleSettings(QSettings &settings) const;

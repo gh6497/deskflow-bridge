@@ -133,7 +133,7 @@ private:
     QByteArray m_events;
     QByteArray m_bleEvents;
     QString m_bleProgram, m_blePeer;
-    QStringList m_bleAuxiliary;
+    QStringList m_bleFixedSettings;
     bool m_bleActive = false, m_shutdown = false, m_stoppingBleProvider = false;
     bool m_bleDiscovery = false;
     bool m_audioReady = false;

@@ -219,13 +219,16 @@ static QString adbTarget(const ConnectionOptions &options)
 #endif
 }
 
-static QStringList auxiliarySignature(const ConnectionOptions &options)
+static QStringList fixedBleSettings(const ConnectionOptions &options)
 {
-    if (!adbRequired(options)) return {};
+    QStringList settings;
+    if (options.tls)
+        settings << "tls" << options.tlsCertificate << options.tlsFingerprint << options.tlsFingerprintFile;
+    if (!adbRequired(options)) return settings;
     /* Windows BLE keeps the provider alive between sessions.  Every value
      * consumed by the bridge's ADB path must therefore invalidate a retained
      * provider; otherwise a later session silently reuses the old target. */
-    return {options.adb, options.adbSerial, options.scrcpyServer, options.scrcpyVersion,
+    return settings + QStringList{options.adb, options.adbSerial, options.scrcpyServer, options.scrcpyVersion,
             options.audio ? QStringLiteral("audio") : QStringLiteral("no-audio"),
             options.audio ? QString::number(options.audioGainDb) : QString(),
             options.clipboard ? QStringLiteral("clipboard") : QStringLiteral("no-clipboard"),
@@ -376,7 +379,7 @@ void Session::start(const ConnectionOptions &options)
 #endif
     if (windowsBle() && hasBleProvider() &&
         (m_blePeer.compare(options.blePeer, Qt::CaseInsensitive) != 0 || m_bleProgram != options.bridge ||
-         m_bleAuxiliary != auxiliarySignature(options))) {
+         m_bleFixedSettings != fixedBleSettings(options))) {
         fail("otg.ble.provider_target");
         return;
     }
@@ -728,7 +731,8 @@ void Session::launchBridge()
         m_bleProvider.setProcessEnvironment(environment);
         m_bleActive = true;
         if (hasBleProvider()) {
-            const auto resume = QString("resume\t%1\t%2\t%3\t%4\t%5\t%6\t%7\t%8\t%9\t%10\t%11")
+            const auto command = m_options.bleDiscovery ? QStringLiteral("discover") : QStringLiteral("resume");
+            const auto resume = command + QString("\t%1\t%2\t%3\t%4\t%5\t%6\t%7\t%8\t%9\t%10\t%11")
                 .arg(m_options.manageServer ? "127.0.0.1" : m_options.host)
                 .arg(m_options.port).arg(m_options.phone).arg(m_options.width).arg(m_options.height)
                 .arg(m_options.middleButtonAction).arg(m_options.rightButtonAction)
@@ -741,7 +745,7 @@ void Session::launchBridge()
             m_bleEvents.clear();
             m_blePeer = m_options.blePeer;
             m_bleProgram = m_options.bridge;
-            m_bleAuxiliary = auxiliarySignature(m_options);
+            m_bleFixedSettings = fixedBleSettings(m_options);
             args << "--gui-ble-control";
             m_bleProvider.start(m_options.bridge, args);
         }
@@ -802,9 +806,12 @@ void Session::handleBridgeEvent(const QJsonObject &object)
         setState(State::Starting, "otg.status.waiting_for_screen", m_options.phone);
         return;
     }
-    if (event == "ble-device" && m_bleDiscovery) {
+    if (event == "ble-device" && m_bleDiscovery && m_state == State::Starting) {
         const auto identity = object.value("identity").toString().trimmed().toUpper();
-        if (!identity.isEmpty()) emit bleIdentityDetected(identity);
+        if (!identity.isEmpty()) {
+            if (windowsBle()) m_blePeer = identity;
+            emit bleIdentityDetected(identity);
+        }
         return;
     }
     if (m_options.audio && (event == "audio-ready" || event == "audio-unavailable") &&

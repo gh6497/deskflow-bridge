@@ -335,6 +335,8 @@ int main(int argc, char **argv)
             }
         }
         const bool ble = args.value(args.indexOf("--transport") + 1) == "ble";
+        const auto bleLog = qEnvironmentVariable("OTG_TEST_BLE_COMMANDS");
+        if (ble && !bleLog.isEmpty()) appendArgumentsLog(bleLog, args.mid(1));
         const bool uhid = args.value(args.indexOf("--transport") + 1) == "uhid";
         if (uhid && (args.contains("--serial") || !args.contains("--adb-serial") ||
                      !args.contains("--scrcpy-server") || !args.contains("--scrcpy-version") ||
@@ -354,7 +356,7 @@ int main(int argc, char **argv)
               args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
         if (args.contains("--gui-ble-auto")) {
             output("{\"event\":\"ble-device\",\"identity\":\"AA:BB:CC:DD:EE:FF\"}\n");
-            std::thread([&app] {
+            std::thread([&app, bleLog] {
                 char bytes[1600];
                 while (std::fgets(bytes, sizeof(bytes), stdin)) {
                     const QByteArray line(bytes);
@@ -364,6 +366,9 @@ int main(int argc, char **argv)
                     } else if (line == "pause\n") {
                         output("{\"event\":\"ble-idle\"}\n");
                     } else if (line.startsWith("resume\t")) {
+                        if (!bleLog.isEmpty()) appendArgumentsLog(bleLog, QString::fromUtf8(line.trimmed()).split('\t'));
+                        output("{\"event\":\"connected\"}\n");
+                    } else if (line.startsWith("discover\t")) {
                         output("{\"event\":\"ble-device\",\"identity\":\"AA:BB:CC:DD:EE:FF\"}\n");
                     } else if (line == "stop\n") {
                         QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);

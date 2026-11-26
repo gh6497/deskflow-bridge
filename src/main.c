@@ -57,7 +57,6 @@ struct ble_auto_command {
 static struct ble_auto_command g_ble_command;
 static char g_ble_command_line[2048];
 static size_t g_ble_command_used;
-static char g_ble_identity[64];
 
 #define DEFAULT_PORT   24800
 #define DEFAULT_HOST   "127.0.0.1"
@@ -488,11 +487,7 @@ static bool ble_auto_wait(app_state *s, struct app_options *opts)
     if (!g_ble_auto) return true;
     const char *identity = otg_bridge_identity(&s->bridge);
     if (!identity) return false;
-    if (strcmp(g_ble_identity, identity)) {
-        strncpy(g_ble_identity, identity, sizeof(g_ble_identity) - 1);
-        g_ble_identity[sizeof(g_ble_identity) - 1] = 0;
-        gui_identity_event(identity);
-    }
+    gui_identity_event(identity);
     while (!g_stop && !g_ble_command.attached) {
         if (gui_stop_check() || !otg_bridge_check(&s->bridge)) return false;
 #ifdef _WIN32
@@ -502,10 +497,8 @@ static bool ble_auto_wait(app_state *s, struct app_options *opts)
 #endif
     }
     if (g_stop) return false;
-    if (strcmp(opts->host, g_ble_command.host) || opts->port != g_ble_command.port) {
-        opts->host = g_ble_command.host;
-        opts->port = g_ble_command.port;
-    }
+    opts->host = g_ble_command.host;
+    opts->port = g_ble_command.port;
     opts->name = g_ble_command.name;
     if (opts->width != (int)g_ble_command.width || opts->height != (int)g_ble_command.height) {
         if (!otg_bridge_resize(&s->bridge, (int32_t)g_ble_command.width,
@@ -515,6 +508,19 @@ static bool ble_auto_wait(app_state *s, struct app_options *opts)
     }
     opts->absolute_per_axis = g_ble_command.absolute_per_axis;
     otg_bridge_set_absolute_per_axis(&s->bridge, opts->absolute_per_axis);
+#ifdef OTG_HAVE_BLE_WIN
+    if (g_ble_control) {
+        strcpy(g_control.host, opts->host);
+        strcpy(g_control.name, opts->name);
+        g_control.port = opts->port;
+        g_control.width = g_ble_command.width;
+        g_control.height = g_ble_command.height;
+        g_control.absolute_per_axis = opts->absolute_per_axis;
+    }
+#endif
+    /* The backend pins this peer for its lifetime. A TCP or phone reconnect
+     * reuses the accepted profile until an explicit new discovery session. */
+    g_ble_auto = 0;
     g_ble_command.attached = false;
     return true;
 }
@@ -920,6 +926,7 @@ static bool windows_ble_control_wait(app_state *s)
 {
     gui_stop_check();
     if (g_stop) return false;
+    const bool resuming = g_control.phase != OTG_BLE_ACTIVE;
     if (g_control.phase == OTG_BLE_PAUSING) {
         otg_ble_win_release_inputs(s->transport_owner);
         otg_bridge_reset_input(&s->bridge);
@@ -933,6 +940,10 @@ static bool windows_ble_control_wait(app_state *s)
             fprintf(stderr, "INFO: Windows BLE session detached; GATT provider and subscriptions retained\n");
         }
         Sleep(5);
+    }
+    if (resuming) {
+        g_ble_auto = g_control.discover;
+        g_ble_command.attached = false;
     }
     return !g_stop;
 }
@@ -1364,7 +1375,7 @@ int main(int argc, char **argv)
         g_control.side_swipe_distance_percent = opts.side_swipe_distance_percent;
     }
     if (!strcmp(opts.transport, "ble") && !opts.ble_service && !opts.ble_status && !opts.ble_stop_service && !opts.ble_restore &&
-        (opts.ble_session || opts.ble_isolate || opts.serial || (opts.adb_serial && !(opts.clipboard || opts.unlock_adb_gate)) ||
+        (opts.ble_session || opts.ble_isolate || opts.serial || (opts.adb_serial && !(opts.audio || opts.clipboard || opts.unlock_adb_gate)) ||
          opts.adapter_explicit || opts.mouse_mode != OTG_MOUSE_ABSOLUTE)) {
         fprintf(stderr, "ERROR: Windows BLE supports default adapter and absolute pointer only; Linux service/isolation options and USB serial are unsupported\n");
         return 2;
@@ -1614,6 +1625,9 @@ int main(int argc, char **argv)
             break;
         }
         if (state.transport_owner && !ble_auto_wait(&state, &opts)) {
+#ifdef OTG_HAVE_BLE_WIN
+            if (g_ble_control && !g_stop && g_control.phase != OTG_BLE_ACTIVE) continue;
+#endif
             if (!g_stop) ret = 1;
             break;
         }
@@ -1660,8 +1674,6 @@ int main(int argc, char **argv)
         otg_bridge_leave(&state.bridge);
         otg_bridge_reset_input(&state.bridge);
         state.deskflow_connected=state.input_ready_reported=false;
-        g_ble_command.attached = false;
-        g_ble_identity[0] = 0;
         gui_event("disconnected");
         fprintf(stderr,"INFO: BLE service retained; reconnect phone without removing pairing; retrying Deskflow when ready\n");
 #if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)

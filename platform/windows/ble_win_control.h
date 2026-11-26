@@ -9,6 +9,7 @@ enum otg_ble_control_phase { OTG_BLE_ACTIVE, OTG_BLE_PAUSING, OTG_BLE_IDLE };
 struct otg_ble_control {
     enum otg_ble_control_phase phase;
     bool stop;
+    bool discover;
     char host[1025], name[256], line[1536];
     unsigned port, width, height, sensitivity_centi;
     bool absolute_per_axis;
@@ -25,7 +26,8 @@ struct otg_ble_control {
  * <TAB>sensitivity-hundredths [<TAB>per-axis]].
  * Legacy commands without the optional fields default to normal actions and
  * a 17 percent swipe distance, 1x sensitivity and common axis scaling.
- * Resume is accepted only after the release/drain acknowledgement. The peer
+ * discover uses the same fields as resume and requests the identity/attach
+ * handshake again. Both are accepted only after the release/drain acknowledgement. The peer
  * and HID descriptors are deliberately immutable for this provider lifetime. */
 bool otg_ble_control_feed(struct otg_ble_control *c, const char *bytes, size_t size);
 #endif

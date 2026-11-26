@@ -3,6 +3,7 @@
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
 <context>
   <name></name>
+  <message id="otg.ble.reconnect"><source>Reconnect to Deskflow</source><translation>重新接入 Deskflow</translation></message>
   <message id="otg.multi.stop_single_service"><source>Disconnect the Bluetooth session, click Stop idle Bluetooth service, then reconnect to start the two-phone service.</source><translation>请先断开蓝牙会话，点击「停止空闲蓝牙服务」，再点「连接」启动双手机服务。</translation></message>
   <message id="otg.multi.directed_required"><source>For two BLE phones, start a verified directed service, use the same adapter and a different phone address for each screen, and turn off per-device isolation.</source><translation>双蓝牙手机需要先启动已核验的定向服务。两台设备使用同一适配器，分别填写手机地址，并关闭设备配置中的蓝牙隔离。</translation></message>
   <message id="otg.transfer.working"><source>Working with the selected phone…</source><translation>正在处理所选手机的文件请求…</translation></message>
@@ -40,7 +41,7 @@
   <message id="otg.companion.access_enabled"><source>Notification access is enabled. This does not verify that the service is running or that unplug-to-pause works; test on the phone.</source><translation>通知使用权已开启。此结果不代表服务正在运行或拔出暂停已生效，仍需手机实测。</translation></message>
   <message id="otg.companion.access_required"><source>Installed, but notification access is not enabled. Open phone setup to grant it manually.</source><translation>已安装，但尚未开启通知使用权。请打开手机端设置手动授权。</translation></message>
   <message id="otg.ble.pause_failed"><source>BLE session release timed out; the GUI-owned provider was stopped. GATT continuity was lost.</source><translation>BLE 会话释放超时，已停止此 GUI 创建的服务，GATT 连续性已丢失。</translation></message>
-  <message id="otg.ble.provider_target"><source>The retained BLE provider has a different phone, bridge executable or clipboard/ADB configuration. Stop the idle Bluetooth service explicitly before changing it.</source><translation>保留的 BLE 服务使用不同的手机、桥接程序或剪贴板/ADB 配置，请先显式停止空闲蓝牙服务再切换。</translation></message>
+  <message id="otg.ble.provider_target"><source>Stop the idle Bluetooth service under Shared server, then reconnect to apply the new phone, program, TLS or ADB settings.</source><translation>请在「共享服务」停止空闲蓝牙服务，然后重新接入，以应用新的手机、程序、TLS 或 ADB 设置。</translation></message>
   <message id="otg.ble.provider_retained"><source>Session disconnected; Windows GATT and phone subscriptions are retained until service stop or GUI exit.</source><translation>会话已断开，Windows GATT 与手机订阅继续保留，直到停止服务或退出 GUI。</translation></message>
   <message id="otg.ble.provider_reused"><source>Reusing the retained Windows GATT provider for this session.</source><translation>本次会话复用已保留的 Windows GATT 服务。</translation></message>
   <message id="otg.ble.provider_ended"><source>The retained Windows BLE provider exited; GATT continuity was lost.</source><translation>保留的 Windows BLE 进程已退出，GATT 连续性已丢失。</translation></message>

@@ -832,7 +832,13 @@ private slots:
         Session session;
         QString logs;
         connect(&session, &Session::log, this, [&logs](const QString &line) { logs += line + '\n'; });
+        connect(&session, &Session::bleIdentityDetected, this, [&](const QString &identity) {
+            QCOMPARE(identity, "AA:BB:CC:DD:EE:FF");
+            options.blePeer = identity;
+            QVERIFY(session.configureBle(options));
+        });
         for (int i = 0; i < 3; ++i) {
+            options.bleDiscovery = i != 1; // Initial discovery, manual reconnect, explicit discovery again.
             options.host = QString("127.0.0.%1").arg(i + 1);
             options.port = 24800 + i;
             options.phone = QString("phone-%1").arg(i);
@@ -865,6 +871,13 @@ private slots:
         QTRY_COMPARE(session.state(), Session::State::Idle);
         QVERIFY(session.hasBleProvider());
         auto other = options; other.blePeer = "11:22:33:44:55:66";
+        other.bleDiscovery = false;
+        auto changedTls = options;
+        changedTls.tls = true;
+        changedTls.tlsFingerprint = QString(64, 'a');
+        session.start(changedTls);
+        QCOMPARE(session.statusMessage(), qtTrId("otg.ble.provider_target"));
+        QVERIFY(session.hasBleProvider());
         session.start(other);
         QCOMPARE(session.state(), Session::State::Idle);
         QCOMPARE(session.statusMessage(), qtTrId("otg.ble.provider_target"));
