@@ -886,6 +886,7 @@ private slots:
         // USB can be used without destroying a parked Windows provider.
         auto usb = options;
         usb.transport = "usb"; usb.serial = "TEST123"; usb.bridge = peerPath();
+        usb.bleDiscovery = false; // USB connects directly while the BLE provider stays parked.
         session.start(usb);
         QTRY_COMPARE(session.state(), Session::State::Connected);
         session.stop();
