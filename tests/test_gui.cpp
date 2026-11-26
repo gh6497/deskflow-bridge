@@ -7,6 +7,7 @@
 #include "tls_certificate.h"
 #include "wireless_adb_dialog.h"
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include "i18n.h"
 #include <QFile>
 #include <QMap>
@@ -32,6 +33,18 @@ static QString peerPath()
         ".exe"
 #endif
         ;
+}
+
+static const QByteArray deskflowConfig =
+    "section: screens\n  computer:\n  android:\n  a:\n  b:\nend\n\n"
+    "section: links\n  computer:\n    down = android\n  android:\n    up = computer\nend\n";
+
+static bool writeDeskflowConfig(QTemporaryFile &file)
+{
+    if (!file.open()) return false;
+    const bool written = file.write(deskflowConfig) == deskflowConfig.size() && file.flush();
+    file.close();
+    return written;
 }
 
 struct Catalog {
@@ -227,7 +240,7 @@ private slots:
         QTest::addColumn<QString>("errorId");
         ServerOptions base;
         base.program = peerPath();
-        base.configuration = serverConfiguration("computer", "android", "right");
+        base.configFile = QDir::tempPath(); // A directory is not an acceptable configuration file.
         const auto row = [base](const char *name, const char *id, auto change) {
             auto options = base;
             change(options);
@@ -235,7 +248,8 @@ private slots:
         };
         row("computer-empty", "otg.error.computer_screen_name", [](auto &o) { o.computer.clear(); });
         row("computer-invalid", "otg.error.computer_screen_name", [](auto &o) { o.computer = "bad name"; });
-        row("layout-empty", "otg.error.server_layout_required", [](auto &o) { o.configuration.clear(); });
+        row("config-empty", "otg.error.deskflow_config_required", [](auto &o) { o.configFile.clear(); });
+        row("config-is-directory", "otg.error.deskflow_config_unreadable", [](auto &) {});
         row("port-low", "otg.error.port_range", [](auto &o) { o.port = 0; });
         row("port-high", "otg.error.port_range", [](auto &o) { o.port = 65536; });
         row("program-empty", "otg.error.deskflow_program_required", [](auto &o) { o.program.clear(); });
@@ -251,7 +265,8 @@ private slots:
         QCOMPARE(server.state(), DeskflowServer::State::Idle);
         QCOMPARE(failed.size(), 1);
         QCOMPARE(failed.first().first().toString(), errorId);
-        QVERIFY(failed.first().at(1).toString().isEmpty());
+        QCOMPARE(failed.first().at(1).toString(), errorId == "otg.error.deskflow_config_unreadable" ?
+                 QFileInfo(options.configFile).absoluteFilePath() : QString());
         QVERIFY(ready.isEmpty());
     }
     void managerValidationMessages()
@@ -260,11 +275,11 @@ private slots:
         manager.addDevice("test");
         ConnectionOptions options;
         options.phone = "bad name";
-        QVERIFY(!manager.start("test", options, {}));
+        QVERIFY(!manager.start("test", options));
         QCOMPARE(manager.status("test"), qtTrId("otg.error.phone_screen_name"));
         options.phone = "android";
         options.deskflow.clear();
-        QVERIFY(manager.start("test", options, serverConfiguration("computer", "android", "right")));
+        QVERIFY(manager.start("test", options));
         QVERIFY(!manager.busy());
         QCOMPARE(manager.status("test"), qtTrId("otg.error.deskflow_program_required"));
     }
@@ -593,18 +608,6 @@ private slots:
         QCOMPARE(session.state(), Session::State::Idle);
         QVERIFY(session.hasFailure());
     }
-    void multiScreenLayout()
-    {
-        const QList<ScreenLink> screens{{"a", "computer", "right"}, {"b", "a", "right"}, {"c", "computer", "left"}};
-        const auto config = serverConfiguration("computer", screens);
-        QVERIFY(config.contains("    right = a"));
-        QVERIFY(config.contains("    right = b"));
-        QVERIFY(config.contains("    left = computer"));
-        QVERIFY(serverConfiguration("computer", QList<ScreenLink>{{"a", "computer", "right"}, {"A", "computer", "left"}}).isEmpty());
-        QVERIFY(serverConfiguration("computer", QList<ScreenLink>{{"a", "computer", "right"}, {"b", "computer", "right"}}).isEmpty());
-        QVERIFY(serverConfiguration("computer", QList<ScreenLink>{{"a", "b", "right"}, {"b", "a", "up"}}).isEmpty());
-        QVERIFY(serverConfiguration("computer", QList<ScreenLink>{{"a", "missing", "right"}}).isEmpty());
-    }
     void multipleManagedSessions_data()
     {
         QTest::addColumn<QByteArray>("style");
@@ -627,16 +630,21 @@ private slots:
         a.bridge = a.deskflow = peerPath();
         a.serial = "SERIAL_A";
         a.phone = "a";
+        QTemporaryFile config(dir.filePath("Deskflow layout.XXXXXX.conf"));
+        QVERIFY(writeDeskflowConfig(config));
+        a.deskflowConfig = config.fileName();
         auto b = a;
         b.serial = "SERIAL_B";
         b.phone = "b";
-        const auto config = serverConfiguration("computer", QList<ScreenLink>{{"a", "computer", "right"}, {"b", "a", "right"}});
         ConnectionManager manager;
         manager.addDevice("a");
         manager.addDevice("b");
         QSignalSpy logs(&manager, &ConnectionManager::log);
-        QVERIFY(manager.start("a", a, config));
-        QVERIFY(manager.start("b", b, config)); // Both wait on the same server startup.
+        QVERIFY(manager.start("a", a));
+        auto changedConfig = b;
+        changedConfig.deskflowConfig += ".other";
+        QVERIFY(!manager.start("b", changedConfig));
+        QVERIFY(manager.start("b", b)); // Both wait on the same server startup.
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
         QFile starts(path);
@@ -646,7 +654,7 @@ private slots:
         QTRY_COMPARE(manager.state("a"), Session::State::Idle);
         QCOMPARE(manager.state("b"), Session::State::Connected);
         QCOMPARE(manager.serverState(), DeskflowServer::State::Running);
-        QVERIFY(manager.start("a", a, config));
+        QVERIFY(manager.start("a", a));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         starts.seek(0);
         QCOMPARE(starts.readAll(), QByteArray("server\n"));
@@ -669,12 +677,12 @@ private slots:
         auto b = a;
         b.serial = "B";
         b.phone = "b";
-        QVERIFY(manager.start("a", a, {}));
-        QVERIFY(!manager.start("duplicate", a, {}));
+        QVERIFY(manager.start("a", a));
+        QVERIFY(!manager.start("duplicate", a));
         auto changedServer = b;
         ++changedServer.port;
-        QVERIFY(!manager.start("b", changedServer, {}));
-        QVERIFY(manager.start("b", b, {}));
+        QVERIFY(!manager.start("b", changedServer));
+        QVERIFY(manager.start("b", b));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
         QTRY_COMPARE(manager.state("a"), Session::State::Idle);
@@ -692,9 +700,11 @@ private slots:
         QTcpServer allocator;
         QVERIFY(allocator.listen(QHostAddress::LocalHost));
         options.port = allocator.serverPort(); allocator.close();
-        const auto layout = serverConfiguration(options.computer, options.phone, "right");
+        QTemporaryFile config;
+        QVERIFY(writeDeskflowConfig(config));
+        options.deskflowConfig = config.fileName();
         QSignalSpy logs(&manager, &ConnectionManager::log);
-        QVERIFY(manager.start("a", options, layout));
+        QVERIFY(manager.start("a", options));
         manager.stop("a");
         QTRY_VERIFY(manager.settled());
         QTest::qWait(150);
@@ -710,12 +720,14 @@ private slots:
         ConnectionOptions a;
         a.port = allocator.serverPort(); allocator.close();
         a.bridge = a.deskflow = peerPath(); a.serial = "A"; a.phone = "a";
+        QTemporaryFile config;
+        QVERIFY(writeDeskflowConfig(config));
+        a.deskflowConfig = config.fileName();
         auto b = a; b.serial = "B"; b.phone = "b";
-        const auto config = serverConfiguration("computer", QList<ScreenLink>{{"a", "computer", "right"}, {"b", "a", "right"}});
         ConnectionManager manager;
         manager.addDevice("a"); manager.addDevice("b");
-        QVERIFY(manager.start("a", a, config));
-        QVERIFY(manager.start("b", b, config));
+        QVERIFY(manager.start("a", a));
+        QVERIFY(manager.start("b", b));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
         QTRY_VERIFY(manager.settled());
@@ -735,12 +747,12 @@ private slots:
         ConnectionOptions usb;
         usb.bridge = peerPath(); usb.manageServer = false; usb.serial = "A"; usb.phone = "a";
         auto ble = usb; ble.transport = "ble"; ble.serial.clear(); ble.phone = "b";
-        QVERIFY(manager.start("usb", usb, {}));
-        QVERIFY(manager.start("ble", ble, {}));
+        QVERIFY(manager.start("usb", usb));
+        QVERIFY(manager.start("ble", ble));
         QTRY_COMPARE(manager.state("usb"), Session::State::Connected);
         QTRY_COMPARE(manager.state("ble"), Session::State::Connected);
         auto other = ble; other.phone = "c"; other.blePeer = "11:22:33:44:55:66";
-        QVERIFY(!manager.start("other", other, {}));
+        QVERIFY(!manager.start("other", other));
         manager.stop("ble");
         QTRY_COMPARE(manager.state("ble"), Session::State::Idle);
         QCOMPARE(manager.state("usb"), Session::State::Connected);
@@ -772,10 +784,10 @@ private slots:
         ConnectionManager manager;
         manager.addDevice("one");
         manager.addDevice("two");
-        QVERIFY(manager.start("one", options, {}));
+        QVERIFY(manager.start("one", options));
         options.blePeer = "AA:BB:CC:DD:EE:02";
         options.phone = "android2";
-        QVERIFY(manager.start("two", options, {}));
+        QVERIFY(manager.start("two", options));
         QTRY_COMPARE(manager.state("one"), Session::State::Connected);
         QTRY_COMPARE(manager.state("two"), Session::State::Connected);
         QCOMPARE(confirmed, QStringList{"hci0"});
@@ -811,10 +823,10 @@ private slots:
         a.bridge = peerPath(); a.manageServer = false; a.transport = "ble";
         a.blePeer = "AA:BB:CC:DD:EE:01"; a.phone = "k20";
         auto b = a; b.phone = "r17"; b.blePeer = a.blePeer.toLower();
-        QVERIFY(manager.start("a", a, {}));
-        QVERIFY(!manager.start("b", b, {}));
+        QVERIFY(manager.start("a", a));
+        QVERIFY(!manager.start("b", b));
         b.blePeer = "AA:BB:CC:DD:EE:02";
-        QVERIFY(manager.start("b", b, {}));
+        QVERIFY(manager.start("b", b));
         QTRY_COMPARE(manager.state("a"), Session::State::Connected);
         QTRY_COMPARE(manager.state("b"), Session::State::Connected);
         manager.stop("a"); QTRY_COMPARE(manager.state("a"), Session::State::Idle);
@@ -988,6 +1000,9 @@ private slots:
         ConnectionOptions options;
         options.manageServer = manageServer;
         options.deskflow = peerPath();
+        QTemporaryFile config;
+        QVERIFY(writeDeskflowConfig(config));
+        options.deskflowConfig = config.fileName();
         QTcpServer port;
         QVERIFY(port.listen(QHostAddress::LocalHost, 0));
         options.port = port.serverPort();
@@ -1315,14 +1330,10 @@ private slots:
                                "Viewport INTERNAL: displayId=0, uniqueId='local:1', orientation=1\n"), 1);
         QCOMPARE(parseRotation("unknown"), -1);
     }
-    void configuration()
+    void screenNameValidation()
     {
-        const auto config = serverConfiguration("pc", "android", "left");
-        QVERIFY(config.contains("pc:\n    left = android"));
-        QVERIFY(config.contains("android:\n    right = pc"));
-        QVERIFY(serverConfiguration("pc", "PC", "left").isEmpty());
-        QVERIFY(serverConfiguration("pc\nend", "android", "left").isEmpty());
-        QVERIFY(serverConfiguration("pc", "android", "invalid").isEmpty());
+        QVERIFY(validScreenName("phone-1.local"));
+        QVERIFY(!validScreenName("pc\nend"));
         QVERIFY(!validScreenName("-c"));
     }
     void failedCommand()
@@ -1345,6 +1356,9 @@ private slots:
         options.port = occupied.serverPort();
         options.serial = "ABC";
         options.deskflow = peerPath();
+        QTemporaryFile config;
+        QVERIFY(writeDeskflowConfig(config));
+        options.deskflowConfig = config.fileName();
         session.start(options);
         QCOMPARE(session.state(), Session::State::Idle);
         QVERIFY(changes.last()[1].toString().contains("端口"));
@@ -1377,8 +1391,14 @@ private slots:
     void managedLifecycle()
     {
         QFETCH(QByteArray, style);
+        QTemporaryFile config;
+        QVERIFY(writeDeskflowConfig(config));
         qputenv("OTG_TEST_HELP", style);
-        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_HELP"); });
+        qputenv("OTG_TEST_DESKFLOW_CONFIG", config.fileName().toUtf8());
+        const auto restore = qScopeGuard([] {
+            qunsetenv("OTG_TEST_HELP");
+            qunsetenv("OTG_TEST_DESKFLOW_CONFIG");
+        });
         QTcpServer allocator;
         QVERIFY(allocator.listen(QHostAddress::LocalHost));
         ConnectionOptions options;
@@ -1387,6 +1407,7 @@ private slots:
         options.serial = "ABC";
         options.bridge = peerPath();
         options.deskflow = peerPath();
+        options.deskflowConfig = config.fileName();
         Session session;
         QSignalSpy logs(&session, &Session::log);
         session.start(options);
@@ -1401,6 +1422,8 @@ private slots:
         for (const auto &entry : logs)
             released |= entry[0].toString().contains("released");
         QVERIFY(released);
+        QVERIFY(config.open());
+        QCOMPARE(config.readAll(), deskflowConfig);
         QVERIFY(allocator.listen(QHostAddress::LocalHost, quint16(options.port)));
     }
     void externalLifecycle()

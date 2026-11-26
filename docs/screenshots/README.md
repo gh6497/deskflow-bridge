@@ -14,11 +14,12 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Refreshed both `server` views from the worktree based on `91f5c7c` to show the Bluetooth service settings. Capture used `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` with `gui/test_window guideSharedServiceScreenshot` on the offscreen platform.
 - Linux, Qt 6.8.3, offscreen platform, light appearance, 1× scale.
 - Both `server` screenshots were refreshed with `guideSharedServiceScreenshot` to show **Start Bluetooth service** in the shared settings.
-- Main window at 1100 × 880, with `input` at 1100 × 955 and `server` at 1100 × 1080. File window at 760 × 460.
+- Refreshed the `input`, `server` and `multiple-devices` views in both languages from the worktree based on `8d103c2` after moving all screen placement to Deskflow. **Shared server** shows the default connection to an existing server and the configuration file field for optional automatic startup. Capture used `guidePointerScreenshot` and `guideSharedServiceScreenshot` with the same environment variables as above.
+- Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1140. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
-- `device` shows UHID setup. `input` shows screen dimensions, placement and button settings.
-  `server` shows shared Deskflow and Bluetooth service setup. `aoa` shows USB without ADB.
-  `multiple-devices` shows screen settings for the second device. `files` shows pending phone shares.
+- `device` shows UHID setup. `input` shows screen dimensions and button settings.
+  `server` shows Deskflow connection and Bluetooth service settings. `aoa` shows USB without ADB.
+  `multiple-devices` shows the second device's screen name and dimensions. `files` shows pending phone shares.
 
 Capture used an isolated temporary `QSettings` profile and the production
 `MainWindow` / `TransferDialog` widgets. Device discovery and file lists came
@@ -45,3 +46,4 @@ update both guides when controls move or change.
 基于 `91f5c7c` 的工作区更新两张共享服务页截图，显示新增的「蓝牙服务」一栏。使用 Qt 离屏测试 `gui/test_window guideSharedServiceScreenshot` 和 `OTG_TEST_SHARED_SERVICE_SCREENSHOTS` 采集。
 更新时请同步中英文截图与指南，保留真实控件文字和状态，勿包含真实 PIN、设备标识或私钥。
 本次用 `guideSharedServiceScreenshot` 重新采集了两张共享服务页截图，展示「启动蓝牙服务」入口。
+基于 `8d103c2` 的工作区更新中英文输入页、共享服务页和多设备截图。屏幕位置统一由 Deskflow 管理，「共享服务」展示默认连接已有服务，以及可选自动启动使用的配置文件栏。使用上述环境变量和 `guidePointerScreenshot`、`guideSharedServiceScreenshot` 采集。

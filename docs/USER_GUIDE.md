@@ -95,8 +95,8 @@ Wireless ADB and Bluetooth are different connection types. macOS currently has n
 ![Device settings: device list on the left, connection and ADB settings on the right, connection actions and logs below](screenshots/device-en.png)
 
 - **Device list on the left**: select the phone to view, configure or connect. Buttons below add devices, connect all or disconnect all.
-- **Device settings** lets you select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app. For an automatically managed Deskflow server, set the phone's adjacent screen and direction under **Screen and display**.
-- **Shared server** holds Deskflow settings, executable paths and Bluetooth service settings. The **Bluetooth service** section appears in builds that support BLE.
+- **Device settings** lets you select a connection, phone, dimensions and input features. **Scroll down inside the right-hand panel** to reach the screen settings, mouse buttons and companion app.
+- **Shared server** holds Deskflow connection settings, executable paths and Bluetooth service settings. Arrange screens in Deskflow. The **Bluetooth service** section appears in builds that support BLE.
 - The **Connect**, **Disconnect**, **Copy phone screenshot** and **Manual clipboard** buttons at the bottom right apply to the selected device. **Files & sharing** opens the file transfer window.
 - **Runtime logs below**: read connection errors and filter by device.
 - **Language at the top right**: switch between English and Chinese at any time. Appearance follows the system theme.
@@ -119,7 +119,7 @@ For “Unauthorized”, check the phone's approval prompt, then refresh. If Wind
 
 Click **Read screen size**, then scroll down to “Screen and display”.
 
-![Screen and display settings with dimensions of 1080×2340 and the phone to the right of computer](screenshots/input-en.png)
+![Screen and display settings with phone dimensions of 1080 × 2340](screenshots/input-en.png)
 
 - **Phone screen resolution**: the phone's width × height in its current orientation. `1080 × 2340` is a portrait example; your phone may differ. Enter it manually if reading fails.
 - **Swap dimensions**: use this when changing to landscape.
@@ -129,24 +129,19 @@ Click **Read screen size**, then scroll down to “Screen and display”.
 
 Leave audio, clipboard, automatic unlock and other extras off until basic control works.
 
-### Step 3: Place the phone in the layout
+### Step 3: Place the phone in Deskflow
 
-If the bridge starts Deskflow automatically, use **Device settings → Screen and display**. Set **Adjacent screen** to `computer` and **Screen position** to the phone's direction relative to it. Choose **Right** to reach the phone by crossing the computer's right edge. For an existing server, set the position in Deskflow.
+In Deskflow, add a screen using the phone's screen name from Step 2, such as `android`. Place it next to the computer screen and apply the layout. For example, place it on the right to reach the phone by crossing the computer's right edge.
 
-### Step 4: Set up Deskflow
+### Step 4: Set up the server connection
 
-Open **Shared server**:
+Start the server in Deskflow. In Deskflow Bridge, open **Shared server** and enter the server address and port. For a local server, the defaults are `127.0.0.1` and `24800`.
 
-1. Check **Configure and start local Deskflow automatically**.
-2. For one computer, keep the computer screen name `computer` and port `24800`. The local server address automatically uses `127.0.0.1`.
-3. Under **Programs and mode**, the **Deskflow** field tries to locate the installed program. If empty, click **Browse** and select **`deskflow-core` or `deskflow-server`** (`.exe` on Windows), rather than Deskflow's graphical app. On a Mac, it is usually inside `/Applications/Deskflow.app/Contents/MacOS/`.
-4. The **ADB** field normally points to the bundled program and can be left alone. The Linux paths in the screenshot are examples.
+If your server uses TLS, enable TLS and enter its server fingerprint. If it also requires client authentication, generate a client certificate and trust that client fingerprint in Deskflow. See the [TLS notes](DEVELOPMENT.md#security-and-tls).
 
-![Shared server showing Deskflow settings, program paths and Bluetooth service settings](screenshots/server-en.png)
+![Shared server showing the address, automatic startup option, program paths and Bluetooth service settings](screenshots/server-en.png)
 
-Automatic mode starts Deskflow when you click Connect. You do not need to start another server manually on the same port.
-
-**Already using Deskflow?** Turn off automatic startup and enter the existing server's address and port. In Deskflow, add a phone screen with the same name, such as `android`, and set its position there. If that server uses TLS, enable TLS here and enter its server fingerprint. If it also requires client authentication, generate a client certificate and trust that client fingerprint in Deskflow. See [TLS notes](../README.md#tls).
+**Optional automatic startup.** In Deskflow, use **Export server configuration** after arranging the screens. In the bridge, check **Start local Deskflow automatically**, select the exported **Deskflow configuration file**, and enter the computer screen name used in that file. Under **Programs and mode**, select `deskflow-core` or `deskflow-server` if the program was not found automatically. Stop any Deskflow server already listening on the same port. The bridge starts its server on Connect, using the exported file as-is. After changing the layout, export it again and restart the connection after all devices disconnect.
 
 ### Step 5: Connect and try it
 
@@ -312,11 +307,11 @@ If your phone supports wireless debugging (usually Android 11+), UHID can work o
 
 ## 9. Connect multiple phones
 
-![Screen and display settings for android2, configured to the right of android](screenshots/multiple-devices-en.png)
+![Device settings for the second phone, showing its screen name android2](screenshots/multiple-devices-en.png)
 
 1. Disconnect all devices, click **Add device**, and set each phone's own connection target and dimensions.
-2. New devices get unique **Phone screen names** such as `android2` and `android3`. Existing names are not changed. If you use an external Deskflow server, make sure its screen names match. **Display name** can be any name that helps you recognize the device.
-3. For automatic startup, select each device and open **Device settings → Screen and display**. For example, set `computer` as the first phone's **Adjacent screen** and `android` as the second phone's. Choose **Right** for both. For an existing server, arrange the screens in Deskflow.
+2. New devices get unique **Phone screen names** such as `android2` and `android3`. **Display name** can be any name that helps you recognize the device.
+3. Add the same screen names in Deskflow and arrange them. If you use automatic startup, export the updated configuration from Deskflow and select it in the bridge.
 4. Configure Deskflow once under **Shared server**, then connect individually or click **Connect all**.
 
 Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. On Linux, the experimental two-phone service supports two BLE phones on one adapter, each with its own screen. Input follows the pointer. Disconnecting one phone leaves the other usable.
@@ -347,7 +342,7 @@ BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB 
 
 The phone appears in the device list once it subscribes to keyboard and pointer input. The GUI reuses its saved profile on later connections. **Add device** offers USB and ADB connections only. For a discovered Bluetooth device, **Connection type** is read-only. You can set the screen dimensions and turn **Automatically connect discovered phones to Deskflow** on or off in its profile. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
 
-To change a connected phone’s settings, select it in the device list, click **Disconnect**, and wait for disconnection to finish. Edit the screen dimensions, mouse buttons or screen position, then click **Reconnect to Deskflow** on the same device page. This button also works with automatic connection turned off. If the phone has lost its Bluetooth link, reconnect to the computer in the phone’s Bluetooth settings.
+To change a connected phone's screen dimensions or mouse buttons, select it in the device list, click **Disconnect** and wait for disconnection to finish. After editing, click **Reconnect to Deskflow** for the selected phone. This button also works with automatic connection turned off. If the phone has lost its Bluetooth link, reconnect to the computer in the phone's Bluetooth settings.
 
 Normal Disconnect differs from Stop idle Bluetooth service. Linux keeps its persistent service after the GUI exits. Windows keeps an idle service while the GUI is running and stops it on Quit. If you change TLS or ADB features on Windows, stop the idle Bluetooth service before reconnecting to apply those settings. Pairing-cache behavior after service restarts can vary by device.
 
@@ -375,10 +370,11 @@ The phone can open and check the Bluetooth link without ADB. Its home screen sho
 | No phone after refreshing | Try a data-capable cable/USB port. UHID: debugging authorization and ADB driver. AOA: USB permissions and driver |
 | Unauthorized or Offline | Unlock and approve the computer, then refresh. For wireless, check the current IP, connection port and network |
 | Deskflow not found | Install Deskflow and select `deskflow-core` / `deskflow-server` under Shared server, rather than its GUI |
+| Automatic startup asks for a Deskflow configuration file | Arrange the screens in Deskflow, export the server configuration and select it under **Shared server**. You can also turn off automatic startup and start the server in Deskflow |
 | Port already in use | Check for a manually started Deskflow server. Use existing-server mode or another free port for automatic startup |
 | Linux Bluetooth service unavailable | Open the service log at the path shown in the GUI. `available: false` in `deskflow-bridge --ble-status --adapter hci0` means the bridge could not get a usable reply from the service |
 | Deskflow asks to add the phone screen on first connection | Accept the prompt on the server, place the screen in its layout, and apply the changes. The bridge retries automatically for USB AOA, ADB + UHID and Bluetooth. If it keeps waiting, check that the screen name shown in the bridge matches the server layout exactly. Click **Disconnect** to cancel. |
-| Connected, but cannot move onto the phone | Check **Screen position** in automatic mode or the layout in Deskflow for an external server. Also check Deskflow's input-capture/Accessibility permissions and any screen-switch lock |
+| Connected, but cannot move onto the phone | Check the screen name and layout in Deskflow. If using automatic startup, make sure it uses the latest export. Also check Deskflow's input-capture/Accessibility permissions and any screen-switch lock |
 | No phone pointer or no response to clicks | Check logs for UHID unavailable or USB errors. Start with absolute mode; try relative mode after disconnecting for an incompatible device |
 | Wrong orientation or strange movement range | Disconnect and read current dimensions or swap width/height; reset both multipliers to 1 first |
 | Some symbols type incorrectly | Set the phone's physical keyboard to English (US). Deskflow protocol 1.8 with per-key language information can correct common symbols and digits such as `@`, `#`, and `1` from other host layouts. The bridge does not switch the phone's layout or correct accented letters and dead keys. |

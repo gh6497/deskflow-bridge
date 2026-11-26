@@ -21,6 +21,7 @@ struct BleStartupCoordinator {
 
 struct ConnectionOptions {
     QString deskflow;
+    QString deskflowConfig;
     QString bridge;
     QString adb;
     QString scrcpyServer;
@@ -30,7 +31,6 @@ struct ConnectionOptions {
     QString host = "127.0.0.1";
     QString computer = "computer";
     QString phone = "android";
-    QString direction = "right";
     QString mouseMode = "absolute";
     bool absolutePerAxis = false;
     QString middleButtonAction = "home";

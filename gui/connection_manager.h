@@ -19,8 +19,8 @@ public:
     bool settled() const;
     bool hasBleProvider() const;
     DeskflowServer::State serverState() const { return m_server.state(); }
-    bool start(const QString &id, const ConnectionOptions &options, const QString &layout);
-    bool attachBle(const QString &id, const ConnectionOptions &options, const QString &layout);
+    bool start(const QString &id, const ConnectionOptions &options);
+    bool attachBle(const QString &id, const ConnectionOptions &options);
     bool bindBleDiscovery(const QString &sourceId, const QString &deviceId);
     void stop(const QString &id);
     void stopAll();
@@ -49,6 +49,5 @@ private:
     std::shared_ptr<BleStartupCoordinator> m_bleStartup = std::make_shared<BleStartupCoordinator>();
     DeskflowServer m_server;
     ConnectionOptions m_shared;
-    QString m_layout;
     bool m_shutdown = false;
 };

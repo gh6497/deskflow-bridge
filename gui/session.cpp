@@ -644,13 +644,7 @@ void Session::startConnection()
         launchBridge();
         return;
     }
-    const auto config = serverConfiguration(m_options.computer, m_options.phone,
-                                            m_options.direction);
-    if (config.isEmpty()) {
-        fail("otg.error.screen_names");
-        return;
-    }
-    m_server.start({m_options.deskflow, m_options.computer, config, m_options.port,
+    m_server.start({m_options.deskflow, m_options.computer, m_options.deskflowConfig, m_options.port,
                     m_options.tls, m_options.tlsCertificate});
 }
 

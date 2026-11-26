@@ -202,9 +202,6 @@ void MainWindow::retranslateUi()
                               device.state == "offline" ? "otg.device.offline" : "otg.device.access_denied";
         m_devices->setItemText(i + 1, QString("%1 · %2 [%3]").arg(device.model, device.serial, qtTrId(stateId)));
     }
-    const char *directions[] = {"otg.position.right", "otg.position.left", "otg.position.up", "otg.position.down"};
-    for (int i = 0; i < 4; ++i)
-        m_direction->setItemText(i, qtTrId(directions[i]));
     m_mouseMode->setItemText(0, qtTrId("otg.mouse.absolute"));
     m_mouseMode->setItemText(1, qtTrId("otg.mouse.relative"));
     m_middleButtonAction->setItemText(0, qtTrId("otg.middle_button.normal"));
@@ -228,7 +225,6 @@ void MainWindow::retranslateUi()
         m_tabs->setTabText(0, qtTrId("otg.multi.device_tab"));
         m_tabs->setTabText(1, qtTrId("otg.multi.server_tab"));
         updateDeviceList();
-        updateScreenNeighbors();
     }
     updateVirtualSize();
     if (m_session) m_clipboardStatus->setText(m_session->clipboardStatusMessage());
@@ -368,7 +364,7 @@ void MainWindow::changeEvent(QEvent *event)
         retranslateUi();
 }
 
-QWidget *MainWindow::pathField(QLineEdit *&field, const char *placeholderId)
+QWidget *MainWindow::pathField(QLineEdit *&field, const char *placeholderId, const char *dialogId)
 {
     auto *row = new QWidget;
     auto *layout = new QHBoxLayout(row);
@@ -378,8 +374,9 @@ QWidget *MainWindow::pathField(QLineEdit *&field, const char *placeholderId)
     auto *browse = translated(new QPushButton, "text", "otg.action.browse");
     layout->addWidget(field, 1);
     layout->addWidget(browse);
-    connect(browse, &QPushButton::clicked, this, [this, field] {
-        const auto path = QFileDialog::getOpenFileName(this, qtTrId("otg.dialog.select_executable"), field->text());
+    connect(browse, &QPushButton::clicked, this, [this, field, dialogId] {
+        const auto title = qtTrId(dialogId ? dialogId : "otg.dialog.select_executable");
+        const auto path = QFileDialog::getOpenFileName(this, title, field->text());
         if (!path.isEmpty())
             field->setText(path);
     });
@@ -667,23 +664,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_phone = new QLineEdit;
     m_phone->setObjectName("screenName");
     addTranslatedRow(displayForm, "otg.label.phone_name", m_phone);
-
-    m_neighbor = new NoWheelWidget<QComboBox>;
-    m_neighbor->setObjectName("screenNeighbor");
-    addTranslatedRow(displayForm, "otg.multi.neighbor", m_neighbor);
-    m_direction = new NoWheelWidget<QComboBox>;
-    m_direction->setObjectName("screenPosition");
-    m_direction->addItem(qtTrId("otg.position.right"), "right");
-    m_direction->addItem(qtTrId("otg.position.left"), "left");
-    m_direction->addItem(qtTrId("otg.position.up"), "up");
-    m_direction->addItem(qtTrId("otg.position.down"), "down");
-    addTranslatedRow(displayForm, "otg.label.position", m_direction);
-    m_layoutWarning = translated(new QLabel, "text", "otg.multi.invalid_layout");
-    m_layoutWarning->setObjectName("layoutWarning");
-    m_layoutWarning->setWordWrap(true);
-    m_layoutWarning->hide();
-    displayForm->addRow(m_layoutWarning);
-
     formLayout->addWidget(displayBox);
 
     auto *featuresBox = translated(new QGroupBox, "title", "otg.section.features");
@@ -794,6 +774,9 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_manage = translated(new QCheckBox, "text", "otg.server.manage");
     m_manage->setObjectName("manageServer");
     serverForm->addRow(m_manage);
+    addTranslatedRow(serverForm, "otg.server.config_file",
+                     pathField(m_deskflowConfig, "otg.server.config_hint", "otg.server.config_select"));
+    m_deskflowConfig->setObjectName("deskflowConfigFile");
     m_computer = new QLineEdit;
     m_host = new QLineEdit;
     m_port = new NoWheelWidget<QSpinBox>;
@@ -1001,6 +984,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         updateEnabled();
     });
     m_deskflow->setText(settings.value("deskflow", findDeskflow()).toString());
+    m_deskflowConfig->setText(settings.value("deskflowConfigFile").toString());
     m_serial->setText(settings.value("serial").toString());
     // Preserve existing AOA profiles; only fresh Windows profiles prefer UHID.
     setProfileTransport(settings.value("transport", settings.contains("serial") ?
@@ -1014,13 +998,12 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     m_phone->setText(settings.value("phone", "android").toString());
     m_host->setText(settings.value("host", "127.0.0.1").toString());
     m_port->setValue(settings.value("port", 24800).toInt());
-    m_manage->setChecked(settings.value("manageServer", true).toBool());
+    m_manage->setChecked(settings.value("manageServer", false).toBool());
     m_tls->setChecked(settings.value("tls", false).toBool());
     m_tlsKeyLength->setCurrentIndex(qMax(0, m_tlsKeyLength->findData(settings.value("tlsKeyLength", 2048))));
     m_tlsCert->setText(settings.value("tlsCertificate").toString());
     m_tlsFingerprint->setText(settings.value("tlsFingerprint").toString());
     m_tlsFingerprintFile->setText(settings.value("tlsFingerprintFile").toString());
-    m_direction->setCurrentIndex(qMax(0, m_direction->findData(settings.value("direction", "right"))));
     m_mouseMode->setCurrentIndex(qMax(0, m_mouseMode->findData(settings.value("mouseMode", "absolute"))));
     m_absolutePerAxis->setChecked(settings.value("absolutePerAxis", false).toBool());
     m_middleButtonAction->setCurrentIndex(qMax(0, m_middleButtonAction->findData(
@@ -1041,13 +1024,14 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
         auto profile = settings.value("profile").toMap();
         for (const auto *key : legacyBleSettingKeys) profile.remove(key);
         profile.remove("blePeer");
+        profile.remove("neighbor");
+        profile.remove("direction");
         const auto key = autoConnectKey(profile);
         if (!key.second.isEmpty()) m_profiles.insert(key, profile);
     }
     settings.endArray();
     m_autoConnectEnabled->setChecked(settings.value("autoConnect", false).toBool());
     m_alias->setText(m_phone->text());
-    m_neighbor->addItem(m_computer->text(), m_computer->text());
     m_records.insert(m_selectedId, deviceProfile());
     QVariantMap legacyBle;
     const int deviceCount = settings.beginReadArray("devices");
@@ -1059,6 +1043,8 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
             if (legacyBle.isEmpty() && profile.value("transport") == "ble") legacyBle = profile;
             for (const auto *key : legacyBleSettingKeys) profile.remove(key);
             profile.remove("blePeer");
+            profile.remove("neighbor");
+            profile.remove("direction");
             if (i == 0) {
                 // Reuse the initial Session so existing single-device settings migrate naturally.
                 m_records[m_selectedId] = profile;
@@ -1113,7 +1099,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     connect(m_mouseMode, &QComboBox::currentIndexChanged, this, &MainWindow::updateVirtualSize);
     updateVirtualSize();
     connect(m_manage, &QCheckBox::toggled, this, &MainWindow::updateEnabled);
-    connect(m_manage, &QCheckBox::toggled, this, &MainWindow::updateLayoutWarning);
     connect(m_refresh, &QPushButton::clicked, this, &MainWindow::refreshDevices);
     connect(m_devices, &QComboBox::currentIndexChanged, this, &MainWindow::readDevice);
     connect(m_serial, &QLineEdit::textChanged, this, [this] {
@@ -1138,7 +1123,7 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
             auto profile = deviceProfile();
             auto options = connectionOptions(profile);
             options.bleDiscovery = false;
-            m_connections.attachBle(m_selectedId, options, layoutConfiguration());
+            m_connections.attachBle(m_selectedId, options);
         }
         updateEnabled();
     });
@@ -1229,19 +1214,10 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
     });
     connect(m_connectAll, &QPushButton::clicked, this, &MainWindow::connectAll);
     connect(m_disconnectAll, &QPushButton::clicked, &m_connections, &ConnectionManager::stopAll);
-    const auto screenPlacementChanged = [this] {
-        if (m_loadingDevice) return;
-        storeDevice();
-        updateLayoutWarning();
-    };
-    connect(m_neighbor, &QComboBox::currentIndexChanged, this, screenPlacementChanged);
-    connect(m_direction, &QComboBox::currentIndexChanged, this, screenPlacementChanged);
     connect(m_phone, &QLineEdit::editingFinished, this, [this] {
         storeDevice();
         updateDeviceList();
-        updateScreenNeighbors();
     });
-    connect(m_computer, &QLineEdit::editingFinished, this, &MainWindow::updateScreenNeighbors);
     connect(m_language, &QComboBox::currentIndexChanged, this, [this] {
         const QString language = m_language->currentData().toString();
         if (LanguageManager::instance().setLanguage(language)) {
@@ -1289,13 +1265,7 @@ void MainWindow::refreshLog()
 void MainWindow::storeDevice()
 {
     if (m_loadingDevice || !m_uiReady) return;
-    const auto oldName = m_records.value(m_selectedId).value("phone").toString();
     m_records[m_selectedId] = deviceProfile();
-    const auto name = m_phone->text().trimmed();
-    if (!oldName.isEmpty() && oldName != name) {
-        for (auto &record : m_records)
-            if (record.value("neighbor").toString() == oldName) record["neighbor"] = name;
-    }
 }
 
 void MainWindow::persistDevices()
@@ -1355,10 +1325,9 @@ void MainWindow::autoConnectDevice(const QString &transport, const QString &seri
             m_connections.state(it.key()) != Session::State::Idle) continue;
         const auto id = it.key();
         auto profile = m_profiles.value(key);
-        // Preserve current multi-screen layout and opt-ins; restore connection parameters.
-        for (const auto *field : {"phone", "neighbor", "alias", "autoConnect", "uhidUsbAutoConnect"})
+        // Preserve the current screen name and opt-ins when restoring connection parameters.
+        for (const auto *field : {"phone", "alias", "autoConnect", "uhidUsbAutoConnect"})
             profile[field] = it->value(field);
-        profile["direction"] = it->value("direction", "right");
         // Use the currently configured gain, even if edited since the last connection.
         if (it->contains("audioGainDb")) profile["audioGainDb"] = it->value("audioGainDb");
         // A remembered AOA profile may have been created before the user
@@ -1373,7 +1342,7 @@ void MainWindow::autoConnectDevice(const QString &transport, const QString &seri
         m_pendingProfiles[id] = profile;
         appendLog(qtTrId("otg.auto_connect.connecting").arg(serial), id);
         if (id == m_selectedId) applyDeviceProfile(profile);
-        m_connections.start(id, connectionOptions(profile), layoutConfiguration());
+        m_connections.start(id, connectionOptions(profile));
         break;
     }
 }
@@ -1405,8 +1374,6 @@ void MainWindow::addDevice()
     profile["absolutePerAxis"] = false;
     profile["autoConnect"] = false;
     profile["uhidUsbAutoConnect"] = false;
-    profile["neighbor"] = m_phone->text().trimmed();
-    profile["direction"] = "right";
     const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_records[id] = profile;
     m_connections.addDevice(id);
@@ -1418,13 +1385,6 @@ void MainWindow::removeDevice()
 {
     if (m_closing || m_connections.busy() || m_records.size() <= 1) return;
     storeDevice();
-    const auto name = m_records.value(m_selectedId).value("phone").toString();
-    for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
-        if (it.key() != m_selectedId && it->value("neighbor").toString() == name) {
-            QMessageBox::warning(this, qtTrId("otg.multi.remove_device"), qtTrId("otg.multi.remove_dependency"));
-            return;
-        }
-    }
     if (!m_connections.removeDevice(m_selectedId)) return;
     m_records.remove(m_selectedId);
     m_pendingProfiles.remove(m_selectedId);
@@ -1447,7 +1407,6 @@ void MainWindow::selectDevice(const QString &id)
     m_status->setText(m_connections.status(id));
     updateConnectionStatus();
     updateDeviceList();
-    updateScreenNeighbors();
     updateEnabled();
 }
 
@@ -1488,36 +1447,6 @@ void MainWindow::updateDeviceList()
     updateTray();
 }
 
-void MainWindow::updateScreenNeighbors()
-{
-    const auto selectedNeighbor = m_records.value(m_selectedId).value("neighbor", m_computer->text()).toString();
-    QSignalBlocker blocker(m_neighbor);
-    m_neighbor->clear();
-    m_neighbor->addItem(m_computer->text(), m_computer->text());
-    for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
-        if (it.key() == m_selectedId) continue;
-        const auto name = it->value("phone").toString();
-        m_neighbor->addItem(name, name);
-    }
-    if (m_neighbor->findData(selectedNeighbor) < 0) m_neighbor->addItem(selectedNeighbor, selectedNeighbor);
-    m_neighbor->setCurrentIndex(m_neighbor->findData(selectedNeighbor));
-    updateLayoutWarning();
-}
-
-void MainWindow::updateLayoutWarning()
-{
-    m_layoutWarning->setVisible(m_manage->isChecked() && layoutConfiguration().isEmpty());
-}
-
-QString MainWindow::layoutConfiguration() const
-{
-    QList<ScreenLink> screens;
-    for (const auto &record : m_records)
-        screens.append({record.value("phone").toString(), record.value("neighbor", m_computer->text()).toString(),
-                        record.value("direction", "right").toString()});
-    return serverConfiguration(m_computer->text().trimmed(), screens);
-}
-
 ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) const
 {
     ConnectionOptions options;
@@ -1526,6 +1455,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile) cons
     options.scrcpyServer = findScrcpyServer();
     options.scrcpyVersion = findScrcpyVersion();
     options.deskflow = m_deskflow->text().trimmed();
+    options.deskflowConfig = m_deskflowConfig->text().trimmed();
     options.computer = m_computer->text().trimmed();
     options.host = m_host->text().trimmed();
     options.port = m_port->value();
@@ -1657,9 +1587,9 @@ void MainWindow::updateEnabled()
     updateAutoConnect();
     m_form->setEnabled((idle || bleDiscovery) && !m_scanning && !m_closing && !m_stoppingBleService && !m_companion.busy());
     m_sharedBox->setEnabled(sharedIdle && !m_closing && !m_stoppingBleService && !m_companion.busy());
+    m_deskflowConfig->parentWidget()->setEnabled(m_manage->isChecked());
     if (m_stopBleService)
         m_stopBleService->setEnabled(m_adapter || m_connections.hasBleProvider());
-    m_neighbor->setEnabled(sharedIdle && m_manage->isChecked());
     m_addDevice->setEnabled(sharedIdle && !m_closing && !m_companion.busy());
     m_removeDevice->setEnabled(sharedIdle && m_records.size() > 1 && !m_session->hasBleProvider() && !m_closing && !m_companion.busy());
     m_deviceSidebar->setEnabled(!m_closing && !m_companion.busy());
@@ -1685,7 +1615,6 @@ void MainWindow::updateEnabled()
     m_tlsRegenerateCertificate->setEnabled(m_tls->isChecked());
     m_tlsFingerprint->setEnabled(m_tls->isChecked());
     m_tlsFingerprintFile->setEnabled(m_tls->isChecked());
-    m_direction->setEnabled(sharedIdle && m_manage->isChecked());
     m_computer->setEnabled(m_manage->isChecked());
     m_phone->setEnabled(sharedIdle || !m_manage->isChecked());
     m_serial->setEnabled(!ble);
@@ -2185,7 +2114,7 @@ void MainWindow::startBleService()
     }
     auto options = connectionOptions(profile);
     options.bleDiscovery = true;
-    if (confirmBleIsolation(options)) m_connections.start(id, options, layoutConfiguration());
+    if (confirmBleIsolation(options)) m_connections.start(id, options);
 }
 
 bool MainWindow::confirmBleIsolation(const ConnectionOptions &options)
@@ -2226,26 +2155,14 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
         profile["transport"] = "ble";
         profile["bleIdentity"] = identity;
         profile["alias"] = profile["phone"] = name;
-        if (!profile.contains("neighbor")) {
-            // Attach the screen to a free edge without moving existing screens.
-            for (const auto &neighbor : screens) {
-                profile["neighbor"] = neighbor;
-                for (const auto *direction : {"right", "left", "down", "up"}) {
-                    profile["direction"] = direction;
-                    if (!layoutConfiguration().isEmpty()) break;
-                }
-                if (!layoutConfiguration().isEmpty()) break;
-            }
-        }
     }
     if (m_discoveryId == id) m_discoveryId.clear();
     m_pendingBleIdentities[id] = identity;
     if (id == m_selectedId) applyDeviceProfile(profile);
     persistDevices();
     updateDeviceList();
-    updateScreenNeighbors();
     if (profile.value("bleAutoAttach", true).toBool())
-        m_connections.attachBle(id, connectionOptions(profile), layoutConfiguration());
+        m_connections.attachBle(id, connectionOptions(profile));
     updateEnabled();
 }
 
@@ -2269,7 +2186,7 @@ void MainWindow::connectDevice()
     if (options.transport == "usb") m_autoConnect.suppressSerial(options.serial);
     else if (options.transport == "uhid" && m_uhidAutoConnectEnabled->isChecked() && isUsbAdbSerial(options.adbSerial))
         m_adbAutoConnect.suppressSerial(options.adbSerial);
-    m_connections.start(m_selectedId, options, layoutConfiguration());
+    m_connections.start(m_selectedId, options);
 }
 
 void MainWindow::stopIdleBleService()
@@ -2304,7 +2221,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"transport", m_transport->currentData()},
             {"bleIdentity", m_records.value(m_selectedId).value("bleIdentity").toString()},
             {"bleAutoAttach", m_bleAutoAttach->isChecked()},
-            {"autoConnect", m_autoConnectEnabled->isChecked()}, {"neighbor", m_neighbor->currentData()},
+            {"autoConnect", m_autoConnectEnabled->isChecked()},
             {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},
             {"originalWidth", m_width->value()}, {"originalHeight", m_height->value()},
             {"sensitivityMultiplier", m_sensitivity->value()},
@@ -2314,7 +2231,6 @@ QVariantMap MainWindow::deviceProfile() const
               {"manageServer", m_manage->isChecked()}, {"tls", m_tls->isChecked()},
                {"tlsCertificate", m_tlsCert->text()}, {"tlsFingerprint", m_tlsFingerprint->text()},
                {"tlsFingerprintFile", m_tlsFingerprintFile->text()},
-               {"direction", m_direction->currentData()},
                 {"mouseMode", m_mouseMode->currentData()}, {"audio", m_audio->isChecked()},
                 {"absolutePerAxis", m_absolutePerAxis->isChecked()},
                 {"audioGainDb", m_audioGain->value()},
@@ -2366,7 +2282,6 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_autoRotate->setChecked(profile.value("autoRotate", false).toBool());
     m_autoConnectEnabled->setChecked(profile.value("autoConnect", false).toBool());
     m_uhidAutoConnectEnabled->setChecked(profile.value("uhidUsbAutoConnect", false).toBool());
-    m_direction->setCurrentIndex(qMax(0, m_direction->findData(profile.value("direction", "right"))));
     m_mouseMode->setCurrentIndex(qMax(0, m_mouseMode->findData(profile.value("mouseMode", "absolute"))));
     m_absolutePerAxis->setChecked(profile.value("absolutePerAxis", false).toBool());
     m_middleButtonAction->setCurrentIndex(qMax(0, m_middleButtonAction->findData(
@@ -2382,9 +2297,6 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_unlockPin->setText(profile.value("unlockPin").toString());
     m_unlockWithSpace->setChecked(profile.value("unlockWithSpace", true).toBool());
     if (m_transport->currentData() == "ble") m_mouseMode->setCurrentIndex(0);
-    const auto neighbor = profile.value("neighbor", m_computer->text()).toString();
-    if (m_neighbor->findData(neighbor) < 0) m_neighbor->addItem(neighbor, neighbor);
-    m_neighbor->setCurrentIndex(m_neighbor->findData(neighbor));
     setTranslatedProperty(m_deviceStatus, "text", m_transport->currentData() == "ble" ?
                           bleSetupHint : m_transport->currentData() == "uhid" ?
                           "otg.uhid.setup_hint" : "otg.auto_connect.restored");
@@ -2430,6 +2342,7 @@ void MainWindow::saveSettings()
     settings.setValue("clipboard", m_clipboard->isChecked());
     settings.setValue("autoRotate", m_autoRotate->isChecked());
     settings.setValue("deskflow", m_deskflow->text());
+    settings.setValue("deskflowConfigFile", m_deskflowConfig->text().trimmed());
     settings.setValue("serial", m_serial->text());
     settings.setValue("adbSerial", m_adbSerial->text());
     settings.setValue("transport", m_transport->currentData());
@@ -2451,7 +2364,7 @@ void MainWindow::saveSettings()
     settings.setValue("tlsCertificate", m_tlsCert->text());
     settings.setValue("tlsFingerprint", m_tlsFingerprint->text());
     settings.setValue("tlsFingerprintFile", m_tlsFingerprintFile->text());
-    settings.setValue("direction", m_direction->currentData());
+    settings.remove("direction");
     settings.setValue("mouseMode", m_mouseMode->currentData());
     settings.setValue("absolutePerAxis", m_absolutePerAxis->isChecked());
     settings.setValue("middleButtonAction", m_middleButtonAction->currentData());

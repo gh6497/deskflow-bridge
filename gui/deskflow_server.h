@@ -10,7 +10,7 @@
 struct ServerOptions {
     QString program;
     QString computer = "computer";
-    QString configuration;
+    QString configFile;
     int port = 24800;
     bool tls = false;
     QString tlsCertificate;
