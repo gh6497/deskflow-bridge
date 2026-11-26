@@ -474,8 +474,14 @@ int main(void)
         NULL,NULL,NULL);
     CHECK(b.bus);
     test_automatic_peer(b.bus,&mock);
+    b.original_alias=g_strdup(mock.alias);
     node_info=g_dbus_node_info_new_for_xml(xml,NULL);CHECK(node_info);
     CHECK(register_objects(&b));
+    GVariant *advertisement=props(&b.objects[11],"org.bluez.LEAdvertisement1");
+    const char *local_name=NULL;
+    CHECK(g_variant_lookup(advertisement,"LocalName","&s",&local_name) &&
+          !strcmp(local_name,"original-host"));
+    g_variant_unref(advertisement);
     uint8_t map[]={1,2,3,4,5,6,7,8};b.report_map=map;b.report_map_size=sizeof(map);
     GVariant *result=invoke(&b,ROOT,"org.freedesktop.DBus.ObjectManager","GetManagedObjects",NULL,true);
     GVariant *objects=g_variant_get_child_value(result,0);
@@ -516,6 +522,7 @@ int main(void)
     b.resident=true;b.adapter="hci0";b.adapter_path="/org/bluez/hci0";
     CHECK(register_blueZ(&b));CHECK(b.app_registered && !b.adv_registered);
     CHECK(otg_ble_hid_set_session(&b,true));
+    CHECK(!strcmp(mock.alias,"original-host"));
     b.peer_connected=true;update_channel_state(&b);CHECK(!b.channel_ready);
     result=invoke(&b,ROOT "/hid/keys","org.bluez.GattCharacteristic1","StartNotify",NULL,true);g_variant_unref(result);
     result=invoke(&b,ROOT "/hid/pointer","org.bluez.GattCharacteristic1","StartNotify",NULL,true);g_variant_unref(result);

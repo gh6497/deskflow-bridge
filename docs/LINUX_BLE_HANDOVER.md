@@ -7,7 +7,7 @@
 
 ```bash
 deskflow-bridge --ble-service --adapter hci0
-# 在另一个终端启动桥接，再从手机蓝牙设置连接 Deskflow Bridge
+# 在另一个终端启动桥接，再从手机蓝牙设置连接电脑当前的蓝牙名称
 deskflow-bridge --transport ble --ble-session --adapter hci0 --name android --width 1080 --height 2400
 ```
 

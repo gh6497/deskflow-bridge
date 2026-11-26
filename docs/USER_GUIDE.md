@@ -325,7 +325,7 @@ Multiple AOA/UHID devices can connect together. The default Bluetooth service su
    ```
 
 2. Disconnect all devices and stop any idle single-phone service. Under **Shared server → Bluetooth service**, select the adapter, enable **Allow multiple Bluetooth phones** and click **Start Bluetooth service**. If any phone needs **Keyboard and mouse compatibility for older Android**, enable it before starting. The multi-device service requests administrator authentication and temporarily disconnects Bluetooth devices on the selected adapter to switch it to BLE-only mode.
-3. From each phone's system Bluetooth settings, connect to **Deskflow Bridge**. The GUI creates or reuses a profile for each phone. Add its screen name to Deskflow if prompted. You can disconnect one phone without stopping the other sessions. The service continues to accept phones while there is capacity.
+3. From each phone's system Bluetooth settings, connect to the computer's existing Bluetooth name. The GUI creates or reuses a profile for each phone. Add its screen name to Deskflow if prompted. You can disconnect one phone without stopping the other sessions. The service continues to accept phones while there is capacity.
 4. If the device status says **Bluetooth link connected. Waiting for keyboard and mouse**, turn Bluetooth off and on on **that phone**, then connect from its Bluetooth settings. If the keyboard and mouse are ready but the bridge is still connecting to Deskflow, check the server address, TLS settings and the phone's screen name. Click **Stop Bluetooth service** to end discovery and release the Bluetooth sessions while keeping USB and ADB + UHID sessions connected.
 
 Before adding/removing devices or changing screen names, layout or the shared server, disconnect all and wait for shutdown to finish. Connected-device parameters are locked, while connection targets and dimensions for other idle devices remain editable.
@@ -336,7 +336,7 @@ Before adding/removing devices or changing screen names, layout or the shared se
 
 BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB debugging for basic input. Adapter and phone compatibility matter, so try wired control first to learn the basics.
 
-- In **Linux single-phone mode**, set the adapter (usually `hci0`) under **Shared server → Bluetooth service** and click **Start Bluetooth service**. Pair or connect to **Deskflow Bridge** from the phone. Keep it as the adapter's only LE connection. Classic Bluetooth can coexist when Linux can verify both input subscriptions belong to the phone.
+- In **Linux single-phone mode**, set the adapter (usually `hci0`) under **Shared server → Bluetooth service** and click **Start Bluetooth service**. Pair or connect to the adapter's existing Bluetooth name from the phone. Keep it as the adapter's only LE connection. Classic Bluetooth can coexist when Linux can verify both input subscriptions belong to the phone.
 - On **Windows**, click **Start Bluetooth service** under **Shared server** in a build with experimental BLE, then pair or connect to the PC from the phone. Windows uses the default adapter.
 - **macOS**: no BLE backend currently; consider wireless ADB + UHID for wireless control.
 
