@@ -2017,7 +2017,7 @@ private slots:
         QVERIFY(!adapter);
         QVERIFY(!window.findChild<QCheckBox *>("bleIsolate"));
         QVERIFY(!window.findChild<QCheckBox *>("bleLegacyHandles"));
-        QVERIFY(!stopService->isEnabled());
+        QVERIFY(stopService->isEnabled()); // Starting Bluetooth discovery can also be stopped.
 #elif defined(Q_OS_LINUX)
         QVERIFY(tabs->widget(1)->isAncestorOf(adapter));
         QCOMPARE(adapter->text(), "hci1");
