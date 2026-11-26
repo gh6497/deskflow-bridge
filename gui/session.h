@@ -54,13 +54,12 @@ struct ConnectionOptions {
     QString bleIdentity;
     bool bleAutoAttach = true;
     bool bleDiscovery = false;
-    bool bleIsolate = false;
     bool bleLegacyHandles = false;
     bool requireDirectedBle = false;
     bool preferDirectedBle = false;
     QString windowsBleToken; // Private GUI-owned shared provider, never persisted.
     QString blePrivilegeProgram = "/usr/bin/pkexec";
-    std::function<bool(const QString &)> confirmSharedBleIsolation;
+    std::function<bool(const QString &)> confirmSharedBleService;
     int port = 24800;
     int width = 1080;
     int height = 1920;

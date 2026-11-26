@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 |---|---|---|---|
 | **ADB＋UHID** | Windows 和已经使用 ADB 的用户 | 开启并授权 USB 或无线调试 | 使用普通 ADB 驱动，不需要替换为 WinUSB。Windows 新配置推荐使用。 |
 | **USB AOA HID** | 只需要键鼠控制 | 不需要 ADB 或 USB 调试 | 类似 scrcpy OTG。Linux 需要 USB 权限；Windows 需要 libusb 可用的驱动。 |
-| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 在手机蓝牙设置中配对或连接电脑 | GUI 会自动发现手机，并可在蓝牙连接后自动接入 Deskflow。Linux 和 Windows 提供向各台手机定向通知的[实验性多设备模式](docs/USER_GUIDE.zh-CN.md#multiple)。macOS 暂无 BLE 后端。 |
+| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 在手机蓝牙设置中配对或连接电脑 | Linux 默认使用共享定向服务，最多可接入 8 台手机。Windows 提供实验性多设备模式。macOS 暂无 BLE 后端。 |
 
 ADB 只在 ADB＋UHID 以及音频、剪贴板、旋转跟随、文件分享等附加功能中需要。AOA HID 可以完全不开 USB 调试使用。
 
@@ -66,7 +66,7 @@ ADB 只在 ADB＋UHID 以及音频、剪贴板、旋转跟随、文件分享等�
 - 必须有 Deskflow server；本项目不替代 Deskflow 的服务端。
 - Android 物理键盘建议使用**英语（美国）**布局，其他布局只做部分修正。
 - 默认指针使用绝对 HID 坐标，实际兼容性仍取决于手机型号、Android 版本和 ROM，真机验证仍在进行。
-- Windows BLE 是实验功能；Linux BLE 也有额外的生命周期和蓝牙适配器要求，请看[交接文档](docs/LINUX_BLE_HANDOVER.md)。
+- Windows BLE 是实验功能；Linux BLE 也有额外的 BlueZ、生命周期和蓝牙适配器要求，请看[交接文档](docs/LINUX_BLE_HANDOVER.md)。
 - Windows 安装包和 macOS DMG 可能尚未签名或公证。运行前请确认下载来源是本仓库。
 - 当前支持键盘和鼠标输入，不支持游戏手柄或视频输出。
 

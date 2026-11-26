@@ -48,7 +48,7 @@ The [illustrated user guide](docs/USER_GUIDE.md) covers installation, the first 
 |---|---|---|---|
 | **ADB + UHID** | Windows and ADB users | Enable and authorize USB or wireless debugging | Uses the normal ADB driver; no WinUSB replacement. Recommended for a new Windows setup. |
 | **USB AOA HID** | HID-only use | No ADB or USB debugging | Similar to scrcpy OTG. Linux needs USB permission; Windows needs a libusb-compatible driver. |
-| **Bluetooth LE HID** | Linux, or Windows experimenters | Pair or connect from the phone's Bluetooth settings | The GUI discovers phones automatically and can attach them to Deskflow after Bluetooth connects. Linux and Windows offer an [experimental multi-device mode](docs/USER_GUIDE.md#multiple) with notifications directed to each phone. macOS has no BLE backend. |
+| **Bluetooth LE HID** | Linux, or Windows experimenters | Pair or connect from the phone's Bluetooth settings | Linux uses a shared directed service by default and can attach up to eight phones. Windows offers an experimental multi-device mode. macOS has no BLE backend. |
 
 ADB is only required for ADB + UHID and for optional features such as audio, clipboard, rotation tracking, and file sharing. AOA HID can be used without USB debugging.
 
@@ -66,7 +66,7 @@ These features are separate from the basic keyboard and mouse path:
 - A Deskflow server is required; this project does not replace Deskflow's server.
 - The Android physical keyboard should use the English (US) layout. Other layouts are only partially adjusted.
 - The default pointer uses absolute HID coordinates. Compatibility still depends on the Android device and ROM; real-device validation is ongoing.
-- Windows BLE is experimental. Linux BLE has additional lifecycle and adapter requirements; see its [handover document](docs/LINUX_BLE_HANDOVER.md).
+- Windows BLE is experimental. Linux BLE has additional BlueZ, lifecycle, and adapter requirements; see its [handover document](docs/LINUX_BLE_HANDOVER.md).
 - Windows installer and macOS DMG releases may be unsigned/not notarized. Verify that downloads come from this repository before running them.
 - This project supports keyboard and mouse input, not gamepads or video output.
 

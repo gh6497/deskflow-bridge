@@ -4,13 +4,13 @@
 
 首期目标是在 Linux 上通过同一个 `hci0` 同时连接 K20 Pro 和 OPPO R17。两台手机各占一个 Deskflow 屏幕，鼠标切到哪台，键鼠报告就只发给哪台。一台手机断线或退出时，另一台保持连接。[当前使用指南](USER_GUIDE.zh-CN.md#multiple)
 
-当前软件容量已扩展到 8 个手机会话。GUI 的「允许多台蓝牙手机」会在有空位时继续发现手机。发现会话仅认领当前已配对且两个通知通道均已建立的 LE 身份。离线回归覆盖三台独立通信与容量上限。以下双机段落保留早期真机记录。
+当前软件容量已扩展到 8 个手机会话。Linux GUI 默认在有空位时继续发现手机。发现会话仅认领当前已配对且两个通知通道均已建立的 LE 身份。离线回归覆盖三台独立通信与容量上限。以下双机段落保留早期真机记录。
 
 ## 本轮实现与离线验收
 
-- Linux 常驻服务通过 `--ble-service --ble-multi TOKEN --ble-isolate` 开启双机。核验脚本将已知含上游修复的参考二进制与 `/proc/PID/exe` 比对，把本次系统总线 ID 和 `org.bluez` 唯一所有者记在 `/run`。服务校验该记录，所有者变化即结束。原版 5.72 的常规单机路径和旧 IPC v2 操作继续使用原来的唯一目标门控。
+- Linux 常驻服务默认通过共享定向路径开启多机。核验脚本将已知含上游修复的参考二进制与 `/proc/PID/exe` 比对，把本次系统总线 ID 和 `org.bluez` 唯一所有者记在 `/run`。服务校验该记录，所有者变化即结束。旧版单机模式不再作为 GUI 连接方式。
 - `ble_directed.inc` 按在线 Device1 地址、对象路径和 HCI peripheral 链路核对路由。每个目标各有键盘和指针 FD、输入值、LED、暂停状态与连接代次。重连后先对该手机发送两份中性报告，再接收新输入。BlueZ 对已配对手机保留 CCC 而不重建 FD 时，该手机会停在等待订阅状态。
-- `ble_multi_session.inc` 通过带仅 BLE 门控的 v2 接入操作一次性预留地址和屏幕名。GUI 核对 `directed` 与 `bleOnly`，两个会话共用一次隔离授权。手动启动服务用 `sudo`，然后为每台运行 `deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 --ble-legacy-handles --ble-peer MAC --name SCREEN`。低句柄与服务保持一致。`--absolute-per-axis` 只需加在需要的桥接上。监督器在验证适配器已切换到仅 BLE 后降权启动服务，最后一个客户端退出后恢复。GUI 在首次接入前取消时，监督器处理启动管道 EOF 并恢复适配器。
+- `ble_multi_session.inc` 通过带仅 BLE 门控的 v2 接入操作一次性预留地址和屏幕名。GUI 核对 `directed` 与 `bleOnly`，所有会话共用一次共享服务授权。GUI 会按需启动服务并为每台手机运行 `deskflow-bridge --transport ble --ble-session --ble-directed-session --adapter hci0 --ble-legacy-handles --ble-peer MAC --name SCREEN`。低句柄与服务保持一致。`--absolute-per-axis` 只需加在需要的桥接上。监督器在验证适配器已切换到仅 BLE 后降权启动服务，最后一个客户端退出后恢复。GUI 在首次接入前取消时，监督器处理启动管道 EOF 并恢复适配器。
 - 私有总线回归使用真实传递的四个 FD，覆盖隔离、掉线、重新订阅、先释放再恢复。真实 Unix socket/fork 回归验证双客户端共享服务、地址和屏幕名冲突、EOF 后另一路继续和最后退出。已重新运行交接基线的 BlueZ 双订阅分发函数实验。K20 Pro 和 R17 的空口、系统模式恢复与手机 CCC 缓存行为仍待真机验收。
 
 - 控制器接入第一台手机时可能停用用于接入的可连接广播，BlueZ 的 `ActiveInstances` 仍可能计入该登记。双机服务观察到 LE peripheral 链路变化而且还有空位时，异步重新登记自身的广播。日志 `BLE advertisement re-registered for another connection` 确认 BlueZ 已接受登记。私有 D-Bus 回归验证登记、失败重试、键鼠报告继续投递和会话退出清理。
@@ -28,7 +28,7 @@
 - `gui/connection_manager.cpp` 负责共享 Deskflow 和每个设备的 `Session`。`ConnectionManager::start()` 拒绝第二个 BLE 设备。`gui/session.cpp` 启动或复用按适配器管理的 Linux 常驻服务，校验空闲状态和 HID 句柄布局。
 - `platform/linux/ble_session.c` 的 Unix seqpacket IPC 仍为 v2。一个适配器一个服务和一个桥接客户端，服务保存一个目标，停止或实例退出时清理输入。它也负责双向 UID 检查、有界报告队列、取消和空闲状态查询。
 - `platform/linux/ble_hid.c` 用 HCI 快照核对唯一 LE 连接与本机 peripheral 角色，再核对在线 `Device1` 的 `Address` 和 `Paired`。`AcquireNotify` 当前只记录订阅来源并返回 `NotSupported`，由 BlueZ 回退到 `StartNotify`。`changed()` 给 BlueZ 发 `Value` 更新，定向的 D-Bus 收件人是 BlueZ 本身。键盘和指针只有两路全局订阅状态。
-- `platform/linux/ble_supervisor.c` 的仅 BLE 模式会切换和恢复整个适配器，并用管理锁、恢复快照和服务空闲检查协调退出。双机会话需要共用适配器级的隔离生命周期。
+- `platform/linux/ble_supervisor.c` 的共享服务模式会切换和恢复整个适配器，并用管理锁、恢复快照和服务空闲检查协调退出。所有 BLE 会话共用适配器级生命周期。
 - `platform/windows/ble_win.cpp` 已使用 `NotifyValueAsync(value, GattSubscribedClient)` 定向发送，但 provider 只保存一个目标，并要求订阅列表唯一。Windows 后续可按订阅客户端扩展。macOS 目前没有项目 BLE 后端。[Microsoft API 文档](https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.genericattributeprofile.gattlocalcharacteristic.notifyvalueasync)
 
 ## 两台真机的已知条件

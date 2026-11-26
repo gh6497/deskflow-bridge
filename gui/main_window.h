@@ -66,7 +66,7 @@ private:
     void startBleService();
     void continueBleDiscovery();
     void refreshBleServiceStatus();
-    bool confirmBleIsolation(const ConnectionOptions &options);
+    bool confirmSharedBleService(const QString &adapter);
     void stopBleService();
     void finishBleServiceStop();
     void updateBleServiceControls(bool sharedIdle);
@@ -163,7 +163,7 @@ private:
     QLineEdit *m_uhidUsbSerial, *m_uhidWirelessTarget;
     QCheckBox *m_bleAutoAttach = nullptr;
     QLineEdit *m_adapter = nullptr;
-    QCheckBox *m_bleIsolate = nullptr, *m_bleLegacyHandles = nullptr;
+    QCheckBox *m_bleLegacyHandles = nullptr;
     QCheckBox *m_bleMulti = nullptr;
     bool m_discoverMultipleBle = false;
     QPushButton *m_stopBleService = nullptr;

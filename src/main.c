@@ -368,10 +368,9 @@ static void usage(const char *prog)
              "  -s, --serial SERIAL   Android USB device serial (USB transport)\n"
               "      --transport MODE usb (default), uhid (ADB), or ble\n"
              "      --adapter NAME    BlueZ adapter for BLE (default hci0)\n"
-             "      --ble-isolate     Linux: sudo native BLE-only supervisor; restores on exit\n"
-             "      --ble-restore     Linux: recover saved adapter settings without Python\n"
-             "      --ble-service     Linux: resident user GATT service (keep running)\n"
-             "      --ble-multi TOKEN Linux: multi-phone service, requires verified BlueZ and --ble-isolate\n"
+              "      --ble-restore     Linux: recover saved adapter settings without Python\n"
+              "      --ble-service     Linux: resident user GATT service (keep running)\n"
+              "      --ble-multi TOKEN Linux: internal shared multi-phone service\n"
              "      --ble-directed-session  Attach --ble-session by explicit peer and screen name\n"
              "      --ble-legacy-handles  Linux: 8-bit HID handles for older Android (on service and session)\n"
               "      --ble-session     Linux: BLE bridge via an existing resident service\n"
@@ -1453,6 +1452,10 @@ int main(int argc, char **argv)
         if ((g_gui && opts.ble_restore) || (opts.ble_isolate && opts.ble_restore) ||
             (opts.ble_isolate && strcmp(opts.transport, "ble"))) {
             fprintf(stderr, "ERROR: use --ble-isolate with --transport ble in CLI; --ble-restore is separate\n");
+            return 2;
+        }
+        if (opts.ble_isolate && !opts.ble_multi_instance) {
+            fprintf(stderr, "ERROR: standalone BLE isolation was removed; use the shared multi-phone service\n");
             return 2;
         }
 #ifdef OTG_HAVE_BLE

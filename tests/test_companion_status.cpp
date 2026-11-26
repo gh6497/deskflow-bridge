@@ -314,9 +314,11 @@ private slots:
         options.manageServer = false;
         options.transport = "ble";
         options.blePeer = "AA:BB:CC:DD:EE:FF";
+        options.preferDirectedBle = true;
         options.adbSerial = "phone._adb-tls-connect._tcp";
         options.adb = peer();
         options.bridge = peer();
+        qputenv("OTG_TEST_BLE_STATUS", "directed");
         session.start(options);
         QTRY_VERIFY(states().count("connected") >= 2);
         QTRY_COMPARE(playIds().size(), 2);

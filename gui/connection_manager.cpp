@@ -264,9 +264,8 @@ bool ConnectionManager::start(const QString &id, const ConnectionOptions &option
         if (options.transport == "ble" && ((reserved && it->options.transport == "ble") ||
             it->session->hasBleProvider())) {
 #ifdef Q_OS_LINUX
-            if (options.adapter != it->options.adapter || options.bleIsolate || it->options.bleIsolate ||
-                ((options.blePeer.isEmpty() || it->options.blePeer.isEmpty()) &&
-                 !(options.preferDirectedBle && it->options.preferDirectedBle)))
+            if (options.adapter != it->options.adapter || !options.preferDirectedBle ||
+                !it->options.preferDirectedBle)
                 return reject(id, "otg.multi.directed_required");
             if (!options.blePeer.isEmpty() && !options.blePeer.compare(it->options.blePeer, Qt::CaseInsensitive))
                 return reject(id, "otg.multi.duplicate_device");

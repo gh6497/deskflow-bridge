@@ -314,7 +314,7 @@ Only one profile can use a Deskflow screen at a time. Only one profile for that 
 
 To remove a device, select it in the list and click **Remove device** after it has disconnected. Other phones can stay connected. Keep at least one device in the list. If Windows is still keeping the device's Bluetooth service running, click **Stop Bluetooth service** first. To change **Shared server** settings, disconnect all devices first.
 
-Multiple AOA/UHID devices can connect together. The default Bluetooth service supports one phone. Experimental multi-device mode on Linux and Windows allows up to eight BLE phone sessions on one adapter. Actual capacity depends on the controller. Linux has been tested with two phones; Windows multi-device input still needs hardware validation. Each phone has its own screen. Input follows the pointer.
+Multiple AOA/UHID devices can connect together. Linux Bluetooth uses the shared directed service by default and supports up to eight BLE phone sessions on one adapter. Windows has a separate experimental multi-device mode with the same software limit. Actual capacity depends on the controller. Linux has been tested with two phones; Windows multi-device input still needs hardware validation. Each phone has its own screen. Input follows the pointer.
 
 **Connecting multiple BLE phones on Windows**
 
@@ -328,13 +328,13 @@ Windows uses the default adapter and its existing name. A stopped device session
 
 **Connecting multiple BLE phones on Linux**
 
-1. Use a BlueZ build with directed notifications (upstream 5.76+ or a verified backport). Stock Ubuntu `5.72-0ubuntu5.8` supports the single-phone workflow. From the source directory, set `FIXED_DAEMON` to a trusted reference executable that includes the fix, then run the verification below. The helper compares it byte for byte with the running daemon. Repeat verification after restarting BlueZ.
+1. Use a BlueZ build with directed notifications (upstream 5.76+ or a verified backport). From the source directory, set `FIXED_DAEMON` to a trusted reference executable that includes the fix, then run the verification below. The helper compares it byte for byte with the running daemon. Repeat verification after restarting BlueZ.
 
    ```sh
    sudo sh scripts/ble-verified-instance.sh "$FIXED_DAEMON"
    ```
 
-2. Disconnect all devices and stop any idle single-phone service. Under **Shared server → Bluetooth service**, select the adapter, enable **Allow multiple Bluetooth phones** and click **Start Bluetooth service**. If any phone needs **Keyboard and mouse compatibility for older Android**, enable it before starting. The multi-device service requests administrator authentication and temporarily disconnects Bluetooth devices on the selected adapter to switch it to BLE-only mode.
+2. Disconnect all devices and stop any idle Bluetooth service. Under **Shared server → Bluetooth service**, select the adapter and click **Start Bluetooth service**. If any phone needs **Keyboard and mouse compatibility for older Android**, enable it before starting. The shared service requests administrator authentication and temporarily disconnects Bluetooth devices on the selected adapter to switch it to BLE-only mode.
 3. From each phone's system Bluetooth settings, connect to the computer's existing Bluetooth name. The GUI creates or reuses a profile for each phone. Add its screen name to Deskflow if prompted. You can disconnect one phone without stopping the other sessions. The service continues to accept phones while there is capacity.
 4. If the device status says **Bluetooth link connected. Waiting for keyboard and mouse**, turn Bluetooth off and on on **that phone**, then connect from its Bluetooth settings. If the keyboard and mouse are ready but the bridge is still connecting to Deskflow, check the server address, TLS settings and the phone's screen name. Click **Stop Bluetooth service** to end discovery and release the Bluetooth sessions while keeping USB and ADB + UHID sessions connected.
 
@@ -346,7 +346,7 @@ Before adding/removing devices or changing screen names, layout or the shared se
 
 BLE lets the phone treat the computer as a Bluetooth keyboard/mouse without USB debugging for basic input. Adapter and phone compatibility matter, so try wired control first to learn the basics.
 
-- In **Linux single-phone mode**, set the adapter (usually `hci0`) under **Shared server → Bluetooth service** and click **Start Bluetooth service**. Pair or connect to the adapter's existing Bluetooth name from the phone. Keep it as the adapter's only LE connection. Classic Bluetooth can coexist when Linux can verify both input subscriptions belong to the phone.
+- On **Linux**, set the adapter (usually `hci0`) under **Shared server → Bluetooth service** and click **Start Bluetooth service**. The service uses the shared directed path for one or more phones. Pair or connect to the adapter's existing Bluetooth name from each phone. Classic Bluetooth can coexist when Linux can verify both input subscriptions belong to the phone.
 - On **Windows**, click **Start Bluetooth service** under **Shared server** in a build with experimental BLE, then pair or connect to the PC from the phone. Windows uses the default adapter.
 - **macOS**: no BLE backend currently; consider wireless ADB + UHID for wireless control.
 
@@ -358,13 +358,13 @@ To change a connected phone's screen dimensions or mouse buttons, select it in t
 
 Use **Stop Bluetooth service** under **Shared server → Bluetooth service** to end discovery and disconnect the Bluetooth sessions in this window. USB and ADB + UHID connections remain active. On Linux, the app also stops the resident service once it is idle. On Windows, use this button before reconnecting with changed TLS or ADB settings. Phones may need to reconnect through their Bluetooth settings after a service restart.
 
-If an older Android phone pairs on Linux but its keyboard and mouse stay unavailable, use **Stop Bluetooth service** under **Shared server → Bluetooth service**, then enable **Keyboard and mouse compatibility for older Android** and reconnect. This setting applies to every phone using the shared adapter. If the phone still uses cached Bluetooth settings, turn its Bluetooth off and on. If necessary, remove the pairing on both devices and pair again. If the phone only makes a classic Bluetooth connection, use **Temporarily use BLE-only mode (administrator authentication)** in the same section to test BLE. That option temporarily disconnects all devices on the adapter.
+If an older Android phone pairs on Linux but its keyboard and mouse stay unavailable, use **Stop Bluetooth service** under **Shared server → Bluetooth service**, then enable **Keyboard and mouse compatibility for older Android** and reconnect. This setting applies to every phone using the shared adapter. If the phone still uses cached Bluetooth settings, turn its Bluetooth off and on. If necessary, remove the pairing on both devices and pair again. The shared service uses BLE-only mode on its selected adapter.
 
 When you upgrade from an older version on Linux, the shared Bluetooth settings start with those of the first saved Bluetooth device. If your old device settings differed, check the new shared values under **Shared server**.
 
 On Windows 11, the app automatically requests a faster Bluetooth connection for each verified phone, aiming for about 15 ms between connection events. The request stays active while the app keeps that phone's Bluetooth session, including when Deskflow is paused, and is renewed after Bluetooth reconnects. The phone and Windows decide the actual interval. If the request is unsupported or rejected, the connection continues with its existing settings. Faster connections can use more power and reduce how many devices the adapter can handle at once.
 
-**If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`15000us` means 15 ms); the line includes the phone's address. A message saying the low latency request was accepted only confirms Windows received it; check the negotiated interval too. On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
+**If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`15000us` means 15 ms); the line includes the phone's address. A message saying the low latency request was accepted only confirms Windows received it; check the negotiated interval too. On Linux, look for `BLE actual interval` and include that line when reporting the problem. Say whether you see the steps when moving, dragging, or both.
 
 ### Find the computer with the companion app
 
