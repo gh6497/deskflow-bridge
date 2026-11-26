@@ -5,6 +5,7 @@
 #include "ble_win_queue.h"
 #include "ble_win_wait.h"
 #include "ble_win_metadata.h"
+#include "ble_win_preference.h"
 #include "ble_win_pipe.h"
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -120,7 +121,7 @@ struct State {
     std::atomic<bool> stopping{false};
     bool ready = false, failed = false, closing = false, in_flight = false, worker_done = false;
     bool suspended = false;
-    uint64_t peer_address = 0, epoch = 0;
+    uint64_t peer_address = 0, epoch = 0, link_generation = 0;
     std::chrono::microseconds state_interval = otg_ble_win_detail::fallback_state_interval;
     std::chrono::microseconds motion_interval = otg_ble_win_detail::fallback_motion_interval;
     uint8_t protocol_mode = 1; // Report Protocol; Boot Protocol is not implemented.
@@ -150,16 +151,6 @@ static void log(const char *level, const std::string& message)
     std::fprintf(stderr, "%s: Windows BLE [%lldms] %s\n", level, static_cast<long long>(elapsed), message.c_str());
 }
 
-static void set_connection_interval(const std::shared_ptr<State>& state, uint16_t units)
-{
-    if (!units) return;
-    const auto interval = otg_ble_win_detail::connection_interval(units);
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->state_interval = state->motion_interval = interval;
-    }
-    log("INFO", "BLE negotiated connection interval=" + std::to_string(interval.count()) + "us");
-}
 static std::string describe(const hresult_error& e)
 {
     return "HRESULT=" + std::to_string(e.code().value) + " " + to_string(e.message());
@@ -172,6 +163,17 @@ static std::string address_text(uint64_t address)
         static_cast<unsigned>((address >> 24) & 0xff), static_cast<unsigned>((address >> 16) & 0xff),
         static_cast<unsigned>((address >> 8) & 0xff), static_cast<unsigned>(address & 0xff));
     return text;
+}
+static void set_connection_interval(const std::shared_ptr<State>& state, uint16_t units, uint64_t address)
+{
+    if (!units) return;
+    const auto interval = otg_ble_win_detail::connection_interval(units);
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->state_interval = state->motion_interval = interval;
+    }
+    log("INFO", "BLE negotiated connection interval=" + std::to_string(interval.count()) +
+        "us peer=" + address_text(address));
 }
 static guid uuid(uint16_t id)
 {
@@ -395,6 +397,54 @@ class Service {
     std::map<std::wstring, Clock::time_point> resolve_retry;
     Clock::time_point pairing_retry{};
     BluetoothLEDevice::ConnectionParametersChanged_revoker parameters_changed;
+    otg_ble_win_detail::ConnectionPreference<BluetoothLEPreferredConnectionParametersRequest> connection_preference;
+
+    void observe_connection()
+    {
+        uint64_t generation;
+        { std::lock_guard<std::mutex> lock(s->mutex); generation = s->link_generation; }
+        connection_preference.observe(generation,
+            peer && peer.ConnectionStatus() == BluetoothConnectionStatus::Connected);
+    }
+
+    void prefer_low_latency()
+    {
+        // Only called after live identity, pairing and both subscriptions pass.
+        // A request is held per phone even while its Deskflow session is idle.
+        observe_connection();
+        const auto address = address_text(peer.BluetoothAddress());
+        try {
+            auto request = connection_preference.acquire([&] {
+                const auto preferred = BluetoothLEPreferredConnectionParameters::ThroughputOptimized();
+                log("INFO", "requesting BLE low latency peer=" + address +
+                    " min=" + std::to_string(preferred.MinConnectionInterval() * 1250u) +
+                    "us max=" + std::to_string(preferred.MaxConnectionInterval() * 1250u) + "us");
+                return peer.RequestPreferredConnectionParameters(preferred);
+            });
+            if (!request) return;
+            const auto status = request->Status();
+            if (status != BluetoothLEPreferredConnectionParametersRequestStatus::Success) {
+                connection_preference.release();
+                log("WARN", "BLE low latency request rejected peer=" + address +
+                    " status=" + std::to_string(static_cast<int>(status)) + "; keeping negotiated interval");
+                return;
+            }
+            log("INFO", "BLE low latency request accepted by Windows peer=" + address +
+                "; actual interval follows negotiated connection parameters");
+        } catch (const hresult_error& e) {
+            connection_preference.release();
+            log("INFO", "BLE low latency request unavailable peer=" + address +
+                ": " + describe(e) + "; keeping existing connection");
+            return;
+        }
+        // Success only means Windows accepted the preference. Read the real
+        // interval now and follow later ConnectionParametersChanged events.
+        try {
+            set_connection_interval(s, peer.GetConnectionParameters().ConnectionInterval(), peer.BluetoothAddress());
+        } catch (const hresult_error& e) {
+            log("INFO", "connection parameters unavailable after preference request: " + describe(e));
+        }
+    }
 
     bool multi_subscriber(uint64_t epoch, GattSubscribedClient& key, GattSubscribedClient& mouse,
                           BluetoothLEDevice& resolved)
@@ -614,6 +664,7 @@ public:
         }
         connection_changed.revoke();
         parameters_changed.revoke();
+        connection_preference.reset();
         if (provider) { try { provider.StopAdvertising(); } catch (...) {} }
     }
 
@@ -683,6 +734,7 @@ public:
 
     void refresh()
     {
+        observe_connection();
         uint64_t epoch;
         {
             std::lock_guard<std::mutex> lock(s->mutex);
@@ -741,6 +793,8 @@ public:
                 if (epoch != s->epoch) return;
             }
             connection_changed.revoke();
+            parameters_changed.revoke();
+            connection_preference.reset();
             peer = resolved ? resolved : wait(s, BluetoothLEDevice::FromIdAsync(id), "resolve subscriber", 5s, epoch);
             peer_id = id;
             paired = false;
@@ -759,6 +813,7 @@ public:
                         if (device.ConnectionStatus() != BluetoothConnectionStatus::Connected) {
                             {
                                 std::lock_guard<std::mutex> lock(state->mutex);
+                                ++state->link_generation;
                                 state->state_interval = otg_ble_win_detail::fallback_state_interval;
                                 state->motion_interval = otg_ble_win_detail::fallback_motion_interval;
                             }
@@ -771,12 +826,13 @@ public:
                     parameters_changed = peer.ConnectionParametersChanged(auto_revoke,
                         [state](auto const& device, auto const&) {
                             try {
-                                set_connection_interval(state, device.GetConnectionParameters().ConnectionInterval());
+                                set_connection_interval(state, device.GetConnectionParameters().ConnectionInterval(),
+                                    device.BluetoothAddress());
                             } catch (const hresult_error& e) {
                                 log("WARN", "connection parameters: " + describe(e));
                             }
                         });
-                    set_connection_interval(s, peer.GetConnectionParameters().ConnectionInterval());
+                    set_connection_interval(s, peer.GetConnectionParameters().ConnectionInterval(), peer.BluetoothAddress());
                 } catch (const hresult_error& e) {
                     log("INFO", "negotiated BLE interval unavailable; fallback motion=15ms state=30ms: " + describe(e));
                 }
@@ -833,6 +889,11 @@ public:
         }
         if (key.MaxNotificationSize() < 8 || mouse.MaxNotificationSize() < 8)
             throw std::runtime_error("negotiated notification size is less than 8 bytes");
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (epoch != s->epoch || s->failed || s->closing || s->suspended) return;
+        }
+        prefer_low_latency();
         bool became_ready = false, selected = false;
         {
             std::lock_guard<std::mutex> lock(s->mutex);

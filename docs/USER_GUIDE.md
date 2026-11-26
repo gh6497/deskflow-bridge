@@ -362,7 +362,9 @@ If an older Android phone pairs on Linux but its keyboard and mouse stay unavail
 
 When you upgrade from an older version on Linux, the shared Bluetooth settings start with those of the first saved Bluetooth device. If your old device settings differed, check the new shared values under **Shared server**.
 
-**If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`12500us` means 12.5 ms). On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
+On Windows 11, the app automatically requests a faster Bluetooth connection for each verified phone, aiming for about 15 ms between connection events. The request stays active while the app keeps that phone's Bluetooth session, including when Deskflow is paused, and is renewed after Bluetooth reconnects. The phone and Windows decide the actual interval. If the request is unsupported or rejected, the connection continues with its existing settings. Faster connections can use more power and reduce how many devices the adapter can handle at once.
+
+**If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`15000us` means 15 ms); the line includes the phone's address. A message saying the low latency request was accepted only confirms Windows received it; check the negotiated interval too. On Linux with isolation enabled, look for `BLE actual interval`. Include that line and say whether you see the steps when moving, dragging, or both.
 
 ### Find the computer with the companion app
 
