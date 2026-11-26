@@ -390,5 +390,6 @@
   <message id="otg.multi.failed"><source>Connection failed — see status or logs</source><translation>连接失败，请查看状态或日志</translation></message>
   <message id="otg.multi.all_logs"><source>All devices</source><translation>全部设备</translation></message>
   <message id="otg.multi.service_logs"><source>Shared service</source><translation>共享服务</translation></message>
+  <message id="otg.status.waiting_for_screen"><source>Add screen “%1” to the Deskflow server layout and apply the changes. Retrying automatically.</source><translation>请在 Deskflow 服务端布局中添加屏幕“%1”并应用更改，正在自动重试。</translation></message>
 </context>
 </TS>

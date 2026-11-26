@@ -390,5 +390,6 @@
   <message id="otg.multi.failed"><source>Connection failed — see status or logs</source><translation>Connection failed — see status or logs</translation></message>
   <message id="otg.multi.all_logs"><source>All devices</source><translation>All devices</translation></message>
   <message id="otg.multi.service_logs"><source>Shared service</source><translation>Shared service</translation></message>
+  <message id="otg.status.waiting_for_screen"><source>Add screen “%1” to the Deskflow server layout and apply the changes. Retrying automatically.</source><translation>Add screen “%1” to the Deskflow server layout and apply the changes. Retrying automatically.</translation></message>
 </context>
 </TS>

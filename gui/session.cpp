@@ -795,6 +795,13 @@ void Session::readBleEvents()
 void Session::handleBridgeEvent(const QJsonObject &object)
 {
     const auto event = object.value("event").toString();
+    if (event == "waiting-for-screen" && m_state == State::Starting) {
+        // Each EUNK confirms that the server is reachable and still needs the
+        // user to add the screen. Keep the normal timeout for a stalled handshake.
+        if (m_deadline.isActive()) m_deadline.start();
+        setState(State::Starting, "otg.status.waiting_for_screen", m_options.phone);
+        return;
+    }
     if (event == "ble-device" && m_bleDiscovery) {
         const auto identity = object.value("identity").toString().trimmed().toUpper();
         if (!identity.isEmpty()) emit bleIdentityDetected(identity);

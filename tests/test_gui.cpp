@@ -1408,7 +1408,7 @@ private slots:
         // Cancellation while startup has not emitted connected.
         options.serial = "slow";
         session.start(options);
-        QTest::qWait(100);
+        QTRY_COMPARE(session.statusMessage(), qtTrId("otg.status.waiting_for_screen").arg(options.phone));
         QCOMPARE(session.state(), Session::State::Starting);
         session.stop();
         QTRY_COMPARE(session.state(), Session::State::Idle);
