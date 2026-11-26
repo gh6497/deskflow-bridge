@@ -14,7 +14,7 @@
 struct link_state {bool used,encrypted,attempted;uint8_t role;uint16_t interval,latency;};
 struct otg_ble_link {
     int hci,channel;uint16_t index,pending;
-    bool ready,waiting;gint64 deadline;
+    bool ready,waiting,multi;gint64 deadline;
     struct link_state links[4096];
 };
 static uint16_t get16(const uint8_t *p){return (uint16_t)(p[0]|p[1]<<8);}
@@ -28,7 +28,8 @@ static unsigned single_link(struct otg_ble_link *b,uint16_t *handle)
 static void publish(struct otg_ble_link *b,uint16_t handle)
 {
     struct link_state *link=&b->links[handle];char text[64];
-    int size=snprintf(text,sizeof(text),"interval_us=%u\n",link->interval*1250u);
+    int size=snprintf(text,sizeof(text),b->multi ? "interval_us=%u;handle=%u\n" : "interval_us=%u\n",
+                      link->interval*1250u,handle);
     (void)send(b->channel,text,(size_t)size,MSG_DONTWAIT|MSG_NOSIGNAL);
     fprintf(stderr,"INFO: BLE actual interval=%.2fms latency=%u (controller event)\n",link->interval*1.25,link->latency);
 }
@@ -57,7 +58,8 @@ static void link_event(struct otg_ble_link *b,const uint8_t *packet,size_t size)
             if(p[1])fprintf(stderr,"WARN: BLE interval update failed: status=0x%02x\n",p[1]);
             else {
                 b->links[handle].interval=get16(p+4);b->links[handle].latency=get16(p+6);
-                uint16_t only=0;if(b->ready && single_link(b,&only)==1 && only==handle)publish(b,handle);
+                 uint16_t only=0;if((b->multi || b->ready) &&
+                     (b->multi || (single_link(b,&only)==1 && only==handle)))publish(b,handle);
             }
             if(b->waiting && b->pending==handle)b->waiting=false;
         }
@@ -67,11 +69,29 @@ static void negotiate(struct otg_ble_link *b,gint64 now)
 {
     if(b->waiting && now>=b->deadline){fprintf(stderr,"WARN: BLE interval update not confirmed within 5s\n");b->waiting=false;}
     uint16_t handle=0;
-    if(!b->ready || b->waiting || single_link(b,&handle)!=1)return;
-    struct link_state *link=&b->links[handle];
-    if(link->attempted || !link->encrypted || link->role!=1)return;
-    link->attempted=true;publish(b,handle);
-    if(link->interval>=6 && link->interval<=12 && !link->latency)return;
+    if (b->waiting) return;
+    if (!b->multi) {
+        if(!b->ready || single_link(b,&handle)!=1)return;
+        struct link_state *link=&b->links[handle];
+        if(link->attempted || !link->encrypted || link->role!=1)return;
+        link->attempted=true;publish(b,handle);
+        if(link->interval>=6 && link->interval<=12 && !link->latency)return;
+    } else {
+        bool found=false;
+        for (unsigned i=0;i<G_N_ELEMENTS(b->links);i++) {
+            struct link_state *candidate=&b->links[i];
+            if (candidate->used && !candidate->attempted && candidate->encrypted && candidate->role==1) {
+                handle=(uint16_t)i;found=true;break;
+            }
+        }
+        if (!found) return;
+        struct link_state *link=&b->links[handle];
+        link->attempted=true;publish(b,handle);
+        if(link->interval>=6 && link->interval<=12 && !link->latency) {
+            negotiate(b,now);
+            return;
+        }
+    }
     uint8_t cmd[18]={1,0x13,0x20,14};set16(cmd+4,handle);set16(cmd+6,6);set16(cmd+8,12);set16(cmd+12,500);
     if(send(b->hci,cmd,sizeof(cmd),MSG_DONTWAIT)!=(ssize_t)sizeof(cmd)) {
         fprintf(stderr,"WARN: cannot send BLE interval request\n");return;
@@ -79,9 +99,9 @@ static void negotiate(struct otg_ble_link *b,gint64 now)
     b->waiting=true;b->pending=handle;b->deadline=now+5000000;
     fprintf(stderr,"INFO: BLE requesting interval 7.5–15ms; waiting for controller confirmation\n");
 }
-struct otg_ble_link *otg_ble_link_open(uint16_t index,int channel)
+struct otg_ble_link *otg_ble_link_open(uint16_t index,int channel,bool multi)
 {
-    struct otg_ble_link *b=g_new0(struct otg_ble_link,1);b->channel=channel;b->index=index;
+    struct otg_ble_link *b=g_new0(struct otg_ble_link,1);b->channel=channel;b->index=index;b->multi=multi;
     b->hci=socket(AF_BLUETOOTH,SOCK_RAW|SOCK_CLOEXEC|SOCK_NONBLOCK,1);
     struct {sa_family_t family;uint16_t index,channel;} address={AF_BLUETOOTH,index,0};
     /* Match the native HCI_FILTER ABI, including its trailing padding. New

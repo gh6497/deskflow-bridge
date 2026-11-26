@@ -12,6 +12,7 @@ struct otg_ble_route {
     bool motion_pending;
     uint8_t motion[8];
     uint64_t last_pointer_ns;
+    uint64_t pointer_interval_ns;
 };
 
 static void directed_close_fd(int *fd)
@@ -27,6 +28,7 @@ static void directed_reset(struct otg_ble_route *r)
     memset(r->value, 0, sizeof(r->value));
     r->motion_pending=false;
     r->last_pointer_ns=0;
+    r->pointer_interval_ns=0;
 }
 
 static void directed_free(struct otg_ble_route *r)
@@ -121,6 +123,22 @@ const char *otg_ble_route_identity(const struct otg_ble_route *r)
     return r->address;
 }
 
+static bool directed_set_interval(struct otg_ble_hid *b, uint16_t handle, uint64_t us)
+{
+    const uint64_t interval_ns=us*UINT64_C(1000);
+    b->link_interval_ns[handle]=interval_ns;
+    for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++) {
+        struct otg_ble_route *r=b->routes[i];
+        if (r && r->handle==handle) {
+            r->pointer_interval_ns=interval_ns;
+            fprintf(stderr,"INFO: BLE route %s observed interval %.2fms; pointer pacing %.2fms\n",
+                    r->address,us/1000.0,r->pointer_interval_ns/1000000.0);
+            return true;
+        }
+    }
+    return true;
+}
+
 void otg_ble_route_unbind(struct otg_ble_route *r)
 {
     if (!r) return;
@@ -145,7 +163,8 @@ void otg_ble_route_send(struct otg_ble_route *r, uint16_t id, const uint8_t data
     bool pointer=id==AOA_HID_ID_MOUSE;
     bool motion=pointer && !memcmp(data,r->value[1],2) && !data[6] && !data[7];
     uint64_t now=monotonic_ns();
-    if (motion && now-r->last_pointer_ns<BLE_POINTER_INTERVAL_NS) {
+    const uint64_t interval=r->pointer_interval_ns ? r->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
+    if (motion && now-r->last_pointer_ns<interval) {
         memcpy(r->motion,data,8);
         r->motion_pending=true;
         return;
@@ -200,6 +219,8 @@ static void directed_refresh(struct otg_ble_hid *b, struct otg_ble_route *r,
         g_free(r->path); r->path=g_strdup(path); r->handle=handle;
     }
     r->paired=path && bonded;
+    if (path && handle < G_N_ELEMENTS(b->link_interval_ns))
+        r->pointer_interval_ns=b->link_interval_ns[handle];
     for (unsigned n=0;n<2;n++) {
         struct pollfd fd={r->fd[n],0,0};
         if (fd.fd>=0 && poll(&fd,1,0)>0 && fd.revents) {
@@ -221,7 +242,8 @@ static void directed_refresh(struct otg_ble_hid *b, struct otg_ble_route *r,
         const uint8_t neutral[8]={0};
         r->ready=directed_write(r,0,neutral) && directed_write(r,1,neutral);
     } else if (!ready && r->ready) directed_release(r);
-    if (r->ready && r->motion_pending && monotonic_ns()-r->last_pointer_ns>=BLE_POINTER_INTERVAL_NS) {
+    const uint64_t interval=r->pointer_interval_ns ? r->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
+    if (r->ready && r->motion_pending && monotonic_ns()-r->last_pointer_ns>=interval) {
         r->motion_pending=false;
         r->last_pointer_ns=monotonic_ns();
         directed_write(r,1,r->motion);
