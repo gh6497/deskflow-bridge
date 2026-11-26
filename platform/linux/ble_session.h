@@ -15,6 +15,7 @@ struct otg_ble_session *otg_ble_directed_session_open(const char *adapter,bool l
                                                       const char *peer,const char *screen);
 struct otg_ble_session *otg_ble_session_open(const char *adapter, bool legacy_handles);
 bool otg_ble_session_set_peer(struct otg_ble_session *session, const char *address);
+bool otg_ble_session_waiting_for_subscriptions(const struct otg_ble_session *session);
 /* Read-only, same UID status; never attaches or changes Bluetooth settings. */
 int otg_ble_service_status(const char *adapter);
 int otg_ble_service_stop(const char *adapter);

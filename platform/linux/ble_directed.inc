@@ -134,6 +134,11 @@ bool otg_ble_route_ready(const struct otg_ble_route *r, uint64_t *generation)
     return r->ready;
 }
 
+bool otg_ble_route_waiting_for_subscriptions(const struct otg_ble_route *r)
+{
+    return r && r->paired && (r->fd[0] < 0 || r->fd[1] < 0);
+}
+
 void otg_ble_route_send(struct otg_ble_route *r, uint16_t id, const uint8_t data[8])
 {
     if (!r->ready || (id!=AOA_HID_ID_KEYBOARD && id!=AOA_HID_ID_MOUSE)) return;
@@ -282,7 +287,7 @@ static bool directed_poll(struct otg_ble_hid *b)
         directed_observe_advertisement(b,&links);
     else links.le_count=0;
     GList *objects=g_dbus_object_manager_get_objects(b->devices);
-    if (b->discover_routes && b->session_enabled && links.le_count)
+    if (b->discover_routes && links.le_count)
         directed_discover(b,objects,&links);
     for (unsigned i=0;i<G_N_ELEMENTS(b->routes);i++)
         if (b->routes[i]) directed_refresh(b,b->routes[i],objects,&links);

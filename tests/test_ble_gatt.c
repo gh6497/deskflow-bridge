@@ -386,8 +386,10 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     CHECK(!invoke_from(&hid,mock->bus,ROOT "/hid/keys","org.bluez.GattCharacteristic1","StartNotify",NULL,false));
     int ak=get_report_fd(&hid,mock->bus,a,0),bp=get_report_fd(&hid,mock->bus,b,1);
     CHECK(ak>=0 && bp>=0 && directed_poll(&hid) && !one->ready && !two->ready);
+    CHECK(otg_ble_route_waiting_for_subscriptions(one) && otg_ble_route_waiting_for_subscriptions(two));
     int ap=get_report_fd(&hid,mock->bus,a,1),bk=get_report_fd(&hid,mock->bus,b,0);
     CHECK(directed_poll(&hid) && one->ready && two->ready);
+    CHECK(!otg_ble_route_waiting_for_subscriptions(one) && !otg_ble_route_waiting_for_subscriptions(two));
     uint8_t neutral[8]={0},key[8]={0,0,30},drag[8]={3,1,32,0,42};
     expect_report(ak,neutral);expect_report(ap,neutral);expect_report(bk,neutral);expect_report(bp,neutral);
     otg_ble_route_send(one,1,key);otg_ble_route_send(two,2,drag);

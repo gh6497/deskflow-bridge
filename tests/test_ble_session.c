@@ -12,7 +12,7 @@ struct otg_ble_hid {
     uint8_t report[2][8];
     uint64_t interval;
 };
-struct otg_ble_route { bool bound; char address[18]; uint64_t gen; unsigned sent; };
+struct otg_ble_route { bool bound, waiting; char address[18]; uint64_t gen; unsigned sent; };
 bool otg_ble_verified_instance(char *token,size_t capacity) {(void)token;(void)capacity;return false;}
 static struct otg_ble_route fake_routes[OTG_BLE_MAX_PHONES];
 struct otg_ble_hid *otg_ble_hid_create_directed(const char *adapter,bool legacy,const char *instance)
@@ -37,7 +37,8 @@ struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *b)
 { return otg_ble_route_bind(b,"AA:BB:CC:DD:EE:03"); }
 const char *otg_ble_route_identity(const struct otg_ble_route *r) {return r->address;}
 void otg_ble_route_unbind(struct otg_ble_route *r) {if(r)r->bound=false;}
-bool otg_ble_route_ready(const struct otg_ble_route *r,uint64_t *gen) {*gen=r->gen;return r->bound;}
+bool otg_ble_route_ready(const struct otg_ble_route *r,uint64_t *gen) {*gen=r->gen;return r->bound && !r->waiting;}
+bool otg_ble_route_waiting_for_subscriptions(const struct otg_ble_route *r) {return r && r->waiting;}
 void otg_ble_route_send(struct otg_ble_route *r,uint16_t id,const uint8_t data[8])
 {
     CHECK(r->bound && id==1 && data[2]==(uint8_t)(r-fake_routes+4));
@@ -347,6 +348,7 @@ static void test_service_process(bool legacy_handles)
     if(!geteuid())return; /* Production explicitly refuses a root daemon. */
     char *tmp=g_dir_make_tmp("otg-ble-session-XXXXXX",NULL);CHECK(tmp);
     runtime_base=tmp;
+    recovery_base=tmp;
     char *user_dir=g_strdup_printf("%s/%lu",tmp,(unsigned long)getuid());
     CHECK(!mkdir(user_dir,0700));
     int initial_created=created,initial_activated=activated;
@@ -390,7 +392,7 @@ static void test_service_process(bool legacy_handles)
     CHECK(access(address.sun_path,F_OK)<0);
     char *lock=g_strdup_printf("%s/ble-hci0.lock",dir);
     CHECK(!unlink(lock));CHECK(!rmdir(dir));CHECK(!rmdir(user_dir));CHECK(!rmdir(tmp));
-    g_free(lock);g_free(user_dir);runtime_base="/run/user";g_free(tmp);
+    g_free(lock);g_free(user_dir);runtime_base="/run/user";recovery_base="/run";g_free(tmp);
 }
 
 static void test_multi_process(bool cancel_startup)
@@ -398,6 +400,7 @@ static void test_multi_process(bool cancel_startup)
     if (!geteuid()) return;
     char *dir=g_dir_make_tmp("otg-multi-session-XXXXXX",NULL);CHECK(dir);
     runtime_base=dir;
+    recovery_base=dir;
     char *user=g_strdup_printf("%s/%u",dir,(unsigned)getuid());CHECK(!mkdir(user,0700));
     int gui[2];CHECK(!pipe(gui));
     pid_t pid=fork();CHECK(pid>=0);
@@ -463,7 +466,7 @@ static void test_multi_process(bool cancel_startup)
     char *service=g_build_filename(user,"deskflow-bridge",NULL);
     char *lock=g_build_filename(service,"ble-hci0.lock",NULL);
     CHECK(!unlink(lock) && !rmdir(service) && !rmdir(user) && !rmdir(dir));
-    g_free(lock);g_free(service);g_free(user);g_free(dir);runtime_base="/run/user";
+    g_free(lock);g_free(service);g_free(user);g_free(dir);runtime_base="/run/user";recovery_base="/run";
 }
 
 static void test_multi_stale_reports(void)
@@ -484,6 +487,12 @@ static void test_multi_stale_reports(void)
     CHECK(!first.sent && multi.client[0].generation==42);
     CHECK(send_message(a[1],POLL_SESSION,0,NULL,0));multi_tick(&s);
     CHECK(receive_message(a[1],&reply)==1 && valid_reply(&reply) && reply.data[0]==STATUS_READY);
+    first.waiting=true;
+    CHECK(send_message(a[1],POLL_SESSION,0,NULL,0));multi_tick(&s);
+    CHECK(receive_message(a[1],&reply)==1 && valid_reply(&reply) && !reply.data[0]);
+    CHECK(send_message(a[1],POLL_DIRECTED_SESSION,0,NULL,0));multi_tick(&s);
+    CHECK(receive_message(a[1],&reply)==1 && valid_reply(&reply) &&
+          reply.data[0]==STATUS_WAITING_FOR_SUBSCRIPTIONS);
     close(a[0]);close(a[1]);close(b[0]);close(b[1]);
 }
 

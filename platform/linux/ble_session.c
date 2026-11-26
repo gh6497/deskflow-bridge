@@ -25,16 +25,18 @@
 #define STATUS_INTERVAL_US 5000
 #define REQUEST_TIMEOUT_US 3000000
 static const char *runtime_base="/run/user";
+static const char *recovery_base="/run";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
     STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY,
-    GET_IDENTITY, ATTACH_DIRECTED_DISCOVERY
+    GET_IDENTITY, ATTACH_DIRECTED_DISCOVERY, POLL_DIRECTED_SESSION
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
 #define STATUS_DIRECTED 4u
 #define STATUS_BLE_ONLY 8u
 #define STATUS_DISCOVERY 16u
+#define STATUS_WAITING_FOR_SUBSCRIPTIONS 32u
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -57,6 +59,7 @@ struct service {
 struct otg_ble_session {
     int fd, latency_fd;
     bool ready, notified, alive;
+    bool directed_status, waiting_for_subscriptions;
     gint64 last_supervisor_note;
     bool in_flight, have_pointer_state;
     uint8_t pointer_state[2];
@@ -473,6 +476,7 @@ static struct otg_ble_session *session_open(const char *adapter,bool legacy_hand
     struct session_owner *owner=g_new0(struct session_owner,1);
     struct otg_ble_session *s=&owner->session;
     s->fd=fd;s->alive=true;s->latency_fd=-1;
+    s->directed_status=screen && (reply.data[0]&STATUS_DISCOVERY);
     g_strlcpy(owner->adapter,adapter,sizeof(owner->adapter));
     const char *value=getenv("OTG_BLE_LATENCY_FD");
     if(value && *value) {
@@ -501,7 +505,14 @@ static bool session_rpc(struct otg_ble_session *s,uint16_t op,uint16_t id,
     if(!request(s->fd,op,id,data,size,&reply)) {
         s->alive=false;s->ready=false;return false;
     }
-    s->ready=reply.data[0]!=0;return true;
+    s->ready=(reply.data[0]&STATUS_READY)!=0;
+    s->waiting_for_subscriptions=(reply.data[0]&STATUS_WAITING_FOR_SUBSCRIPTIONS)!=0;
+    return true;
+}
+
+bool otg_ble_session_waiting_for_subscriptions(const struct otg_ble_session *s)
+{
+    return s->alive && s->waiting_for_subscriptions;
 }
 bool otg_ble_session_set_peer(struct otg_ble_session *s,const char *address)
 {
@@ -551,17 +562,19 @@ static bool session_pump(struct otg_ble_session *s,bool poll_status)
     gint64 now=g_get_monotonic_time();
     if(s->in_flight) {
         struct message reply;int n=receive_message(s->fd,&reply);
-        if(n<0 || (n>0 && !valid_reply(&reply)))return session_fail(s,"reply failed");
+        if(n<0 || (n>0 && (!valid_reply(&reply) || reply.size!=2)))return session_fail(s,"reply failed");
         if(!n) {
             if(now>=s->request_deadline)return session_fail(s,"reply timed out");
             return true;
         }
-        s->in_flight=false;s->ready=reply.data[0]!=0;
+        s->in_flight=false;s->ready=(reply.data[0]&STATUS_READY)!=0;
+        s->waiting_for_subscriptions=(reply.data[0]&STATUS_WAITING_FOR_SUBSCRIPTIONS)!=0;
         if(!s->ready) {
             s->count=0;s->have_pointer_state=false;s->interval_us=0;s->identity[0]=0;
         }
     }
-    uint16_t op=POLL_SESSION,id=0,size=0;const void *data=NULL;
+    uint16_t op=s->directed_status?POLL_DIRECTED_SESSION:POLL_SESSION,id=0,size=0;
+    const void *data=NULL;
     bool report=s->ready && s->count && !s->interval_us;
     if(report) {
         struct queued_report *r=&s->reports[s->head];
@@ -704,14 +717,14 @@ int otg_ble_service_stop(const char *adapter)
     char dir[128];
     struct sockaddr_un address;
     if (!socket_path(getuid(), adapter, dir, sizeof(dir), &address)) return 1;
-    char recovery[sizeof(address.sun_path) + 32];
-    snprintf(recovery, sizeof(recovery), "/run/deskflow-bridge-ble-%s.state", adapter);
+    char *recovery=g_strdup_printf("%s/deskflow-bridge-ble-%s.state",recovery_base,adapter);
 
     int fd=connect_service(getuid(),adapter);
     struct message reply={0};
     bool ok=fd>=0 && request(fd,STOP_SERVICE,0,NULL,0,&reply);
     if(fd>=0)close(fd);
     if (!ok && reply.operation==REPLY) {
+        g_free(recovery);
         fprintf(stderr,"ERROR: service busy, incompatible or cleanup incomplete; no stop performed\n");
         return 1;
     }
@@ -721,9 +734,13 @@ int otg_ble_service_stop(const char *adapter)
     struct stat st;
     do {
         if (lstat(address.sun_path,&st)<0 && errno==ENOENT &&
-            lstat(recovery,&st)<0 && errno==ENOENT) return 0;
+            lstat(recovery,&st)<0 && errno==ENOENT) {
+            g_free(recovery);
+            return 0;
+        }
         g_usleep(50000);
     } while (g_get_monotonic_time()<deadline);
+    g_free(recovery);
     fprintf(stderr,"ERROR: timed out waiting for Bluetooth service shutdown or adapter restoration (%s)\n",adapter);
     return 1;
 }
