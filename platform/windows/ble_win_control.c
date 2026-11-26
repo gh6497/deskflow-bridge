@@ -17,6 +17,7 @@ static unsigned number(const char *text, unsigned max)
 static bool command(struct otg_ble_control *c)
 {
     if (!strcmp(c->line, "stop")) { c->stop = true; return true; }
+    if (!strncmp(c->line, "attach\t", 7)) return true;
     if (!strcmp(c->line, "pause")) {
         if (c->phase == OTG_BLE_ACTIVE) c->phase = OTG_BLE_PAUSING;
         return true;

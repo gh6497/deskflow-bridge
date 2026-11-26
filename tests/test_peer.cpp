@@ -350,8 +350,30 @@ int main(int argc, char **argv)
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_ADAPTER") &&
             args.value(args.indexOf("--adapter") + 1) != qEnvironmentVariable("OTG_TEST_BLE_ADAPTER")) return 9;
         if (ble && qEnvironmentVariableIsSet("OTG_TEST_BLE_WINDOWS") &&
-            (args.contains("--ble-session") || args.contains("--adapter") ||
-             args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
+             (args.contains("--ble-session") || args.contains("--adapter") ||
+              args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
+        if (args.contains("--gui-ble-auto")) {
+            output("{\"event\":\"ble-device\",\"identity\":\"AA:BB:CC:DD:EE:FF\"}\n");
+            std::thread([&app] {
+                char bytes[1600];
+                while (std::fgets(bytes, sizeof(bytes), stdin)) {
+                    const QByteArray line(bytes);
+                    if (line.startsWith("attach\t")) {
+                        QMetaObject::invokeMethod(&app, [] { output("{\"event\":\"connected\"}\n"); },
+                                                  Qt::QueuedConnection);
+                    } else if (line == "pause\n") {
+                        output("{\"event\":\"ble-idle\"}\n");
+                    } else if (line.startsWith("resume\t")) {
+                        output("{\"event\":\"ble-device\",\"identity\":\"AA:BB:CC:DD:EE:FF\"}\n");
+                    } else if (line == "stop\n") {
+                        QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);
+                        return;
+                    }
+                }
+                QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);
+            }).detach();
+            return app.exec();
+        }
         if (args.contains("--gui-ble-control")) {
             auto generation = std::make_shared<int>(0);
             auto connectSession = [&app, generation] {

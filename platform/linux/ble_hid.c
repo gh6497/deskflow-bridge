@@ -941,6 +941,11 @@ static bool poll_ble(void *ctx)
     return b->app_registered;
 }
 static bool ready_ble(void *ctx){struct otg_ble_hid*b=ctx;return b->channel_ready;}
+static const char *identity_ble(void *ctx)
+{
+    const struct otg_ble_hid *b = ctx;
+    return b && b->channel_ready && b->peer_address[0] ? b->peer_address : NULL;
+}
 static void close_ble(void *ctx)
 {
     struct otg_ble_hid *b=ctx;
@@ -959,7 +964,7 @@ static void close_ble(void *ctx)
         b->registrations[i]=0;
     }
 }
-static const struct otg_hid_transport_ops OPS={reg,send_report,poll_ble,ready_ble,close_ble};
+static const struct otg_hid_transport_ops OPS={reg,send_report,poll_ble,ready_ble,close_ble,identity_ble};
 const struct otg_hid_transport_ops*otg_ble_hid_ops(void){return &OPS;}
 static bool init_mode(struct otg_ble_hid *b,const char *adapter,bool resident,bool legacy_handles)
 {
@@ -1091,4 +1096,6 @@ void otg_ble_hid_destroy(struct otg_ble_hid *b)
     free(b);
 }
 const char*otg_ble_hid_adapter(const struct otg_ble_hid*b){return b?b->adapter:NULL;}
+const char *otg_ble_hid_identity(const struct otg_ble_hid *b)
+{ return b && b->peer_address[0] ? b->peer_address : NULL; }
 #endif

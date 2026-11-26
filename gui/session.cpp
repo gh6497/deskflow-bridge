@@ -106,7 +106,8 @@ Session::Session(QObject *parent, std::shared_ptr<BleStartupCoordinator> bleStar
     });
     connect(&m_bridge, &QProcess::readyReadStandardOutput, this, &Session::readBridgeEvents);
     connect(&m_bridge, &QProcess::readyReadStandardError, this, [this] {
-        emit log(withProcessOutput({}, qtTrId("otg.log.bridge_source"), QString::fromUtf8(m_bridge.readAllStandardError())));
+        const auto output = QString::fromUtf8(m_bridge.readAllStandardError());
+        emit log(withProcessOutput({}, qtTrId("otg.log.bridge_source"), output));
     });
     connect(&m_bridge, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart) {
@@ -305,6 +306,7 @@ void Session::start(const ConnectionOptions &options)
         return;
     m_shutdown = false;
     m_options = options;
+    m_bleDiscovery = options.bleDiscovery;
     m_audioReady = false;
     m_directedBle = false;
     m_adbServerStarted = false;
@@ -384,7 +386,8 @@ void Session::start(const ConnectionOptions &options)
         return;
     }
 #endif
-    startConnection();
+    if (ble && options.bleDiscovery) launchBridge();
+    else startConnection();
 }
 
 void Session::prepareBle(bool started, int attempts)
@@ -423,7 +426,8 @@ void Session::prepareBle(bool started, int attempts)
                 auto pending = m_bleStartup->pending.lock();
                 if (pending && pending->adapter == m_options.adapter) m_bleLaunch = std::move(pending);
             }
-            startConnection();
+            if (m_options.bleDiscovery) launchBridge();
+            else startConnection();
             return;
         }
         const auto dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
@@ -671,7 +675,8 @@ void Session::launchBridge()
                       "--right-button-action", m_options.rightButtonAction,
                       "--side-button-1-action", m_options.sideButton1Action,
                      "--side-button-2-action", m_options.sideButton2Action,
-                     "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
+                      "--side-swipe-distance", QString::number(m_options.sideSwipeDistancePercent)};
+    if (m_options.bleDiscovery) args << "--gui-ble-auto";
     if (m_options.absolutePerAxis) args << "--absolute-per-axis";
     if (!m_options.unlockPin.isEmpty() && !m_options.unlockWithSpace)
         args << "--unlock-with-swipe";
@@ -790,6 +795,11 @@ void Session::readBleEvents()
 void Session::handleBridgeEvent(const QJsonObject &object)
 {
     const auto event = object.value("event").toString();
+    if (event == "ble-device" && m_bleDiscovery) {
+        const auto identity = object.value("identity").toString().trimmed().toUpper();
+        if (!identity.isEmpty()) emit bleIdentityDetected(identity);
+        return;
+    }
     if (m_options.audio && (event == "audio-ready" || event == "audio-unavailable") &&
         (m_state == State::Starting || m_state == State::Connected)) {
         const bool ready = event == "audio-ready";
@@ -831,6 +841,28 @@ void Session::handleBridgeEvent(const QJsonObject &object)
             emit usbAttached(id, m_options.serial);
         emit log(qtTrId("otg.log.usb_ready"));
     }
+}
+
+bool Session::configureBle(const ConnectionOptions &options)
+{
+    if (m_state != State::Starting || !m_bleDiscovery || options.transport != "ble") return false;
+    if (options.phone.isEmpty()) return false;
+    m_options = options;
+    const auto host = options.manageServer ? QStringLiteral("127.0.0.1") : options.host;
+    const auto command = QString("attach\t%1\t%2\t%3\t%4\t%5%6\n")
+        .arg(host).arg(options.port).arg(options.phone).arg(options.width).arg(options.height)
+        .arg(options.absolutePerAxis ? QStringLiteral("\tper-axis") : QString());
+    m_bleDiscovery = false;
+    if (windowsBle() && hasBleProvider()) {
+        m_bleProvider.write(command.toUtf8());
+        return true;
+    }
+    if (m_bridge.state() != QProcess::NotRunning) {
+        m_bridge.write(command.toUtf8());
+        return true;
+    }
+    m_bleDiscovery = true;
+    return false;
 }
 
 void Session::fail(const char *id, const QString &detail)

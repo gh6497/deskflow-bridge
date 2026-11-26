@@ -62,11 +62,14 @@ private:
     void readDevice();
     void readDisplayFromAdb();
     void connectDevice();
+    void startBleService();
     void stopIdleBleService();
     void saveSettings();
     void saveSharedBleSettings(QSettings &settings) const;
     QVariantMap deviceProfile() const;
     void applyDeviceProfile(const QVariantMap &profile);
+    void setProfileTransport(const QString &transport);
+    void acceptBleIdentity(const QString &sourceId, const QString &identity);
     void rememberDevice(const QVariantMap &profile);
     void autoConnectDevice(const QString &transport, const QString &serial);
     void updateEnabled();
@@ -105,6 +108,8 @@ private:
     QString m_selectedId = "initial";
     QMap<QString, QVariantMap> m_records;
     QMap<QString, QVariantMap> m_pendingProfiles;
+    QMap<QString, QString> m_pendingBleIdentities;
+    QString m_discoveryId;
     bool m_loadingDevice = false;
     QListWidget *m_deviceSidebar;
     QTabWidget *m_tabs;
@@ -145,10 +150,11 @@ private:
     QPushButton *m_adbTest, *m_adbReadDisplay, *m_adbWirelessSetup;
     QWidget *m_adbBox;
     QComboBox *m_transport;
-    QLineEdit *m_blePeer;
+    QCheckBox *m_bleAutoAttach = nullptr;
     QLineEdit *m_adapter = nullptr;
     QCheckBox *m_bleIsolate = nullptr, *m_bleLegacyHandles = nullptr;
     QPushButton *m_stopBleService = nullptr;
+    QPushButton *m_startBleService = nullptr;
     bool m_stoppingBleService = false;
     QLineEdit *m_serial, *m_adbSerial, *m_adb, *m_deskflow, *m_host, *m_computer, *m_phone;
     QLineEdit *m_tlsCert, *m_tlsFingerprint, *m_tlsFingerprintFile;

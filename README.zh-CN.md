@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 1. 在持有键盘鼠标的电脑上安装并启动 Deskflow。
 2. 在 Deskflow 中添加手机屏幕，并把它放在电脑屏幕旁边。
 3. 启动 `deskflow-bridge-gui`，选择连接方式。
-4. 在「设备配置 → 屏幕与显示」设置手机尺寸，然后点击**连接**。
+4. USB 或 ADB 设备在「设备配置 → 屏幕与显示」设置手机尺寸，然后点击**连接**。蓝牙设备在「共享服务」中点击**启动蓝牙服务**，再从手机发起连接，设备配置会自动出现。
 5. 将鼠标滑过设置好的屏幕边缘进入手机；滑回来即可返回电脑。
 
 [图文用户指南](docs/USER_GUIDE.zh-CN.md)介绍下载安装、首次连接、权限、故障排查、附加功能和多设备配置；也可以阅读[英文用户指南](docs/USER_GUIDE.md)。
@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/81770cd8-706e-4a28-956f-393e6d192490
 |---|---|---|---|
 | **ADB＋UHID** | Windows 和已经使用 ADB 的用户 | 开启并授权 USB 或无线调试 | 使用普通 ADB 驱动，不需要替换为 WinUSB。Windows 新配置推荐使用。 |
 | **USB AOA HID** | 只需要键鼠控制 | 不需要 ADB 或 USB 调试 | 类似 scrcpy OTG。Linux 需要 USB 权限；Windows 需要 libusb 可用的驱动。 |
-| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 在手机蓝牙设置中配对或连接电脑 | 单机模式的手机地址选填。Linux 另提供[实验性双机模式](docs/USER_GUIDE.zh-CN.md#multiple)，需要已核验的 BlueZ 定向通知。macOS 暂无 BLE 后端。 |
+| **Bluetooth LE HID** | Linux，或愿意尝试的 Windows 用户 | 在手机蓝牙设置中配对或连接电脑 | GUI 会自动发现手机，并可在蓝牙连接后自动接入 Deskflow。Linux 另提供[实验性双机模式](docs/USER_GUIDE.zh-CN.md#multiple)，需要已核验的 BlueZ 定向通知。macOS 暂无 BLE 后端。 |
 
 ADB 只在 ADB＋UHID 以及音频、剪贴板、旋转跟随、文件分享等附加功能中需要。AOA HID 可以完全不开 USB 调试使用。
 

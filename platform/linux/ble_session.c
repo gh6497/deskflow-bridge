@@ -27,7 +27,8 @@
 static const char *runtime_base="/run/user";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
-    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY
+    STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY,
+    GET_IDENTITY
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
@@ -60,6 +61,7 @@ struct otg_ble_session {
     uint8_t pointer_state[2];
     gint64 request_deadline, last_request;
     uint64_t interval_us;
+    char identity[18];
     unsigned head, count;
     struct queued_report {
         uint16_t id;
@@ -221,6 +223,9 @@ static bool handle_session(struct service *s,const struct message *m)
             otg_ble_hid_set_interval(s->hid,us);
         }
         return true;
+    case GET_IDENTITY:
+        return m->size == 0 && s->active && s->hid &&
+            otg_ble_hid_identity(s->hid) != NULL;
     default:return false;
     }
 }
@@ -331,6 +336,11 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
                     bool ok=idle_service(&s);
                     (void)reply_status(&s,s.client,ok);
                     close(s.client);s.client=-1;
+                } else if(m.operation==GET_IDENTITY) {
+                    const char *identity=otg_ble_hid_identity(s.hid);
+                    bool ok=handle_session(&s,&m) && identity;
+                    if (!ok || !send_message(s.client,REPLY,ok?0:1,identity,(uint16_t)(ok?17:0)))
+                        drop_client(&s);
                 } else if(!reply_status(&s,s.client,handle_session(&s,&m)))drop_client(&s);
             }
             else expire_client(&s,g_get_monotonic_time());
@@ -394,7 +404,7 @@ static int connect_service(uid_t uid,const char *adapter)
 }
 
 static bool valid_reply(const struct message *reply)
-{return reply->operation==REPLY && reply->size==2 && reply->id==0;}
+{return reply->operation==REPLY && (reply->size==2 || reply->size==17) && reply->id==0;}
 
 static bool wait_reply(int fd,struct message *reply,gint64 deadline)
 {
@@ -488,6 +498,26 @@ bool otg_ble_session_set_peer(struct otg_ble_session *s,const char *address)
 static bool session_register(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
 {return session_rpc(ctx,REGISTER,id,data,size);}
 
+static const char *session_identity(void *ctx)
+{
+    struct otg_ble_session *s=ctx;
+    if (!s->ready || !s->alive) return NULL;
+    if (!s->identity[0]) {
+        struct message reply;
+        // POLL may already be in flight when the GUI first observes readiness.
+        if (s->in_flight) {
+            if (!wait_reply(s->fd, &reply, s->request_deadline) || reply.size != 2) return NULL;
+            s->in_flight = false;
+            s->ready = (reply.data[0] & STATUS_READY) != 0;
+            if (!s->ready) return NULL;
+        }
+        if (!request(s->fd,GET_IDENTITY,0,NULL,0,&reply) || reply.size!=17 || reply.id!=0)
+            return NULL;
+        memcpy(s->identity,reply.data,17);s->identity[17]=0;
+    }
+    return s->identity;
+}
+
 static bool session_fail(struct otg_ble_session *s,const char *reason)
 {
     fprintf(stderr,"ERROR: resident BLE %s; releasing session input\n",reason);
@@ -515,7 +545,7 @@ static bool session_pump(struct otg_ble_session *s,bool poll_status)
         }
         s->in_flight=false;s->ready=reply.data[0]!=0;
         if(!s->ready) {
-            s->count=0;s->have_pointer_state=false;s->interval_us=0;
+            s->count=0;s->have_pointer_state=false;s->interval_us=0;s->identity[0]=0;
         }
     }
     uint16_t op=POLL_SESSION,id=0,size=0;const void *data=NULL;
@@ -596,7 +626,7 @@ static void session_close(void *ctx)
         fprintf(stderr,"WARN: resident BLE detach was not acknowledged\n");
     close(s->fd);s->fd=-1;s->alive=s->ready=false;
 }
-static const struct otg_hid_transport_ops SESSION_OPS={session_register,session_send,session_poll,session_ready,session_close};
+static const struct otg_hid_transport_ops SESSION_OPS={session_register,session_send,session_poll,session_ready,session_close,session_identity};
 const struct otg_hid_transport_ops *otg_ble_session_ops(void){return &SESSION_OPS;}
 void otg_ble_session_destroy(struct otg_ble_session *s)
 {if(s){session_close(s);if(s->latency_fd>=0)close(s->latency_fd);g_free(s);}}

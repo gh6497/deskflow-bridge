@@ -51,6 +51,9 @@ struct ConnectionOptions {
     QString adapter = "hci0";
 #endif
     QString blePeer;
+    QString bleIdentity;
+    bool bleAutoAttach = true;
+    bool bleDiscovery = false;
     bool bleIsolate = false;
     bool bleLegacyHandles = false;
     bool requireDirectedBle = false;
@@ -91,6 +94,7 @@ public:
     void stop();
     void shutdown();
     void stopBleProvider();
+    bool configureBle(const ConnectionOptions &options);
     bool hasBleProvider() const { return m_bleProvider.state() != QProcess::NotRunning; }
 
 signals:
@@ -98,6 +102,7 @@ signals:
     void log(const QString &message);
     void usbAttached(const QString &id, const QString &serial);
     void bleProviderChanged();
+    void bleIdentityDetected(const QString &identity);
     void clipboardChanged();
     void displaySizeChanged(const QSize &size);
 
@@ -130,6 +135,7 @@ private:
     QString m_bleProgram, m_blePeer;
     QStringList m_bleAuxiliary;
     bool m_bleActive = false, m_shutdown = false, m_stoppingBleProvider = false;
+    bool m_bleDiscovery = false;
     bool m_audioReady = false;
     bool m_directedBle = false;
     std::shared_ptr<BleStartupCoordinator> m_bleStartup;
