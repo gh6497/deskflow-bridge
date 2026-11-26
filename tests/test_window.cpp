@@ -1854,6 +1854,12 @@ private slots:
         QSettings settings;
         settings.setValue("manageServer", false);
         settings.setValue("adb", "");
+        const auto certificate = dir.filePath("client.pem");
+        const QString fingerprint(64, QLatin1Char('a'));
+        settings.setValue("tls", true);
+        settings.setValue("tlsCertificate", certificate);
+        settings.setValue("tlsFingerprint", fingerprint);
+        qputenv("OTG_TEST_CLIENT_PEM", certificate.toUtf8());
         QFile queue(dir.filePath("phones"));
         QVERIFY(queue.open(QIODevice::WriteOnly));
         QVERIFY(queue.write("AA:BB:CC:DD:EE:01\nAA:BB:CC:DD:EE:02\nAA:BB:CC:DD:EE:03\n") > 0);
@@ -1866,12 +1872,21 @@ private slots:
             qunsetenv("OTG_TEST_BLE_STATUS");
             qunsetenv("OTG_TEST_BLE_DISCOVERY_QUEUE");
             qunsetenv("OTG_TEST_BLE_STOP_MARKER");
+            qunsetenv("OTG_TEST_CLIENT_PEM");
         });
         AutoConnectTestWindow window;
         auto *manager = window.findChild<ConnectionManager *>();
         auto *multi = window.findChild<QCheckBox *>("bleMultiDevice");
         auto *list = window.findChild<QListWidget *>("deviceSidebar");
         QVERIFY(manager && multi && list);
+        bool selectedDiscovered = false;
+        connect(manager, &ConnectionManager::changed, &window, [manager, list, &selectedDiscovered](const QString &id) {
+            if (selectedDiscovered || manager->state(id) != Session::State::Connected) return;
+            const auto matches = list->findItems("*AA-BB-CC-DD-EE-01*", Qt::MatchWildcard);
+            if (matches.isEmpty()) return;
+            selectedDiscovered = true;
+            list->setCurrentItem(matches.first()); // The new profile has no shared TLS fields.
+        });
         multi->setChecked(true);
         window.findChild<QPushButton *>("startBleService")->click();
         QTRY_COMPARE(list->count(), 4);
@@ -1883,14 +1898,24 @@ private slots:
             QTRY_COMPARE(manager->state(ids.last()), Session::State::Connected);
         }
         QTRY_COMPARE(manager->activeBleSessions(), 4); // Three phones and a listener for the next one.
+        QVERIFY(selectedDiscovered);
         manager->stop(ids.front());
         QTRY_COMPARE(manager->state(ids.front()), Session::State::Idle);
         QCOMPARE(manager->state(ids[1]), Session::State::Connected);
         QCOMPARE(manager->state(ids[2]), Session::State::Connected);
+        QVERIFY(window.findChild<QCheckBox *>("tlsEnabled")->isChecked());
+        QCOMPARE(window.findChild<QLineEdit *>("tlsFingerprint")->text(), fingerprint);
+        const auto firstPhone = list->findItems("*AA-BB-CC-DD-EE-01*", Qt::MatchWildcard).first();
+        list->setCurrentItem(firstPhone);
+        window.findChild<QPushButton *>("connectButton")->click();
+        QTRY_COMPARE(manager->state(ids.front()), Session::State::Connected);
         ConnectionOptions usb;
         usb.manageServer = false;
         usb.bridge = testPeerPath();
         usb.serial = "test-usb";
+        usb.tls = true;
+        usb.tlsCertificate = certificate;
+        usb.tlsFingerprint = fingerprint;
         QVERIFY(manager->start("initial", usb));
         QTRY_COMPARE(manager->state("initial"), Session::State::Connected);
 

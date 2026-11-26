@@ -2381,11 +2381,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"originalWidth", m_width->value()}, {"originalHeight", m_height->value()},
             {"sensitivityMultiplier", m_sensitivity->value()},
             {"motionMultiplier", m_motionMultiplier->value()},
-            {"deskflow", m_deskflow->text()}, {"computer", m_computer->text()},
-             {"phone", m_phone->text()}, {"host", m_host->text()}, {"port", m_port->value()},
-              {"manageServer", m_manage->isChecked()}, {"tls", m_tls->isChecked()},
-               {"tlsCertificate", m_tlsCert->text()}, {"tlsFingerprint", m_tlsFingerprint->text()},
-               {"tlsFingerprintFile", m_tlsFingerprintFile->text()},
+            {"phone", m_phone->text()},
                 {"mouseMode", m_mouseMode->currentData()}, {"audio", m_audio->isChecked()},
                 {"absolutePerAxis", m_absolutePerAxis->isChecked()},
                 {"audioGainDb", m_audioGain->value()},
@@ -2415,10 +2411,6 @@ void MainWindow::applyDeviceProfile(const QVariantMap &profile)
     m_motionMultiplier->setValue(profile.value("motionMultiplier", 1.0).toDouble());
     m_phone->setText(profile.value("phone", "android").toString());
     m_alias->setText(profile.value("alias", m_phone->text()).toString());
-    m_tls->setChecked(profile.value("tls", false).toBool());
-    m_tlsCert->setText(profile.value("tlsCertificate").toString());
-    m_tlsFingerprint->setText(profile.value("tlsFingerprint").toString());
-    m_tlsFingerprintFile->setText(profile.value("tlsFingerprintFile").toString());
     const QString transport = profile.value("transport", "usb").toString();
     if (transport != m_transport->currentData()) {
         m_deviceList.clear();

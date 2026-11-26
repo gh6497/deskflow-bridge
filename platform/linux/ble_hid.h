@@ -26,6 +26,7 @@ struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *hid);
 const char *otg_ble_route_identity(const struct otg_ble_route *route);
 void otg_ble_route_unbind(struct otg_ble_route *route);
 bool otg_ble_route_ready(const struct otg_ble_route *route, uint64_t *generation);
+bool otg_ble_route_waiting_for_subscriptions(const struct otg_ble_route *route);
 void otg_ble_route_send(struct otg_ble_route *route, uint16_t id, const uint8_t data[8]);
 bool otg_ble_hid_set_peer(struct otg_ble_hid *b, const char *address);
 const char *otg_ble_hid_identity(const struct otg_ble_hid *b);

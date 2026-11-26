@@ -803,6 +803,20 @@ void Session::readBleEvents()
 void Session::handleBridgeEvent(const QJsonObject &object)
 {
     const auto event = object.value("event").toString();
+    if (m_state == State::Starting && m_options.transport == "ble") {
+        if (event == "ble-waiting-for-subscriptions") {
+            setState(State::Starting, "otg.ble.waiting_subscriptions");
+            return;
+        }
+        if (event == "ble-waiting-for-phone") {
+            setState(State::Starting, "otg.ble.waiting");
+            return;
+        }
+        if (event == "ble-connecting-deskflow") {
+            setState(State::Starting, "otg.ble.connecting_deskflow");
+            return;
+        }
+    }
     if (event == "waiting-for-screen" && m_state == State::Starting) {
         // Each EUNK confirms that the server is reachable and still needs the
         // user to add the screen. Keep the normal timeout for a stalled handshake.

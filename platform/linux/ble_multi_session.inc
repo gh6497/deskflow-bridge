@@ -52,6 +52,8 @@ static bool multi_register(struct service *s,struct directed_client *c,const str
     }
     c->descriptors[m->id==AOA_HID_ID_MOUSE]=*m;
     if (!c->descriptors[0].size || !c->descriptors[1].size) return true;
+    /* A paired phone may have reconnected before RegisterApplication returns. */
+    if (!c->route) otg_ble_route_enable_discovery(s->hid,true);
     for (unsigned i=0;i<2;i++) {
         const struct message *desc=&c->descriptors[i];
         if (!otg_ble_hid_ops()->register_report(s->hid,desc->id,desc->data,desc->size)) {
@@ -96,7 +98,8 @@ static void multi_tick(struct service *s)
         bool ok=false;
         switch (m.operation) {
         case REGISTER: ok=multi_register(s,c,&m);break;
-        case POLL_SESSION: ok=!m.size && !m.id;break;
+        case POLL_SESSION:
+        case POLL_DIRECTED_SESSION: ok=!m.size && !m.id;break;
         case REPORT:
             ok=c->active && m.size==8 && (m.id==AOA_HID_ID_KEYBOARD || m.id==AOA_HID_ID_MOUSE);
             if (ok && ready) {
@@ -105,7 +108,11 @@ static void multi_tick(struct service *s)
             }
             break;
         }
-        if (!multi_reply(c->fd,ok,ready?STATUS_READY:0,false) || !ok) multi_drop(s,c,false);
+        uint8_t flags = ready ? STATUS_READY : 0;
+        if (m.operation==POLL_DIRECTED_SESSION && !ready && c->active &&
+            otg_ble_route_waiting_for_subscriptions(c->route))
+            flags |= STATUS_WAITING_FOR_SUBSCRIPTIONS;
+        if (!multi_reply(c->fd,ok,flags,false) || !ok) multi_drop(s,c,false);
         discovering|=c->active && !c->route;
     }
     otg_ble_route_enable_discovery(s->hid,discovering);
@@ -154,7 +161,7 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
     *slot=(struct directed_client){.fd=fd,.route=route,.last_request=g_get_monotonic_time()};
     multi->ever_attached=true;
     g_strlcpy(slot->screen,screen,sizeof(slot->screen));
-    if (!multi_reply(fd,true,0,false)) multi_drop(s,slot,false);
+    if (!multi_reply(fd,true,STATUS_DISCOVERY,false)) multi_drop(s,slot,false);
     return true;
 reject:
     multi_reply(fd,false,0,idle);

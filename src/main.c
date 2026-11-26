@@ -473,6 +473,7 @@ struct app_state {
     bool resident_session;
     bool deskflow_connected;
     bool input_ready_reported;
+    bool ble_subscriptions_reported;
     bool audio_ready_reported;
     df_client *client;
     bool clipboard_error;
@@ -906,6 +907,16 @@ static bool ble_wait(app_state *s, bool require_ready, unsigned delay_ms)
 #endif
     while (!g_stop && !(g_gui && gui_stop_check())) {
         if (!otg_bridge_check(&s->bridge)) return false;
+#ifdef OTG_HAVE_BLE
+        if (require_ready && s->resident_session) {
+            const bool waiting = otg_ble_session_waiting_for_subscriptions(s->transport_owner);
+            if (waiting != s->ble_subscriptions_reported) {
+                s->ble_subscriptions_reported = waiting;
+                if (!otg_bridge_ready(&s->bridge))
+                    gui_event(waiting ? "ble-waiting-for-subscriptions" : "ble-waiting-for-phone");
+            }
+        }
+#endif
         if (require_ready && otg_bridge_ready(&s->bridge)) return true;
 #ifdef _WIN32
         if (!require_ready && GetTickCount64() >= until) return true;
@@ -1657,6 +1668,7 @@ int main(int argc, char **argv)
         }
         state.display_pending = false;
         state.unlock_lock_query_pending = false;
+        if (state.transport_owner) gui_event("ble-connecting-deskflow");
         ret = run_deskflow(&state, &opts, &cbs);
         otg_display_monitor_destroy(state.display); state.display = NULL;
         state.display_pending = false;
