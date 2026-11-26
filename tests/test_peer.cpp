@@ -263,6 +263,13 @@ int main(int argc, char **argv)
         output(devices.isEmpty() ? "List of devices attached\nTEST123 device usb:1-2 model:Pixel_Test transport_id:1\n" : devices.constData());
         return 0;
     }
+    if (args.contains("getprop")) {
+        const auto model = qgetenv("OTG_TEST_WIRELESS_MODEL");
+        if (args.mid(1) != QStringList{"-s", "192.0.2.10:5555", "shell", "getprop", "ro.product.model"} ||
+            model.isEmpty()) return 1;
+        output(model.constData());
+        return 0;
+    }
     if (args.contains("get-devpath")) {
         output(qEnvironmentVariableIsSet("OTG_TEST_NO_DEVPATH") ? "unknown\n" : "usb:1-2\n");
         return 0;

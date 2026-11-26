@@ -1287,15 +1287,20 @@ private slots:
     }
     void devices()
     {
-        auto devices = parseDevices("* daemon started successfully *\nList of devices attached\n"
+        auto devices = parseAdbDevices("* daemon started successfully *\nList of devices attached\n"
             "ABC device usb:1-2 product:p model:Pixel_8 transport_id:1\n"
             "DEF unauthorized usb:1-3\nGHI offline\n"
-            "emulator-5554 device\n192.168.1.2:5555 device\n"
+            "emulator-5554 device\n192.168.1.2:5555 device model:Pixel_7\n"
             "adb-foo._adb-tls-connect._tcp device\n");
-        QCOMPARE(devices.size(), 3);
+        QCOMPARE(devices.size(), 6);
         QCOMPARE(devices[0].serial, "ABC");
         QCOMPARE(devices[0].model, "Pixel 8");
+        QCOMPARE(screenNameForAdbModel(devices[0].model), "Pixel_8");
         QCOMPARE(devices[1].state, "unauthorized");
+        QCOMPARE(devices[4].serial, "192.168.1.2:5555");
+        QCOMPARE(devices[4].model, "Pixel 7");
+        QCOMPARE(screenNameForAdbModel(".Phone / Pro"), "_Phone___Pro");
+        QCOMPARE(screenNameForAdbModel(QString(70, 'x')), QString(63, 'x'));
     }
 
     void wirelessMdnsServices()

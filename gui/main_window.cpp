@@ -48,6 +48,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <initializer_list>
+#include <iterator>
 
 namespace {
 
@@ -1508,6 +1509,10 @@ void MainWindow::addDevice()
             screen->addItem(existing);
     }
     form->addRow(qtTrId("otg.label.phone_name"), screen);
+    auto *alias = new QLineEdit;
+    alias->setObjectName("newDeviceAlias");
+    alias->setPlaceholderText(name);
+    form->addRow(qtTrId("otg.multi.alias"), alias);
 
     auto *access = new NoWheelWidget<QComboBox>;
     access->setObjectName("newDeviceAdbAccess");
@@ -1572,11 +1577,48 @@ void MainWindow::addDevice()
     const auto adb = m_adb->text().trimmed();
     const auto bridge = bridgeExecutable();
     QList<AndroidDevice> candidates;
+    QList<AndroidDevice> adbDevices;
     bool probing = false;
     bool canceling = false;
+    bool screenNameEdited = false;
+    bool aliasEdited = false;
+    QTimer wirelessModelTimer;
+    wirelessModelTimer.setSingleShot(true);
+    quint64 wirelessModelRequest = 0;
+    bool readingWirelessModel = false;
+    QString wirelessModel;
     const auto uhid = [method] { return method->currentData() == "uhid"; };
     const auto wireless = [uhid, access] { return uhid() && access->currentData() == "wireless"; };
     const auto target = [wireless, serial, address] { return (wireless() ? address : serial)->text().trimmed(); };
+    const auto suggestNames = [&] {
+        const auto value = target();
+        const auto model = std::find_if(adbDevices.cbegin(), adbDevices.cend(), [&](const AndroidDevice &device) {
+            return device.serial == value;
+        });
+        const bool hasModel = model != adbDevices.cend() && model->state == "device" &&
+            std::none_of(std::next(model), adbDevices.cend(), [&](const AndroidDevice &device) {
+                return device.serial == value;
+            });
+        auto displayName = hasModel ? model->model : QString();
+        if (wireless() && !wirelessModel.isEmpty()) displayName = wirelessModel;
+        if (!screenNameEdited) {
+            const auto base = screenNameForAdbModel(displayName);
+            auto suggestion = name;
+            if (!base.isEmpty()) {
+                suggestion = base;
+                QSet<QString> reserved{m_computer->text().trimmed().toCaseFolded()};
+                for (const auto &record : std::as_const(m_records)) reserved.insert(screenKey(record));
+                for (int number = 2; reserved.contains(suggestion.toCaseFolded()); ++number) {
+                    const auto suffix = '-' + QString::number(number);
+                    suggestion = base.left(63 - suffix.size()) + suffix;
+                }
+            }
+            const QSignalBlocker blocker(screen);
+            screen->setEditText(suggestion);
+        }
+        if (!aliasEdited) alias->setText(displayName);
+        alias->setPlaceholderText(screen->currentText().trimmed());
+    };
     const auto updateDialog = [&] {
         const bool idle = m_connections.state(id) == Session::State::Idle && !probing && !canceling;
         const auto text = screen->currentText().trimmed();
@@ -1586,49 +1628,104 @@ void MainWindow::addDevice()
         const auto matches = std::count_if(candidates.cbegin(), candidates.cend(), [&](const AndroidDevice &device) {
             return device.serial == value;
         });
+        const bool waitingForNames = readingWirelessModel && (!screenNameEdited || !aliasEdited);
         form->setRowVisible(access, uhid());
-        form->setRowVisible(deviceRow, !wireless());
         form->setRowVisible(serial, !wireless());
         form->setRowVisible(address, wireless());
         form->setRowVisible(wirelessSetup, wireless());
         serialLabel->setText(qtTrId(uhid() ? "otg.uhid.usb_serial" : "otg.label.usb_serial"));
         readSize->setVisible(uhid());
-        for (auto *field : std::initializer_list<QWidget *>{method, screen, deviceRow, access, serial, address, dimensions})
+        for (auto *field : std::initializer_list<QWidget *>{method, screen, alias, deviceRow, access, serial, address, dimensions})
             field->setEnabled(idle);
         readSize->setEnabled(targetValid && !adb.isEmpty());
         wirelessSetup->setEnabled(idle && !adb.isEmpty());
-        connectButton->setEnabled(idle && targetValid && (wireless() || matches < 2) && validScreenName(text) &&
+        connectButton->setEnabled(idle && !waitingForNames && targetValid && matches < 2 && validScreenName(text) &&
             text.compare(m_computer->text().trimmed(), Qt::CaseInsensitive) != 0 &&
             m_connections.serverState() != DeskflowServer::State::Stopping && !m_closing);
     };
+    const auto scheduleWirelessModel = [&] {
+        ++wirelessModelRequest;
+        wirelessModelTimer.stop();
+        readingWirelessModel = !m_closing && !probing && wireless() && !adb.isEmpty() &&
+            isWirelessAdbTarget(target()) && (!screenNameEdited || !aliasEdited);
+        if (readingWirelessModel) wirelessModelTimer.start(300);
+    };
+    connect(&wirelessModelTimer, &QTimer::timeout, &dialog, [&] {
+        const auto request = wirelessModelRequest;
+        runCommand(&dialog, adb, {"-s", target(), "shell", "getprop", "ro.product.model"},
+                   [&, request](bool ok, const QString &output) {
+            if (request != wirelessModelRequest || m_closing) return;
+            readingWirelessModel = false;
+            const auto model = output.trimmed();
+            static const QRegularExpression controlCharacters("[\\p{Cc}\\p{Zl}\\p{Zp}]");
+            if (ok && model.size() <= 256 && !model.contains(controlCharacters)) wirelessModel = model;
+            suggestNames();
+            updateDialog();
+        }, 1500);
+    });
     const auto resetDevices = [&] {
         candidates.clear();
+        adbDevices.clear();
         const QSignalBlocker blocker(devices);
         devices->clear();
         devices->addItem(qtTrId(uhid() ? "otg.uhid.manual" : "otg.device.manual"));
     };
     resetDevices();
-    connect(method, &QComboBox::currentIndexChanged, &dialog, [&] {
-        serial->clear();
+    const auto wirelessTargetChanged = [&] {
+        wirelessModel.clear();
+        scheduleWirelessModel();
+        suggestNames();
+        updateDialog();
+    };
+    const auto resetDiscovery = [&] {
         resetDevices();
         status->clear();
+        wirelessTargetChanged();
+    };
+    connect(method, &QComboBox::currentIndexChanged, &dialog, [&] {
+        serial->clear();
+        resetDiscovery();
+    });
+    connect(access, &QComboBox::currentIndexChanged, &dialog, resetDiscovery);
+    connect(screen, &QComboBox::currentTextChanged, &dialog, [&] {
+        screenNameEdited = true;
+        alias->setPlaceholderText(screen->currentText().trimmed());
         updateDialog();
     });
-    connect(access, &QComboBox::currentIndexChanged, &dialog, [&] { status->clear(); updateDialog(); });
-    connect(screen, &QComboBox::currentTextChanged, &dialog, updateDialog);
-    connect(serial, &QLineEdit::textChanged, &dialog, updateDialog);
-    connect(address, &QLineEdit::textChanged, &dialog, updateDialog);
+    connect(screen, &QComboBox::textActivated, &dialog, [&] { screenNameEdited = true; updateDialog(); });
+    connect(alias, &QLineEdit::textEdited, &dialog, [&] { aliasEdited = true; updateDialog(); });
+    connect(serial, &QLineEdit::textChanged, &dialog, [&] { suggestNames(); updateDialog(); });
+    connect(address, &QLineEdit::textChanged, &dialog, wirelessTargetChanged);
     connect(devices, &QComboBox::currentIndexChanged, &dialog, [&](int index) {
         if (index <= 0) return;
-        const auto device = candidates.at(index - 1);
+        const auto &device = candidates.at(index - 1);
+        auto *selectedTarget = wireless() ? address : serial;
         if (device.state == "device") {
-            serial->setText(device.serial);
+            selectedTarget->setText(device.serial);
             status->clear();
         } else {
-            serial->clear();
+            selectedTarget->clear();
             status->setText(qtTrId(device.state == "unauthorized" ? "otg.device.authorize_hint" : "otg.device.offline_hint"));
         }
     });
+    const auto populateDevices = [&] {
+        int selected = 0;
+        for (int i = 0; i < candidates.size(); ++i) {
+            const auto &device = candidates.at(i);
+            const char *stateId = device.state == "device" ? "otg.device.online" :
+                device.state == "unauthorized" ? "otg.device.unauthorized" :
+                device.state == "offline" ? "otg.device.offline" : "otg.device.access_denied";
+            const auto label = device.model.isEmpty() ? device.serial : device.model + " · " + device.serial;
+            devices->addItem(QStringLiteral("%1 [%2]").arg(label, qtTrId(stateId)));
+            if (device.serial == target()) selected = i + 1;
+        }
+        status->setText(candidates.isEmpty() ? qtTrId("otg.device.none_found") : QString());
+        if (target().isEmpty() && candidates.size() == 1) selected = 1;
+        devices->setCurrentIndex(selected);
+        suggestNames();
+        probing = false;
+        updateDialog();
+    };
     connect(refresh, &QPushButton::clicked, &dialog, [&] {
         const bool useAdb = uhid();
         const auto program = useAdb ? adb : bridge;
@@ -1642,29 +1739,32 @@ void MainWindow::addDevice()
         updateDialog();
         runCommand(&dialog, program, useAdb ? QStringList{"devices", "-l"} : QStringList{"--usb-scan"},
                    [&, useAdb](bool ok, const QString &output) {
-            probing = false;
             if (!ok) {
+                probing = false;
                 status->setText(qtTrId("otg.device.scan_failed"));
                 appendLog(withProcessOutput(qtTrId(useAdb ? "otg.log.adb.scan_failed" : "otg.log.usb_scan_failed"),
                                             useAdb ? "ADB" : qtTrId("otg.log.bridge_source"), output));
+                suggestNames();
+                updateDialog();
+            } else if (useAdb) {
+                adbDevices = parseAdbDevices(output);
+                candidates = adbDevices;
+                candidates.removeIf([&](const AndroidDevice &device) {
+                    return wireless() ? !isWirelessAdbTarget(device.serial) : !isUsbAdbSerial(device.serial);
+                });
+                populateDevices();
             } else {
-                candidates = useAdb ? parseDevices(output) : parseUsbScanDevices(output);
-                if (useAdb) candidates.removeIf([](const AndroidDevice &device) { return !isUsbAdbSerial(device.serial); });
-                int selected = 0;
-                for (int i = 0; i < candidates.size(); ++i) {
-                    const auto &device = candidates.at(i);
-                    const char *stateId = device.state == "device" ? "otg.device.online" :
-                        device.state == "unauthorized" ? "otg.device.unauthorized" :
-                        device.state == "offline" ? "otg.device.offline" : "otg.device.access_denied";
-                    const auto label = device.model.isEmpty() ? device.serial : device.model + " · " + device.serial;
-                    devices->addItem(QStringLiteral("%1 [%2]").arg(label, qtTrId(stateId)));
-                    if (device.serial == serial->text().trimmed()) selected = i + 1;
+                candidates = parseUsbScanDevices(output);
+                if (adb.isEmpty() || (candidates.isEmpty() && target().isEmpty())) {
+                    populateDevices();
+                    return;
                 }
-                status->setText(candidates.isEmpty() ? qtTrId("otg.device.none_found") : QString());
-                if (serial->text().trimmed().isEmpty() && candidates.size() == 1) selected = 1;
-                devices->setCurrentIndex(selected);
+                // AOA discovery is independent of ADB. Use it only to look up a matching model.
+                runCommand(&dialog, adb, {"devices", "-l"}, [&](bool adbOk, const QString &adbOutput) {
+                    if (adbOk) adbDevices = parseAdbDevices(adbOutput);
+                    populateDevices();
+                }, 1500);
             }
-            updateDialog();
         });
     });
     connect(wirelessSetup, &QPushButton::clicked, &dialog, [&] {
@@ -1674,7 +1774,10 @@ void MainWindow::addDevice()
             address->setText(value);
             setup.accept();
         });
-        setup.exec();
+        if (setup.exec() == QDialog::Accepted) {
+            scheduleWirelessModel();
+            updateDialog();
+        }
     });
     connect(readSize, &QPushButton::clicked, &dialog, [&] {
         const auto currentTarget = target();
@@ -1695,6 +1798,7 @@ void MainWindow::addDevice()
                 width->setValue(oriented.width());
                 height->setValue(oriented.height());
                 probing = false;
+                if (!readingWirelessModel && wirelessModel.isEmpty()) scheduleWirelessModel();
                 status->setText(qtTrId(rotation < 0 ? "otg.device.orientation_unknown" : "otg.uhid.device_ready"));
                 updateDialog();
             });
@@ -1706,7 +1810,8 @@ void MainWindow::addDevice()
         saveSettings(); // Save the shared server and previously saved devices only.
         const auto screenName = screen->currentText().trimmed();
         profile["phone"] = screenName;
-        profile["alias"] = screenName;
+        const auto displayName = alias->text().trimmed();
+        profile["alias"] = displayName.isEmpty() ? screenName : displayName;
         profile["transport"] = method->currentData();
         profile["serial"] = uhid() ? QString() : target();
         profile["adbSerial"] = "";
