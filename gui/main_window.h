@@ -76,6 +76,7 @@ private:
     void applyDeviceProfile(const QVariantMap &profile);
     void setProfileTransport(const QString &transport);
     void acceptBleIdentity(const QString &sourceId, const QString &identity);
+    bool lockConnectedUhidUsbSerial(const QString &id);
     void rememberDevice(const QVariantMap &profile);
     void autoConnectDevice(const QString &transport, const QString &serial);
     void updateEnabled();

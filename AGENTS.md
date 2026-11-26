@@ -452,6 +452,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   列表至少保留一台设备。修改共享服务设置前须结束所有活动会话。
   连接方式在添加或发现时确定。AOA 与 UHID 可作为两条配置复用屏幕名，同名屏幕的连接和插线自动连接互斥。
   UHID 独立保存 USB ADB 序列号、无线目标与手动接入选择。USB 自动连接固定使用保存的 USB 目标，保留手动选择。
+  UHID 首次经 USB ADB 到达 Deskflow Connected 后锁定该配置的序列号。旧配置仅在存在对应的成功 USB UHID 记录时迁移为只读。
   AOA/UHID 的「添加设备」窗口负责刷新、选择目标和首次连接。等待或失败时保留窗口供重试，取消只停止该窗口发起的会话。
   首次 Deskflow Connected 后才加入设备列表和保存。蓝牙仍由共享服务发现，首次接入 Deskflow 后保存配置。
   多 USB 可与 BLE 共存。普通 Linux/Windows 服务仍是单目标（包括空闲 Windows provider 的身份占用）。

@@ -193,7 +193,7 @@ After rotating the phone without rotation tracking enabled, disconnect, read the
 
 ### Connect automatically when you plug in a USB cable
 
-Select the phone's **ADB + UHID** or **USB (AOA HID)** profile. For UHID, authorize USB debugging, choose **USB ADB**, and select its USB ADB serial. AOA does not need USB debugging.
+Select the phone's **ADB + UHID** or **USB (AOA HID)** profile. For UHID, authorize USB debugging, choose **USB ADB**, and enter its USB ADB serial if this is its first wired connection. After a successful USB ADB connection, the serial is read-only. The wireless address remains editable when disconnected. AOA does not need USB debugging.
 
 Enable **Automatically connect this device when USB is inserted** (off by default) and connect once by hand until the status reads **Connected**. Leave the app running, optionally hidden in the tray. Next time you plug in that phone, it reconnects automatically. If UHID is waiting for authorization, approve the prompt on the phone.
 
