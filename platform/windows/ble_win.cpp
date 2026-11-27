@@ -168,11 +168,13 @@ static void set_connection_interval(const std::shared_ptr<State>& state, uint16_
 {
     if (!units) return;
     const auto interval = otg_ble_win_detail::connection_interval(units);
+    bool changed;
     {
         std::lock_guard<std::mutex> lock(state->mutex);
+        changed = state->state_interval != interval || state->motion_interval != interval;
         state->state_interval = state->motion_interval = interval;
     }
-    log("INFO", "BLE negotiated connection interval=" + std::to_string(interval.count()) +
+    if (changed) log("INFO", "BLE negotiated connection interval=" + std::to_string(interval.count()) +
         "us peer=" + address_text(address));
 }
 static guid uuid(uint16_t id)
@@ -398,6 +400,8 @@ class Service {
     Clock::time_point pairing_retry{};
     BluetoothLEDevice::ConnectionParametersChanged_revoker parameters_changed;
     otg_ble_win_detail::ConnectionPreference<BluetoothLEPreferredConnectionParametersRequest> connection_preference;
+    Clock::time_point parameters_refresh{};
+    bool parameters_warning = false;
 
     void observe_connection()
     {
@@ -412,6 +416,7 @@ class Service {
         // Only called after live identity, pairing and both subscriptions pass.
         // A request is held per phone even while its Deskflow session is idle.
         observe_connection();
+        const auto now = Clock::now();
         const auto address = address_text(peer.BluetoothAddress());
         try {
             auto request = connection_preference.acquire([&] {
@@ -420,29 +425,49 @@ class Service {
                     " min=" + std::to_string(preferred.MinConnectionInterval() * 1250u) +
                     "us max=" + std::to_string(preferred.MaxConnectionInterval() * 1250u) + "us");
                 return peer.RequestPreferredConnectionParameters(preferred);
-            });
-            if (!request) return;
-            const auto status = request->Status();
-            if (status != BluetoothLEPreferredConnectionParametersRequestStatus::Success) {
-                connection_preference.release();
-                log("WARN", "BLE low latency request rejected peer=" + address +
-                    " status=" + std::to_string(static_cast<int>(status)) + "; keeping negotiated interval");
-                return;
+            }, now);
+            if (request) {
+                const auto status = request->Status();
+                if (status != BluetoothLEPreferredConnectionParametersRequestStatus::Success) {
+                    connection_preference.release();
+                    log("WARN", "BLE low latency request rejected peer=" + address +
+                        " status=" + std::to_string(static_cast<int>(status)) + "; keeping negotiated interval");
+                    return;
+                }
+                parameters_refresh = {}; // Verify initial and retried requests immediately.
+                log("INFO", "BLE low latency request accepted by Windows peer=" + address +
+                    "; actual interval follows negotiated connection parameters");
             }
-            log("INFO", "BLE low latency request accepted by Windows peer=" + address +
-                "; actual interval follows negotiated connection parameters");
         } catch (const hresult_error& e) {
             connection_preference.release();
             log("INFO", "BLE low latency request unavailable peer=" + address +
                 ": " + describe(e) + "; keeping existing connection");
             return;
         }
-        // Success only means Windows accepted the preference. Read the real
-        // interval now and follow later ConnectionParametersChanged events.
+        // Parameter events keep pacing current. Also read once per second so
+        // an accepted but ineffective request or a later rollback is detected.
+        if (!connection_preference.has_request() || now < parameters_refresh) return;
+        parameters_refresh = now + 1s;
+        uint16_t units = 0;
         try {
-            set_connection_interval(s, peer.GetConnectionParameters().ConnectionInterval(), peer.BluetoothAddress());
+            units = peer.GetConnectionParameters().ConnectionInterval();
+            set_connection_interval(s, units, peer.BluetoothAddress());
+            parameters_warning = false;
         } catch (const hresult_error& e) {
-            log("INFO", "connection parameters unavailable after preference request: " + describe(e));
+            units = 0;
+            if (!parameters_warning)
+                log("INFO", "connection parameters unavailable peer=" + address + ": " + describe(e));
+            parameters_warning = true;
+        }
+        const auto retry = connection_preference.check_interval(units, now);
+        if (retry == otg_ble_win_detail::PreferenceRetry::scheduled) {
+            log("WARN", "BLE interval still above 15ms peer=" + address +
+                " actual=" + std::to_string(units * 1250u) + "us; low latency retry " +
+                std::to_string(connection_preference.retry_count()) + "/3 in 1s");
+        } else if (retry == otg_ble_win_detail::PreferenceRetry::exhausted) {
+            log("WARN", "BLE low latency retries exhausted peer=" + address +
+                " actual=" + std::to_string(units * 1250u) +
+                "us; keeping input and negotiated pacing; reconnect the phone to try again");
         }
     }
 
@@ -796,6 +821,8 @@ public:
             parameters_changed.revoke();
             connection_preference.reset();
             peer = resolved ? resolved : wait(s, BluetoothLEDevice::FromIdAsync(id), "resolve subscriber", 5s, epoch);
+            parameters_refresh = {};
+            parameters_warning = false;
             peer_id = id;
             paired = false;
             pairing_refresh = {};

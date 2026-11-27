@@ -164,7 +164,6 @@ private:
     QCheckBox *m_bleAutoAttach = nullptr;
     QLineEdit *m_adapter = nullptr;
     QCheckBox *m_bleLegacyHandles = nullptr;
-    QCheckBox *m_bleMulti = nullptr;
     bool m_discoverMultipleBle = false;
     QPushButton *m_stopBleService = nullptr;
     QPushButton *m_startBleService = nullptr;

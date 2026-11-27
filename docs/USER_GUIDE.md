@@ -314,17 +314,17 @@ Only one profile can use a Deskflow screen at a time. Only one profile for that 
 
 To remove a device, select it in the list and click **Remove device** after it has disconnected. Other phones can stay connected. Keep at least one device in the list. If Windows is still keeping the device's Bluetooth service running, click **Stop Bluetooth service** first. To change **Shared server** settings, disconnect all devices first.
 
-Multiple AOA/UHID devices can connect together. Linux Bluetooth uses the shared directed service by default and supports up to eight BLE phone sessions on one adapter. Windows has a separate experimental multi-device mode with the same software limit. Actual capacity depends on the controller. Linux has been tested with two phones; Windows multi-device input still needs hardware validation. Each phone has its own screen. Input follows the pointer.
+Multiple AOA/UHID devices can connect together. Linux and Windows Bluetooth use a shared multi-device service by default and support up to eight BLE phone sessions on one adapter. Actual capacity depends on the controller. Linux has been tested with two phones; Windows multi-device input still needs hardware validation. Each phone has its own screen. Input follows the pointer.
 
 **Connecting multiple BLE phones on Windows**
 
-![Windows shared Bluetooth service with the multi-phone option off](screenshots/server-windows-en.png)
+![Windows shared Bluetooth service](screenshots/server-windows-en.png)
 
-1. Stop the existing Bluetooth service. Under **Shared server → Bluetooth service**, enable **Allow multiple Bluetooth phones**, then click **Start Bluetooth service**. The option is off by default and can only change while the service is stopped.
+1. Stop any existing Bluetooth service. Under **Shared server → Bluetooth service**, click **Start Bluetooth service**. The GUI starts the shared multi-device service by default.
 2. Pair or connect each phone to the PC from its Bluetooth settings. The GUI discovers each phone and gives it a separate profile and Deskflow screen name. Add those screens in Deskflow if prompted.
 3. Disconnect and reconnect individual phones with their device controls. The shared service stays running; other phones and USB/UHID sessions keep working. **Stop Bluetooth service** stops all Bluetooth sessions. Exiting the GUI also stops its shared service.
 
-Windows uses the default adapter and its existing name. A stopped device session can keep its Bluetooth slot until the service stops. Slow or disconnected phones have separate queues. This experimental feature has offline regression coverage, but simultaneous input and reconnection on real phones are not yet verified.
+Windows uses the default adapter and its existing name. A stopped device session can keep its Bluetooth slot until the service stops. Slow or disconnected phones have separate queues. This experimental path has offline regression coverage, but simultaneous input and reconnection on real phones are not yet verified.
 
 **Connecting multiple BLE phones on Linux**
 
@@ -362,7 +362,7 @@ If an older Android phone pairs on Linux but its keyboard and mouse stay unavail
 
 When you upgrade from an older version on Linux, the shared Bluetooth settings start with those of the first saved Bluetooth device. If your old device settings differed, check the new shared values under **Shared server**.
 
-On Windows 11, the app automatically requests a faster Bluetooth connection for each verified phone, aiming for about 15 ms between connection events. The request stays active while the app keeps that phone's Bluetooth session, including when Deskflow is paused, and is renewed after Bluetooth reconnects. The phone and Windows decide the actual interval. If the request is unsupported or rejected, the connection continues with its existing settings. Faster connections can use more power and reduce how many devices the adapter can handle at once.
+On Windows 11, the app automatically requests a faster Bluetooth connection for each verified phone, aiming for about 15 ms between connection events. The request stays active while the app keeps that phone's Bluetooth session, including when Deskflow is paused, and is renewed after Bluetooth reconnects. The app checks the actual interval once per second. If an accepted request leaves it above 15 ms for three seconds, including a later slowdown, the app releases that phone's parameter request and submits it again after one second, up to three retries per Bluetooth connection. A 15 ms or faster connection is kept as-is. Retries keep keyboard/mouse sessions running; sending follows the actual interval. If the log reports that retries are exhausted and movement is still choppy, disconnect and reconnect Bluetooth on that phone to try again. An unreadable interval, unsupported API or rejected request does not trigger repeated requests. The phone and Windows decide the actual interval. Faster connections can use more power and reduce how many devices the adapter can handle at once.
 
 On Linux, the shared service requests 7.5–15 ms for each verified encrypted peripheral link when the controller supports it. A temporary HCI status `0x23` rejection, timeout, or later interval rollback is retried after a one-second backoff up to three times. Pointer pacing follows the interval reported for that phone's connection handle while a retry is pending.
 

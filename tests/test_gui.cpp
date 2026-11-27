@@ -739,7 +739,7 @@ private slots:
         QTRY_VERIFY(manager.settled());
         QVERIFY(!manager.status("a").isEmpty());
     }
-    void usbAndSingleBle()
+    void usbAndMultipleBle()
     {
 #if !defined(OTG_GUI_HAVE_BLE) && !defined(OTG_GUI_HAVE_BLE_WIN)
         QSKIP("BLE-enabled GUI only");
@@ -754,8 +754,8 @@ private slots:
         usb.bridge = peerPath(); usb.manageServer = false; usb.serial = "A"; usb.phone = "a";
         auto ble = usb; ble.transport = "ble"; ble.serial.clear(); ble.phone = "b";
         ble.blePeer = "AA:BB:CC:DD:EE:FF";
-#ifdef Q_OS_LINUX
         ble.preferDirectedBle = true;
+#ifdef Q_OS_LINUX
         qputenv("OTG_TEST_BLE_STATUS", "directed");
         const auto restoreBle = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
 #endif

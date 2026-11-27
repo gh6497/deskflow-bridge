@@ -463,15 +463,18 @@ int main(int argc, char **argv)
                 }
             };
             connectSession();
-            std::thread([&app, generation, connectSession] {
+            std::thread([&app, generation, connectSession, bleLog] {
                 char bytes[1600];
                 while (std::fgets(bytes, sizeof(bytes), stdin)) {
                     const QByteArray line(bytes);
-                    QMetaObject::invokeMethod(&app, [&app, generation, connectSession, line] {
+                    QMetaObject::invokeMethod(&app, [&app, generation, connectSession, line, bleLog] {
                         if (line == "pause\n") {
                             ++*generation;
                             output("{\"event\":\"ble-idle\"}\n");
-                        } else if (line.startsWith("resume\t")) connectSession();
+                        } else if (line.startsWith("resume\t")) {
+                            if (!bleLog.isEmpty()) appendArgumentsLog(bleLog, QString::fromUtf8(line.trimmed()).split('\t'));
+                            connectSession();
+                        }
                         else app.quit();
                     }, Qt::QueuedConnection);
                 }

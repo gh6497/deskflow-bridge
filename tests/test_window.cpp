@@ -2038,7 +2038,10 @@ private slots:
         auto *legacy = window.findChild<QCheckBox *>("bleLegacyHandles");
         QVERIFY(tabs->widget(1)->isAncestorOf(legacy) && !legacy->isChecked());
 #endif
-        auto *session = window.findChild<Session *>();
+        auto *manager = window.findChild<ConnectionManager *>();
+        QVERIFY(manager);
+        auto *session = manager->session("initial");
+        QVERIFY(session);
         auto *perAxis = window.findChild<QCheckBox *>("absolutePerAxis");
         QVERIFY(perAxis && perAxis->isEnabled() && !perAxis->isChecked());
         perAxis->setChecked(true);
@@ -2056,6 +2059,9 @@ private slots:
         QVERIFY(serial->text().isEmpty()); // No startup ADB scan in BLE mode.
         session->stop();
         QTRY_COMPARE(session->state(), Session::State::Idle);
+#ifdef Q_OS_WIN
+        QVERIFY(session->hasBleProvider());
+#endif
         QVERIFY(button->isEnabled());
         QCOMPARE(button->text(), QStringLiteral("重新接入 Deskflow"));
         window.findChild<QSpinBox *>("screenWidth")->setValue(720);
@@ -2070,13 +2076,20 @@ private slots:
         QVERIFY(commands.open(QIODevice::ReadOnly));
         const auto lines = commands.readAll().trimmed().split('\n');
         QVERIFY(lines.size() >= 2);
-        const auto reconnect = QJsonDocument::fromJson(lines.last()).array().toVariantList();
 #ifdef Q_OS_WIN
+        // The independent discovery listener can log after the selected phone.
+        QVariantList reconnect;
+        for (const auto &line : lines) {
+            const auto command = QJsonDocument::fromJson(line).array().toVariantList();
+            if (command.value(0).toString() == "resume" && command.value(3).toString() == "android")
+                reconnect = command;
+        }
         QCOMPARE(reconnect.value(0).toString(), "resume");
         QCOMPARE(reconnect.value(4).toString(), "720");
         QCOMPARE(reconnect.value(5).toString(), "1600");
         QCOMPARE(reconnect.value(7).toString(), "normal");
 #else
+        const auto reconnect = QJsonDocument::fromJson(lines.last()).array().toVariantList();
         QVERIFY(!reconnect.contains("--gui-ble-auto"));
         for (const auto &option : QList<QPair<QString, QString>>{{"--ble-peer", "AA:BB:CC:DD:EE:FF"},
                  {"--width", "720"}, {"--height", "1600"}, {"--right-button-action", "normal"}}) {
@@ -2090,18 +2103,18 @@ private slots:
         if (!screenshot.isEmpty()) QVERIFY(window.grab().save(screenshot));
 #if defined(Q_OS_WIN) && defined(OTG_GUI_HAVE_BLE_WIN)
         QVERIFY(stopService->isEnabled());
-        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
+        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 会话使用中"));
         addTestDevice(window);
         QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
         QVERIFY(stopService->isEnabled());
-        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 空闲"));
+        QCOMPARE(serviceStatus->text(), QStringLiteral("运行中 · 会话使用中"));
         QTimer::singleShot(0, &window, [&window] {
             if (auto *confirm = window.findChild<QMessageBox *>()) confirm->button(QMessageBox::Ok)->click();
         });
         stopService->click();
         QTRY_VERIFY(!session->hasBleProvider());
         QVERIFY(!stopService->isEnabled());
-        QCOMPARE(serviceStatus->text(), QStringLiteral("已停止"));
+        QTRY_COMPARE(serviceStatus->text(), QStringLiteral("已停止"));
         auto *list = window.findChild<QListWidget *>("deviceSidebar");
         list->setCurrentRow(0);
         button->click();
@@ -2190,6 +2203,9 @@ private slots:
         QSettings settings;
         settings.setValue("manageServer", false);
         settings.setValue("adb", "");
+#ifdef Q_OS_WIN
+        settings.setValue("sharedBle/multiDevice", false); // Old Windows setting must be ignored and migrated.
+#endif
         const auto certificate = dir.filePath("client.pem");
         const QString fingerprint(64, QLatin1Char('a'));
         settings.setValue("tls", true);
@@ -2217,11 +2233,10 @@ private slots:
         });
         AutoConnectTestWindow window;
         auto *manager = window.findChild<ConnectionManager *>();
-        auto *multi = window.findChild<QCheckBox *>("bleMultiDevice");
         auto *list = window.findChild<QListWidget *>("deviceSidebar");
         QVERIFY(manager && list);
 #ifdef Q_OS_WIN
-        QVERIFY(multi);
+        QVERIFY(!window.findChild<QCheckBox *>("bleMultiDevice"));
 #endif
         bool selectedDiscovered = false;
         connect(manager, &ConnectionManager::changed, &window, [manager, list, &selectedDiscovered](const QString &id) {
@@ -2231,9 +2246,6 @@ private slots:
             selectedDiscovered = true;
             list->setCurrentItem(matches.first()); // The new profile has no shared TLS fields.
         });
-#ifdef Q_OS_WIN
-        multi->setChecked(true);
-#endif
         window.findChild<QPushButton *>("startBleService")->click();
         QTRY_COMPARE(list->count(), 4);
         QStringList ids;
@@ -2282,7 +2294,7 @@ private slots:
         window.findChild<QAction *>("trayQuit")->trigger();
         QTRY_VERIFY(manager->settled());
 #ifdef Q_OS_WIN
-        QVERIFY(settings.value("sharedBle/multiDevice").toBool());
+        QVERIFY(!settings.contains("sharedBle/multiDevice"));
 #endif
     }
     void sharedBleSettingsAcrossDevices()
@@ -2815,8 +2827,7 @@ private slots:
             window.findChild<QLineEdit *>("adbExecutable")->setText("C:/Android/platform-tools/adb.exe");
             window.findChild<QLineEdit *>("deskflowExecutable")->setText("C:/Deskflow/deskflow-core.exe");
             window.findChild<QTabWidget *>("deviceTabs")->setCurrentIndex(1);
-            auto *multi = window.findChild<QCheckBox *>("bleMultiDevice");
-            QVERIFY(multi && !multi->isChecked() && multi->isEnabled());
+            QVERIFY(!window.findChild<QCheckBox *>("bleMultiDevice"));
             window.show();
             QCoreApplication::processEvents();
             QVERIFY(window.grab().save(QDir(capture).filePath(language == "en" ?

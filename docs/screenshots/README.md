@@ -16,12 +16,13 @@ They accompany [the English guide](../USER_GUIDE.md) and [中文指南](../USER_
 - Both `server` screenshots were refreshed with `guideSharedServiceScreenshot` to show **Start Bluetooth service** in the shared settings.
 - Refreshed the `input`, `server` and `multiple-devices` views in both languages from the worktree based on `8d103c2` after moving all screen placement to Deskflow. **Shared server** shows the default connection to an existing server and the configuration file field for optional automatic startup. Capture used `guidePointerScreenshot` and `guideSharedServiceScreenshot` with the same environment variables as above.
 - Refreshed both `server` screenshots from the worktree based on `9354222` using `guideSharedServiceScreenshot` to show **Service status**. The mock Bluetooth service is running and idle.
-- The same capture hook now shows **Allow multiple Bluetooth phones** in both `server` views. The option is unchecked by default.
+- An earlier capture showed the then-default-off **Allow multiple Bluetooth phones** option in both `server` views.
 - Both `server` views were recaptured with `guideSharedServiceScreenshot` for the **Stop Bluetooth service** label.
 - Both languages of `aoa`, `device`, `input` and `multiple-devices` were recaptured from the worktree based on `8978eab`. The connection type is read-only and the UHID page has separate USB and wireless ADB targets. The capture used `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
 - `add-device` shows USB ADB discovery and the first connection in the same window. The matching main-window screenshots were refreshed after moving discovery into the dialog. Both languages were captured with `guideSharedServiceScreenshot` and `guidePointerScreenshot` on the offscreen platform.
 - Both `add-device` screenshots were recaptured with `guidePointerScreenshot` from the worktree based on `b3b40be`. The mock ADB model fills the display name `Pixel Test` and the phone screen name `Pixel_Test`.
 - Added `server-windows-en.png` and `server-windows-zh-CN.png` for the Windows multi-phone option, from the worktree based on `a18ff54`. Capture uses `OTG_TEST_WINDOWS_BLE_SCREENSHOTS` with `test_window guideWindowsBleScreenshot`, Qt 6.8.3 offscreen on Windows and `QT_QPA_FONTDIR=C:/Windows/Fonts`, isolated settings and fake processes. Paths are examples; no Bluetooth adapter is accessed. Existing Linux screenshots are retained.
+- Refreshed both `server-windows` screenshots on 2026-11-27 from the worktree based on `98a36c3`, using the same Windows capture hook and environment. The multi-phone toggle is removed; Windows now starts the shared multi-device service by default.
 - Main window at 1100 × 880, with `input` and `multiple-devices` at 1100 × 955 and `server` at 1100 × 1220. File window at 760 × 460.
 - `-en` / `-zh-CN` suffixes select the interface language.
 - `device` shows UHID setup. `input` shows screen dimensions and button settings.
@@ -55,9 +56,10 @@ update both guides when controls move or change.
 本次用 `guideSharedServiceScreenshot` 重新采集了两张共享服务页截图，展示「启动蓝牙服务」入口。
 基于 `8d103c2` 的工作区更新中英文输入页、共享服务页和多设备截图。屏幕位置统一由 Deskflow 管理，「共享服务」展示默认连接已有服务，以及可选自动启动使用的配置文件栏。使用上述环境变量和 `guidePointerScreenshot`、`guideSharedServiceScreenshot` 采集。
 基于 `9354222` 的工作区使用 `guideSharedServiceScreenshot` 更新中英文共享服务页截图，展示运行中且空闲的模拟蓝牙服务。
-使用相同方式重新采集两张共享服务页截图，展示默认关闭的「允许多台蓝牙手机」。
+早期两张共享服务页截图曾展示当时默认关闭的「允许多台蓝牙手机」选项。
 使用 `guideSharedServiceScreenshot` 更新两张共享服务页截图，展示「停止蓝牙服务」按钮。
 基于 `8978eab` 的工作区，用离屏测试 `guideSharedServiceScreenshot` 和 `guidePointerScreenshot` 更新中英文 AOA、设备、输入和多设备截图。连接方式为只读，UHID 页面分别显示有线和无线 ADB 目标。
 用相同的离屏测试采集中英文 `add-device`，展示在添加窗口内刷新 USB ADB 设备并完成首次连接。同步更新了对应的主窗口截图。
 基于 `b3b40be` 的工作区，用 `guidePointerScreenshot` 重新采集中英文 `add-device` 截图。模拟 ADB 型号对应显示名称 `Pixel Test` 和手机屏幕名称 `Pixel_Test`。
 基于 `a18ff54` 的工作区，新增中英文 `server-windows` 实际窗口截图，展示 Windows「允许多台蓝牙手机」选项。使用 `OTG_TEST_WINDOWS_BLE_SCREENSHOTS` 和 `test_window guideWindowsBleScreenshot`，Windows Qt 6.8.3 离屏、`QT_QPA_FONTDIR=C:/Windows/Fonts`、隔离配置与模拟进程，路径均为示例，不访问蓝牙硬件；保留已有 Linux 截图。
+2026-11-27 基于 `98a36c3` 的工作区，使用相同 Windows 采集工具和环境更新中英文 `server-windows` 截图。多手机开关已移除，Windows 默认启动共享多设备服务。
