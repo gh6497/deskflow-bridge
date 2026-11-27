@@ -368,6 +368,8 @@ On Linux, the shared service requests 7.5–15 ms for each verified encrypted pe
 
 **If the pointer moves in steps**, check the connection interval in the log, if available. A longer interval gives the phone fewer opportunities to receive new positions. On Windows, look for `BLE negotiated connection interval` (`15000us` means 15 ms); the line includes the phone's address. A message saying the low latency request was accepted only confirms Windows received it; check the negotiated interval too. On Linux, look for `BLE actual interval` and include that line when reporting the problem. Say whether you see the steps when moving, dragging, or both.
 
+If the shared service on Linux was already running when you upgraded, stop and restart it from **Shared server → Bluetooth service** to use the new version.
+
 ### Find the computer with the companion app
 
 1. Start the phone’s BLE session in the desktop GUI. On the phone, open **Bluetooth connection → Scan for BLE devices** in the companion app. Allow Nearby devices on Android 12 or later. On Android 10 and 11, grant Location permission and turn on Location for the scan.

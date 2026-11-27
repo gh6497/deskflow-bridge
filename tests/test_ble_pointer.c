@@ -1,6 +1,22 @@
 /* Offline BLE coalescing tests: no system bus or adapter access.
  * SPDX-License-Identifier: Apache-2.0 */
+#define _GNU_SOURCE
+#include <stdint.h>
+#include <time.h>
+
+static uint64_t test_now_ns;
+
+static int fake_clock_gettime(clockid_t clock, struct timespec *ts)
+{
+    (void)clock;
+    ts->tv_sec = test_now_ns / UINT64_C(1000000000);
+    ts->tv_nsec = test_now_ns % UINT64_C(1000000000);
+    return 0;
+}
+
+#define clock_gettime fake_clock_gettime
 #include "../platform/linux/ble_hid.c"
+#undef clock_gettime
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -40,10 +56,57 @@ static void check_fractional_interval(uint64_t interval_us)
     CHECK(pointer_due(&b, restart + interval_us * 1000));
 }
 
+static void check_directed_cadence(uint64_t interval_us)
+{
+    int fds[2];
+    CHECK(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0, fds) == 0);
+    struct otg_ble_route route = {
+        .ready = true,
+        .fd = {-1, fds[0]},
+        .pointer_interval_ns = interval_us * 1000,
+    };
+    const uint64_t start = UINT64_C(1000000000), ms = UINT64_C(1000000);
+    uint8_t report[8] = {2}, received[8];
+    test_now_ns = start;
+    otg_ble_route_send(&route, AOA_HID_ID_MOUSE, report);
+    CHECK(recv(fds[1], received, sizeof(received), 0) == sizeof(received));
+
+    unsigned sent = 0;
+    for (unsigned tick = 1; tick <= 150; ++tick) {
+        test_now_ns = start + tick * ms;
+        const bool flush_first = sent % 2 == 0;
+        if (flush_first) directed_flush_motion(&route, test_now_ns);
+        report[2] = (uint8_t)tick;
+        otg_ble_route_send(&route, AOA_HID_ID_MOUSE, report);
+        if (recv(fds[1], received, sizeof(received), 0) == sizeof(received)) {
+            CHECK(received[2] == tick - flush_first);
+            CHECK(recv(fds[1], received, sizeof(received), 0) < 0 && errno == EAGAIN);
+            ++sent;
+        }
+        CHECK(sent == tick * 1000 / interval_us);
+    }
+
+    /* A final position must arrive even when no more Deskflow input follows. */
+    const uint64_t due = start + 150 * ms + route.pointer_interval_ns;
+    test_now_ns += ms;
+    report[2]++;
+    otg_ble_route_send(&route, AOA_HID_ID_MOUSE, report);
+    directed_flush_motion(&route, due - 1);
+    CHECK(recv(fds[1], received, sizeof(received), 0) < 0 && errno == EAGAIN);
+    directed_flush_motion(&route, due);
+    CHECK(recv(fds[1], received, sizeof(received), 0) == sizeof(received));
+    CHECK(memcmp(received, report, sizeof(report)) == 0);
+    close(fds[0]);
+    close(fds[1]);
+}
+
 int main(void)
 {
     check_fractional_interval(7500);
     check_fractional_interval(12500);
+    check_directed_cadence(7500);
+    check_directed_cadence(12500);
+    check_directed_cadence(15000);
     struct otg_ble_hid b = {0};
     b.app_registered = b.notifying[0] = b.notifying[1] = true;
     uint64_t t = UINT64_C(1000000000);
