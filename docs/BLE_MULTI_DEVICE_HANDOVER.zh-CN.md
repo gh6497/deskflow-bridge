@@ -21,7 +21,15 @@
 - 本机是 Linux Mint 22.3，基于 Ubuntu 24.04 `noble`，适配器是 Intel AX210。本机安装的 BlueZ 包为 `5.72-0ubuntu5.8`，当时官方 APT 源也只提供 5.72。上游 5.76 已在本机临时目录编译通过，验证了二进制版本和动态库依赖。系统 BLE 真机试验均使用发行版的 5.72。[Ubuntu 包列表](https://packages.ubuntu.com/search?keywords=bluez&searchon=names&exact=1&suite=all&section=all)
 - BlueZ 5.72 为 `AcquireNotify` 的每个订阅者建独立 FD，但从任一 FD 收到的报告仍会发给所有订阅者。上游提交 `a08ec1a4e93b7805cdda33600d83d946969acb47` 把发送绑定到对应的 ATT 连接，从 5.76 起包含这项修复。普通 `StartNotify` 加特征 `Value` 更新仍是面向该特征所有订阅者的路径。多机输入需要使用已验证可定向发送的通道。[BlueZ 5.72 源码](https://github.com/bluez/bluez/blob/5.72/src/gatt-database.c#L2589) · [上游修复](https://github.com/bluez/bluez/commit/a08ec1a4e93b7805cdda33600d83d946969acb47)
 - 上游修复已回移到 `5.72-0ubuntu5.8` 源码并通过本地编译。使用原版和回移版的实际通知分发函数做了双订阅模拟。原版发给 A 或 B 都会送到两者，回移版 `A→A`、`B→B`，找不到目标时丢弃报告。该验证在临时目录完成，双手机空口隔离和重连待验收。复现实验脚本如仍在本机，可运行 `python3 /tmp/opencode/bluez-noble-backport.kh6Oed/check-routing.py`。
-- `AcquireNotify` 能在请求中提供对端对象和链路类型，但 FD 绑定当前连接。BlueZ 5.72 可保留已配对设备的 CCC 记录，同时在 ATT 断开时关闭 FD。重连时手机可能复用 CCC，BlueZ 也可能直接接受同值写入，导致新连接拿不到新的 `AcquireNotify`。上游定向修复解决发送对象，重连后如何重新取得定向通道需要独立验证。[BlueZ 5.72 GATT 实现](https://github.com/bluez/bluez/blob/5.72/src/gatt-database.c)
+- `AcquireNotify` 能在请求中提供对端对象和链路类型，但 FD 绑定当前连接。BlueZ 5.72 可保留已配对设备的 CCC 记录，同时在 ATT 断开时关闭 FD。重连时手机可能复用 CCC，BlueZ 也可能直接接受同值写入，导致新连接拿不到新的 `AcquireNotify`。2026-11-27 的 K20 Pro 服务日志中，LE 连接间隔已恢复至 15 ms，手动接入仍停在等待新订阅。[BlueZ 5.72 GATT 实现](https://github.com/bluez/bluez/blob/5.72/src/gatt-database.c)
+
+### Ubuntu 24.04 的已配对设备重连修复
+
+仓库内的[BlueZ 补丁](../packaging/bluez/5.72-bonded-notify.patch)基于 Ubuntu 官方 `bluez_5.72-0ubuntu5.8` 源码包，已包含上游定向发送修复。维护发行版包时，将它加入该源码包的 `debian/patches/series`，应用后按发行版方式构建。系统包升级、重启 `bluetoothd` 后，需要用新包中提取的参考二进制重新核验实例，见[用户指南第 9 节](USER_GUIDE.zh-CN.md#multiple)。
+
+对曾成功取得通知 FD、CCC 仍然启用的手机，补丁在原配对身份的新 LE 链路加密并满足 CCC 写入权限后，分别重新请求键盘和指针 FD。每个特征最多尝试五次，同时只保留一个未完成的请求。手机取消订阅、再次掉线或服务注销会使旧回调失效。桌面手动断开只暂停当前订阅，下一对新 FD 可再次触发发现。已绑定的会话继续使用原身份和屏幕名。
+
+2026-11-27 在 AX210、低句柄布局和 `5.72-0ubuntu5.8+deskflow2` 上完成真机复测。Redmi K20 Pro 关开蓝牙、在手机设置中断开，以及在桌面点「断开」后再重连蓝牙，三种情况均复用 `Len_Redmi_K20_Pro`，在 GUI 显示已连接并建立新的 Deskflow TCP 会话。升级重启 `bluetoothd` 后，OPPO R17 首次接入时需要在手机上关开一次蓝牙才恢复两路订阅。双机均就绪后，再从 Redmi 设置中断开并重连，OPPO 的原 TCP 连接全程保持。两台手机均保留了原配对。
 
 ## 交接基线的代码入口
 

@@ -422,6 +422,23 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     otg_ble_route_send(three,1,key);expect_report(ck,key);
     CHECK(!poll(silent,2,0));
     otg_ble_route_unbind(three);expect_report(ck,neutral);expect_report(cp,neutral);
+    CHECK(directed_poll(&hid) && !otg_ble_route_claim_discovered(&hid));
+    close(ck);close(cp);fake_links.le_count=2;
+    observe_devices(&hid,mock,3,0,true);
+    CHECK(directed_poll(&hid) && !otg_ble_route_claim_discovered(&hid));
+    /* The same bonded phone returns on a reused controller handle. */
+    fake_links.le_count=3;
+    observe_devices(&hid,mock,11,0,true);
+    CHECK(directed_poll(&hid) && !otg_ble_route_claim_discovered(&hid));
+    cp=get_report_fd(&hid,mock->bus,c,1);
+    CHECK(cp>=0 && !otg_ble_route_claim_discovered(&hid));
+    ck=get_report_fd(&hid,mock->bus,c,0);
+    CHECK(ck>=0 && otg_ble_route_claim_discovered(&hid)==three);
+    CHECK(directed_poll(&hid) && three->ready && !otg_ble_route_claim_discovered(&hid));
+    expect_report(ck,neutral);expect_report(cp,neutral);
+    otg_ble_route_send(three,1,key);expect_report(ck,key);
+    CHECK(one->ready && two->ready && !poll(silent,2,0));
+    otg_ble_route_unbind(three);expect_report(ck,neutral);expect_report(cp,neutral);
     close(ck);close(cp);fake_links.le_count=2;
     observe_devices(&hid,mock,3,0,true);
     otg_ble_route_enable_discovery(&hid,false);

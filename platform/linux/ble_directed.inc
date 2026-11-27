@@ -368,6 +368,11 @@ static bool directed_method(struct ble_object *o,const char *name,GVariant *args
         int pair[2];
         if (!socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0,pair)) {
             GUnixFDList *fds=g_unix_fd_list_new_from_array(&pair[1],1);
+            /* A manual detach stays effective on the current subscriptions.
+             * The first FD of a new pair makes this phone discoverable again,
+             * even if the controller reused its handle between polls. */
+            if (!r->bound && r->fd[1 - o->report] < 0)
+                r->candidate = true;
             r->fd[o->report]=pair[0];
             g_dbus_method_invocation_return_value_with_unix_fd_list(inv,g_variant_new("(hq)",0,mtu),fds);
             g_object_unref(fds);
