@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLockFile>
 #include <QSettings>
 #include <QTcpServer>
@@ -413,15 +414,22 @@ int main(int argc, char **argv)
               args.contains("--ble-isolate") || args.contains("--ble-legacy-handles") || args.contains("--background"))) return 10;
         if (args.contains("--gui-ble-auto")) {
             auto identity = QByteArrayLiteral("AA:BB:CC:DD:EE:FF");
+            auto name = qEnvironmentVariable("OTG_TEST_BLE_PHONE_NAME");
             const auto queuePath = qEnvironmentVariable("OTG_TEST_BLE_DISCOVERY_QUEUE");
             if (!queuePath.isEmpty()) {
                 QFile queue(queuePath);
                 if (!queue.open(QIODevice::ReadWrite)) return 11;
-                identity = queue.readLine().trimmed();
+                const auto entry = queue.readLine().trimmed().split('\t');
+                identity = entry.value(0);
+                name = QString::fromUtf8(entry.value(1));
                 const auto waiting = queue.readAll();
                 if (!queue.resize(0) || !queue.seek(0) || queue.write(waiting) != waiting.size()) return 11;
             }
-            if (!identity.isEmpty()) output("{\"event\":\"ble-device\",\"identity\":\"" + identity + "\"}\n");
+            if (!identity.isEmpty()) {
+                QJsonObject event{{"event", "ble-device"}, {"identity", QString::fromLatin1(identity)}};
+                if (!name.isEmpty()) event["name"] = name;
+                output(QJsonDocument(event).toJson(QJsonDocument::Compact) + '\n');
+            }
             std::thread([&app, bleLog] {
                 char bytes[1600];
                 while (std::fgets(bytes, sizeof(bytes), stdin)) {

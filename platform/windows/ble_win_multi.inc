@@ -55,6 +55,11 @@ static void serve_phone(HANDLE raw, MultiConnection *connection, const Service *
                 packet.flags = (s->ready ? Flag::online : 0u) | (s->failed ? Flag::failed : 0u) |
                     (s->queue.empty() && !s->in_flight ? Flag::idle : 0u);
                 packet.address = s->ready ? s->peer_address : 0;
+                // Replies can carry display metadata in the existing payload.
+                if (s->ready && (op == Op::hello || op == Op::poll) && s->peer_name.size() <= packet.data.size()) {
+                    packet.length = static_cast<uint32_t>(s->peer_name.size());
+                    std::copy(s->peer_name.begin(), s->peer_name.end(), packet.data.begin());
+                }
             }
             if (stopping || !transfer(pipe.value, packet, true) || packet.flags & Flag::failed ||
                 !transfer(pipe.value, packet, false, 5000) || !valid_request(packet, false)) break;

@@ -126,6 +126,7 @@ struct State {
     std::chrono::microseconds motion_interval = otg_ble_win_detail::fallback_motion_interval;
     uint8_t protocol_mode = 1; // Report Protocol; Boot Protocol is not implemented.
     std::string waiting;
+    std::string peer_name;
     otg_ble_win_detail::Queue queue;
     std::array<uint8_t, 8> keyboard{}, pointer{}, last_mouse{};
     uint8_t leds = 0;
@@ -916,9 +917,16 @@ public:
         }
         if (key.MaxNotificationSize() < 8 || mouse.MaxNotificationSize() < 8)
             throw std::runtime_error("negotiated notification size is less than 8 bytes");
+        bool read_name;
         {
             std::lock_guard<std::mutex> lock(s->mutex);
             if (epoch != s->epoch || s->failed || s->closing || s->suspended) return;
+            read_name = !s->ready;
+        }
+        std::string peer_name;
+        if (read_name) {
+            try { peer_name = to_string(peer.Name()); }
+            catch (const hresult_error&) { /* A missing name does not affect HID readiness. */ }
         }
         prefer_low_latency();
         bool became_ready = false, selected = false;
@@ -936,6 +944,7 @@ public:
                 s->queue.clear();
                 s->queue.push({1, {}, false, s->epoch});
                 s->queue.push({2, {}, false, s->epoch});
+                s->peer_name = std::move(peer_name);
                 s->ready = true;
                 s->waiting.clear();
                 became_ready = true;
@@ -1197,7 +1206,13 @@ static void remote_worker(const std::shared_ptr<State>& s, const std::string& to
                     s->queue.clear();
                 }
                 s->ready = online;
-                if (online) s->peer_address = packet.address;
+                if (online) {
+                    s->peer_address = packet.address;
+                    if (op == Op::hello || op == Op::poll)
+                        s->peer_name.assign(reinterpret_cast<const char *>(packet.data.data()), packet.length);
+                } else {
+                    s->peer_name.clear();
+                }
                 s->remote_idle = (packet.flags & Flag::idle) != 0;
                 s->in_flight = false;
             }
@@ -1323,6 +1338,15 @@ static const char *identity_transport(void *ctx)
         address = s->ready ? s->peer_address : 0;
     }
     text = address ? address_text(address) : std::string();
+    return text.empty() ? nullptr : text.c_str();
+}
+
+extern "C" const char *otg_ble_win_peer_name(otg_ble_win *b)
+{
+    static thread_local std::string text;
+    auto s = b->state;
+    std::lock_guard<std::mutex> lock(s->mutex);
+    text = s->ready ? s->peer_name : std::string();
     return text.empty() ? nullptr : text.c_str();
 }
 

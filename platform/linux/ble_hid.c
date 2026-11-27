@@ -342,6 +342,25 @@ static char *device_address(GDBusProxy *device)
     return address;
 }
 
+static char *dup_device_name(const struct otg_ble_hid *b, const char *path)
+{
+    if (!b->devices || !path) return NULL;
+    GDBusInterface *iface = g_dbus_object_manager_get_interface(b->devices, path, "org.bluez.Device1");
+    if (!iface) return NULL;
+    GDBusProxy *device = G_DBUS_PROXY(iface);
+    const char *properties[] = {"Name", "Alias"};
+    char *name = NULL;
+    for (size_t i = 0; i < G_N_ELEMENTS(properties) && !name; ++i) {
+        GVariant *value = g_dbus_proxy_get_cached_property(device, properties[i]);
+        if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+            *g_variant_get_string(value, NULL))
+            name = g_variant_dup_string(value, NULL);
+        g_clear_pointer(&value, g_variant_unref);
+    }
+    g_object_unref(iface);
+    return name;
+}
+
 static bool read_kernel_links(struct otg_ble_hid *b, struct link_snapshot *links)
 {
     struct hci_connections list = {.adapter=b->hci_index, .count=G_N_ELEMENTS(list.entries)};
@@ -922,6 +941,11 @@ static const char *identity_ble(void *ctx)
 {
     const struct otg_ble_hid *b = ctx;
     return b && b->channel_ready && b->peer_address[0] ? b->peer_address : NULL;
+}
+
+char *otg_ble_hid_dup_peer_name(const struct otg_ble_hid *b)
+{
+    return b && b->channel_ready ? dup_device_name(b, b->peer_path) : NULL;
 }
 static void close_ble(void *ctx)
 {

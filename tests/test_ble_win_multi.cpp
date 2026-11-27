@@ -109,6 +109,8 @@ private slots:
         QVERIFY(identity_a != identity_b);
         const int ai = identity_a == address_text(test_address) ? 0 : 1;
         const int bi = 1 - ai;
+        QCOMPARE(QString::fromUtf8(otg_ble_win_peer_name(a)), QString("Test phone %1").arg(ai + 1));
+        QCOMPARE(QString::fromUtf8(otg_ble_win_peer_name(b)), QString("Test phone %1").arg(bi + 1));
         const auto key = [&](int i) { return InterlockedCompareExchange(&data->keys[i], 0, 0); };
         otg_bridge_enter(&first, 100, 100, 0);
         otg_bridge_key(&first, 'a', true);

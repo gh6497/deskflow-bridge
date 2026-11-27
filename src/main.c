@@ -229,12 +229,23 @@ static void gui_event(const char *event)
 }
 
 #if defined(OTG_HAVE_BLE) || defined(OTG_HAVE_BLE_WIN)
-static void gui_identity_event(const char *identity)
+static void gui_identity_event(const char *identity, const char *name)
 {
-    if (g_gui) {
-        printf("{\"event\":\"ble-device\",\"identity\":\"%s\"}\n", identity);
-        fflush(stdout);
+    if (!g_gui) return;
+    printf("{\"event\":\"ble-device\",\"identity\":\"%s\"", identity);
+    if (name && *name) {
+        fputs(",\"name\":\"", stdout);
+        for (const unsigned char *c = (const unsigned char *)name; *c; ++c) {
+            if (*c < 0x20) printf("\\u%04x", (unsigned)*c);
+            else {
+                if (*c == '"' || *c == '\\') putchar('\\');
+                putchar(*c);
+            }
+        }
+        putchar('"');
     }
+    puts("}");
+    fflush(stdout);
 }
 #endif
 
@@ -488,7 +499,13 @@ static bool ble_auto_wait(app_state *s, struct app_options *opts)
     if (!g_ble_auto) return true;
     const char *identity = otg_bridge_identity(&s->bridge);
     if (!identity) return false;
-    gui_identity_event(identity);
+#ifdef OTG_HAVE_BLE
+    char *local_name = s->resident_session ? NULL : otg_ble_hid_dup_peer_name(s->transport_owner);
+    gui_identity_event(identity, s->resident_session ? otg_ble_session_peer_name(s->transport_owner) : local_name);
+    g_free(local_name);
+#else
+    gui_identity_event(identity, otg_ble_win_peer_name(s->transport_owner));
+#endif
     while (!g_stop && !g_ble_command.attached) {
         if (gui_stop_check() || !otg_bridge_check(&s->bridge)) return false;
 #ifdef _WIN32

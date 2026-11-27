@@ -46,6 +46,7 @@ public:
             s->queue.clear();
             s->queue.push({1, {}, false, s->epoch});
             s->queue.push({2, {}, false, s->epoch});
+            s->peer_name = "Test phone " + std::to_string(i + 1);
             s->ready = true;
         }
     }

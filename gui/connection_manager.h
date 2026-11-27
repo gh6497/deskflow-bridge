@@ -36,7 +36,7 @@ signals:
     void log(const QString &id, const QString &message);
     void usbAttached(const QString &id, const QString &serial);
     void displaySizeChanged(const QString &id, const QSize &size);
-    void bleIdentityDetected(const QString &id, const QString &identity);
+    void bleIdentityDetected(const QString &id, const QString &identity, const QString &name);
 private:
     struct Entry {
         Session *session = nullptr;

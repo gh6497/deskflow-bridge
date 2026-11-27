@@ -968,8 +968,9 @@ private slots:
         Session session;
         QString logs;
         connect(&session, &Session::log, this, [&logs](const QString &line) { logs += line + '\n'; });
-        connect(&session, &Session::bleIdentityDetected, this, [&](const QString &identity) {
+        connect(&session, &Session::bleIdentityDetected, this, [&](const QString &identity, const QString &name) {
             QCOMPARE(identity, "AA:BB:CC:DD:EE:FF");
+            QCOMPARE(name, "Pixel \"Test\" \\ BLE\nPhone");
             options.blePeer = identity;
             QVERIFY(session.configureBle(options));
         });
