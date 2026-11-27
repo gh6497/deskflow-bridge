@@ -29,6 +29,103 @@ static Request create(Radio& radio)
     return {&radio};
 }
 
+static void retry_slow_link()
+{
+    using namespace std::chrono_literals;
+    using Preference = ConnectionPreference<Request>;
+    Radio radio;
+    Preference preference;
+    auto now = Preference::Clock::time_point{};
+    auto acquire = [&] { return preference.acquire([&] { return create(radio); }, now); };
+    preference.observe(0, true);
+    CHECK(acquire());
+    for (unsigned retry = 1; retry <= Preference::max_retries; ++retry) {
+        CHECK(preference.check_interval(36, now) == PreferenceRetry::none); // Windows accepted, still 45ms.
+        now += 2999ms;
+        CHECK(preference.check_interval(36, now) == PreferenceRetry::none);
+        CHECK(!acquire() && radio.live == 1);
+        now += 1ms;
+        CHECK(preference.check_interval(36, now) == PreferenceRetry::scheduled);
+        CHECK(preference.retry_count() == retry);
+        CHECK(radio.live == 0 && radio.closes == static_cast<int>(retry));
+        CHECK(!acquire());
+        now += 999ms;
+        CHECK(!acquire());
+        now += 1ms;
+        CHECK(acquire());
+        CHECK(radio.live == 1 && radio.requests == static_cast<int>(retry + 1));
+    }
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::none);
+    now += 3s;
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::exhausted);
+    now += 60s;
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::none); // Log once; no unbounded retries.
+    CHECK(!acquire() && radio.live == 1 && radio.requests == 4);
+    CHECK(preference.check_interval(12, now) == PreferenceRetry::none);
+    now += 1s;
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::none);
+    now += 60s;
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::none); // Recovery does not refill link budget.
+    CHECK(!acquire());
+    preference.observe(1, true); // Physical reconnect, even when both events happen between polls.
+    CHECK(radio.live == 0 && preference.retry_count() == 0);
+    CHECK(acquire() && radio.requests == 5);
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::none);
+    now += 3s;
+    CHECK(preference.check_interval(36, now) == PreferenceRetry::scheduled);
+}
+
+static void retry_recovery_and_isolation()
+{
+    using namespace std::chrono_literals;
+    using Preference = ConnectionPreference<Request>;
+    auto now = Preference::Clock::time_point{};
+    Radio r17, k20;
+    Preference first, second;
+    first.observe(0, true);
+    second.observe(0, true);
+    CHECK(first.acquire([&] { return create(r17); }, now));
+    CHECK(second.acquire([&] { return create(k20); }, now));
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none);
+    now += 2s;
+    CHECK(first.check_interval(12, now) == PreferenceRetry::none); // Negotiation completes within grace.
+    now += 60s;
+    CHECK(first.check_interval(6, now) == PreferenceRetry::none); // 7.5ms is already fast enough.
+    CHECK(r17.requests == 1 && r17.closes == 0);
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none); // Later phone-side rollback to 45ms.
+    now += 2s;
+    CHECK(first.check_interval(0, now) == PreferenceRetry::none); // Unknown is not evidence for retry.
+    now += 60s;
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none);
+    now += 3s;
+    CHECK(first.check_interval(36, now) == PreferenceRetry::scheduled);
+    CHECK(second.check_interval(12, now) == PreferenceRetry::none);
+    CHECK(k20.live == 1 && k20.closes == 0);
+    now += 1s;
+    CHECK(first.acquire([&] { return create(r17); }, now));
+    CHECK(first.check_interval(12, now) == PreferenceRetry::none);
+    now += 60s;
+    CHECK(first.check_interval(12, now) == PreferenceRetry::none);
+    CHECK(!first.acquire([&] { return create(r17); }, now));
+    CHECK(r17.requests == 2 && r17.live == 1 && r17.closes == 1);
+    first.observe(0, true); // Deskflow pause/metadata refresh does not reset the retry budget.
+    CHECK(first.retry_count() == 1);
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none);
+    now += 3s;
+    CHECK(first.check_interval(36, now) == PreferenceRetry::scheduled);
+    first.observe(1, false); // Disconnect cancels a queued retry, including its old deadline.
+    now += 1s;
+    CHECK(!first.acquire([&] { return create(r17); }, now));
+    first.observe(1, true);
+    CHECK(first.acquire([&] { return create(r17); }, now));
+    CHECK(first.retry_count() == 0 && k20.live == 1);
+    first.release(); // Rejected/unsupported requests cannot retry from an unrelated slow reading.
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none);
+    now += 60s;
+    CHECK(first.check_interval(36, now) == PreferenceRetry::none);
+    CHECK(!first.acquire([&] { return create(r17); }, now));
+}
+
 int main()
 {
     Radio r17, k20;
@@ -91,6 +188,8 @@ int main()
         denied.close_fails = true; // Cleanup errors must not terminate a bridge worker.
     }
     CHECK(denied.live == 0 && denied.closes == 2);
-    std::puts("PASS: per-phone preference retention, disconnect/reconnect, cleanup and nonfatal request failure");
+    retry_slow_link();
+    retry_recovery_and_isolation();
+    std::puts("PASS: preference retention, measured interval retry/backoff/cap, rollback, isolation and reconnect");
     return 0;
 }

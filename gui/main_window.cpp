@@ -917,16 +917,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
 #else
     bleForm->addRow(translated(new QLabel, "text", "otg.ble.default_adapter"));
 #endif
-#ifdef Q_OS_LINUX
-    // Linux always uses the shared directed service. The multi-phone choice
-    // remains a Windows provider option because Windows has a separate
-    // provider lifetime.
-#else
-    m_bleMulti = translated(new QCheckBox, "text", "otg.ble.multi_mode");
-    m_bleMulti->setObjectName("bleMultiDevice");
-    setTranslatedProperty(m_bleMulti, "toolTip", "otg.ble.windows_multi_hint");
-    bleForm->addRow(m_bleMulti);
-#endif
     m_bleServiceStatus = translated(new QLabel, "text", "otg.ble.status_checking");
     m_bleServiceStatus->setObjectName("bleServiceStatus");
     m_bleServiceStatus->setWordWrap(true);
@@ -1155,7 +1145,6 @@ MainWindow::MainWindow() : m_connections(this), m_autoConnect(this),
             profile["uhidUsbSerialLocked"] = !key.second.isEmpty() && m_profiles.contains(key);
         }
     }
-    if (m_bleMulti) m_bleMulti->setChecked(settings.value("sharedBle/multiDevice", false).toBool());
     if (m_adapter) {
         const auto sharedValue = [&](const char *sharedKey, const char *oldKey, const QVariant &fallback) {
             return settings.value(sharedKey, legacyBle.value(oldKey, settings.value(oldKey, fallback)));
@@ -1992,11 +1981,7 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile)
         options.bleIdentity = profile.value("bleIdentity").toString().trimmed().toUpper();
         options.bleAutoAttach = profile.value("bleAutoAttach", true).toBool();
         options.blePeer = options.bleIdentity;
-#ifdef Q_OS_LINUX
         options.preferDirectedBle = true;
-#else
-        options.preferDirectedBle = m_bleMulti && m_bleMulti->isChecked();
-#endif
     }
     if (options.transport == "ble" && m_adapter) {
         options.adapter = m_adapter->text().trimmed();
@@ -2005,8 +1990,6 @@ ConnectionOptions MainWindow::connectionOptions(const QVariantMap &profile)
         options.confirmSharedBleService = [this](const QString &adapter) {
             return confirmSharedBleService(adapter);
         };
-#else
-        options.preferDirectedBle = m_bleMulti->isChecked();
 #endif
         options.bleLegacyHandles = m_bleLegacyHandles->isChecked();
     }
@@ -2520,7 +2503,6 @@ void MainWindow::updateBleServiceControls(bool sharedEditable)
 {
     if (!m_bleServiceStatus) return;
     m_startBleService->setEnabled(sharedEditable);
-    if (m_bleMulti) m_bleMulti->setEnabled(sharedEditable && !m_connections.hasBleProvider());
     if (m_adapter) {
         m_adapter->setEnabled(sharedEditable);
         m_bleLegacyHandles->setEnabled(sharedEditable);
@@ -2768,7 +2750,9 @@ void MainWindow::rememberDevice(const QVariantMap &profile)
 
 void MainWindow::saveSharedBleSettings(QSettings &settings) const
 {
-    if (m_bleMulti) settings.setValue("sharedBle/multiDevice", m_bleMulti->isChecked());
+    // Windows used to persist a toggle for the optional multi-phone provider.
+    // The shared provider is now the default path on both desktop platforms.
+    settings.remove("sharedBle/multiDevice");
     if (!m_adapter) return;
     settings.setValue("sharedBle/adapter", m_adapter->text().trimmed());
     settings.setValue("sharedBle/legacyHandles", m_bleLegacyHandles->isChecked());

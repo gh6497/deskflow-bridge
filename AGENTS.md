@@ -211,7 +211,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   main/bridge + fake BLE/Deskflow 验证创建次数、重复连接、更新参数、释放确认、超时及 EOF，均不访问硬件。
   身份读取在线 BluetoothLEDevice 地址及已配对状态，通知定向发送；
   失联/订阅变化清队列并断开 Deskflow，恢复先释放输入；退出释放为尽力而为。
-  Windows GUI 实验性多机选项默认关闭。开启后由 ConnectionManager 创建唯一
+  Windows GUI 默认使用实验性多机服务，由 ConnectionManager 创建唯一
   `--ble-win-multi-service TOKEN` 子进程，手机桥接以 `--ble-win-session TOKEN` 接入。
   `ble_win_pipe.h`/`ble_win_multi.inc` 提供同用户 ACL、进程用户核对、版本/长度/描述符校验的
   私有命名管道。共享一份 GATT，每台手机独立 worker/64条队列/epoch/通知，最多8个名额，
@@ -230,10 +230,12 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   Windows 11 可读取时两者跟随实测协商间隔，纯移动按提交时间计时，状态屏障按完成时间计时。
   致命通知超时先关闭ready再释放/注销，日志含发送计数/队列/在线及session状态。
   Windows 11 在在线配对与两路订阅核验后按手机持有 `ThroughputOptimized` 参数请求，
-  单机/多机共用，每条物理连接只尝试一次；Deskflow暂停与元数据核验不重建请求，
-  断线/设备替换/服务销毁关闭，快速重连由独立link_generation识别。失败保留键鼠连接，
+  单机/多机共用，接受请求后每秒核对实际间隔；连续3秒高于15ms则释放该手机参数请求，
+  退避1秒重新申请，每条物理连接最多3次重试，初始未生效与后续回退共用预算。15ms或更快保持，
+  未知读数不触发重试，接口不可用/请求拒绝不循环重试；耗尽保留最后请求、键鼠和实测pacing并记录建议。
+  Deskflow暂停与元数据核验不重置预算；断线/设备替换/服务销毁关闭，快速重连由独立link_generation识别。失败保留键鼠连接，
   不把请求Success当成15ms：始终按读回值/参数事件更新pacing，日志含手机地址。
-  `ble_win_preference` 离线覆盖持有/重连/独立清理/拒绝与异常；R17独立探针已验证45→15ms，
+  `ble_win_preference` 假时钟覆盖实测重试/退避/上限/回退/未知值及持有/重连/隔离/拒绝与异常；R17独立探针已验证45→15ms，
   关闭请求后恢复45ms，不外推正式后端完整输入或重连验收。
   nova 9 的独立原型键盘/悬停/点击/拖拽/滚轮已过，不能等同连续 Deskflow 输入、
   重连/休眠/进程重启已验收。Redmi Android14 ROM 的 LHDC 白名单超91字节导致
@@ -474,7 +476,7 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   UHID 首次经 USB ADB 到达 Deskflow Connected 后锁定该配置的序列号。旧配置仅在存在对应的成功 USB UHID 记录时迁移为只读。
   AOA/UHID 的「添加设备」窗口负责刷新、选择目标和首次连接。等待或失败时保留窗口供重试，取消只停止该窗口发起的会话。
   首次 Deskflow Connected 后才加入设备列表和保存。蓝牙仍由共享服务发现，首次接入 Deskflow 后保存配置。
-  多 USB 可与 BLE 共存。Linux BLE 服务默认使用共享定向模式，Windows 多机须显式开启共享 provider 模式。
+  多 USB 可与 BLE 共存。Linux 和 Windows BLE 服务默认使用共享多设备 provider 模式。
   Linux 多机 BLE 使用 `ATTACH_DIRECTED_BLE_ONLY` 接入，软件上限 8 台。
   GUI Linux 默认有空位就启动一个 `ATTACH_DIRECTED_DISCOVERY` 监听会话，通过真实的两路订阅认领配对手机。
   每个会话保留唯一身份和屏幕名。`ble_directed.inc` 仅经当前已核验的 BlueZ 实例、在线已配对的 LE 对象和
