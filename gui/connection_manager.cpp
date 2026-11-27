@@ -85,8 +85,8 @@ void ConnectionManager::connectSession(Session *child, const QString &id)
 {
     connect(child, &Session::changed, this, [this, id] { update(id); });
     connect(child, &Session::bleProviderChanged, this, [this, id] { update(id); });
-    connect(child, &Session::bleIdentityDetected, this, [this, id](const QString &identity) {
-        emit bleIdentityDetected(id, identity);
+    connect(child, &Session::bleIdentityDetected, this, [this, id](const QString &identity, const QString &name) {
+        emit bleIdentityDetected(id, identity, name);
     });
     connect(child, &Session::clipboardChanged, this, [this, id] { emit changed(id); });
     connect(child, &Session::log, this, [this, id](const QString &message) { emit log(id, message); });

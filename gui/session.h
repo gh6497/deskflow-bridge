@@ -103,7 +103,7 @@ signals:
     void log(const QString &message);
     void usbAttached(const QString &id, const QString &serial);
     void bleProviderChanged();
-    void bleIdentityDetected(const QString &identity);
+    void bleIdentityDetected(const QString &identity, const QString &name);
     void clipboardChanged();
     void displaySizeChanged(const QSize &size);
 

@@ -815,7 +815,7 @@ void Session::handleBridgeEvent(const QJsonObject &object)
         const auto identity = object.value("identity").toString().trimmed().toUpper();
         if (!identity.isEmpty()) {
             if (windowsBle()) m_blePeer = identity;
-            emit bleIdentityDetected(identity);
+            emit bleIdentityDetected(identity, object.value("name").toString());
         }
         return;
     }

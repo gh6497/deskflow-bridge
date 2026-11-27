@@ -29,7 +29,7 @@ static const char *recovery_base="/run";
 enum operation {
     ATTACH=1, REGISTER, REPORT, POLL_SESSION, DETACH, STATUS, REPLY, SELECT_PEER,
     STOP_SERVICE, ATTACH_LEGACY, STATUS_WITH_LAYOUT, ATTACH_DIRECTED, ATTACH_DIRECTED_BLE_ONLY,
-    GET_IDENTITY, ATTACH_DIRECTED_DISCOVERY, POLL_DIRECTED_SESSION
+    GET_IDENTITY, ATTACH_DIRECTED_DISCOVERY, POLL_DIRECTED_SESSION, GET_IDENTITY_WITH_NAME
 };
 #define STATUS_READY 1u
 #define STATUS_LEGACY_HANDLES 2u
@@ -37,6 +37,8 @@ enum operation {
 #define STATUS_BLE_ONLY 8u
 #define STATUS_DISCOVERY 16u
 #define STATUS_WAITING_FOR_SUBSCRIPTIONS 32u
+#define STATUS_IDENTITY_WITH_NAME 64u
+#define BLE_NAME_MAX_BYTES 248
 /* Local native ABI only. Version and datagram length are always checked. */
 struct message {
     uint32_t magic;
@@ -66,6 +68,8 @@ struct otg_ble_session {
     gint64 request_deadline, last_request;
     uint64_t interval_us;
     char identity[18];
+    char peer_name[BLE_NAME_MAX_BYTES + 1];
+    bool identity_with_name;
     unsigned head, count;
     struct queued_report {
         uint16_t id;
@@ -192,6 +196,21 @@ static bool reply_status(struct service *s,int fd,bool ok)
     return reply_status_with_flags(s,fd,ok,0);
 }
 
+static bool reply_identity(int fd, const char *identity, const char *name)
+{
+    if (!identity) return false;
+    uint8_t data[17 + BLE_NAME_MAX_BYTES];
+    memcpy(data, identity, 17);
+    size_t length = name ? strlen(name) : 0;
+    if (length > BLE_NAME_MAX_BYTES) {
+        const char *end;
+        g_utf8_validate(name, BLE_NAME_MAX_BYTES, &end);
+        length = (size_t)(end - name);
+    }
+    if (length) memcpy(data + 17, name, length);
+    return send_message(fd, REPLY, 0, data, (uint16_t)(17 + length));
+}
+
 static bool handle_session(struct service *s,const struct message *m)
 {
     switch(m->operation) {
@@ -233,9 +252,6 @@ static bool handle_session(struct service *s,const struct message *m)
             otg_ble_hid_set_interval(s->hid,us);
         }
         return true;
-    case GET_IDENTITY:
-        return m->size == 0 && s->active && s->hid &&
-            otg_ble_hid_identity(s->hid) != NULL;
     default:return false;
     }
 }
@@ -265,7 +281,7 @@ static void handle_pending(struct service *s,struct pending_peer *p)
             bool ok=s->client<0 && s->clean && !s->shutdown &&
                     s->legacy_handles==(m.operation==ATTACH_LEGACY);
             if(ok){s->client=p->fd;s->registered=0;s->last_request=g_get_monotonic_time();}
-            bool sent=reply_status(s,p->fd,ok);
+            bool sent=reply_status_with_flags(s,p->fd,ok,STATUS_IDENTITY_WITH_NAME);
             if(ok && sent){p->fd=-1;return;}
             if(ok)s->client=-1;
         }
@@ -347,11 +363,12 @@ static int service_run(const char *adapter,bool legacy_handles,const char *insta
                     bool ok=idle_service(&s);
                     (void)reply_status(&s,s.client,ok);
                     close(s.client);s.client=-1;
-                } else if(m.operation==GET_IDENTITY) {
-                    const char *identity=otg_ble_hid_identity(s.hid);
-                    bool ok=handle_session(&s,&m) && identity;
-                    if (!ok || !send_message(s.client,REPLY,ok?0:1,identity,(uint16_t)(ok?17:0)))
-                        drop_client(&s);
+                } else if (m.operation == GET_IDENTITY || m.operation == GET_IDENTITY_WITH_NAME) {
+                    const char *identity = !m.size && !m.id && s.active ? otg_ble_hid_identity(s.hid) : NULL;
+                    char *name = identity && m.operation == GET_IDENTITY_WITH_NAME ?
+                        otg_ble_hid_dup_peer_name(s.hid) : NULL;
+                    if (!reply_identity(s.client, identity, name)) drop_client(&s);
+                    g_free(name);
                 } else if(!reply_status(&s,s.client,handle_session(&s,&m)))drop_client(&s);
             }
             else expire_client(&s,g_get_monotonic_time());
@@ -418,7 +435,7 @@ static int connect_service(uid_t uid,const char *adapter)
 }
 
 static bool valid_reply(const struct message *reply)
-{return reply->operation==REPLY && (reply->size==2 || reply->size==17) && reply->id==0;}
+{return reply->operation==REPLY && reply->size==2 && reply->id==0;}
 
 static bool wait_reply(int fd,struct message *reply,gint64 deadline)
 {
@@ -428,8 +445,7 @@ static bool wait_reply(int fd,struct message *reply,gint64 deadline)
         if(n<0 && errno==EINTR)continue;
         if(n<0 || (pfd.revents & (POLLERR|POLLNVAL)))return false;
         if(!n)continue;
-        if(receive_message(fd,reply)!=1)return false;
-        return valid_reply(reply);
+        return receive_message(fd,reply)==1;
     }
     return false;
 }
@@ -437,8 +453,13 @@ static bool wait_reply(int fd,struct message *reply,gint64 deadline)
 static bool request(int fd,uint16_t operation,uint16_t id,const void *data,
                        uint16_t size,struct message *reply)
 {
-    return send_message(fd,operation,id,data,size) &&
-        wait_reply(fd,reply,g_get_monotonic_time()+REQUEST_TIMEOUT_US);
+    if (!send_message(fd,operation,id,data,size) ||
+        !wait_reply(fd,reply,g_get_monotonic_time()+REQUEST_TIMEOUT_US)) return false;
+    if (operation == GET_IDENTITY || operation == GET_IDENTITY_WITH_NAME) {
+        const uint16_t max_size = operation == GET_IDENTITY ? 17 : 17 + BLE_NAME_MAX_BYTES;
+        return reply->operation == REPLY && !reply->id && reply->size >= 17 && reply->size <= max_size;
+    }
+    return valid_reply(reply);
 }
 
 static void notify_supervisor(struct otg_ble_session *s,const char *adapter,bool ready)
@@ -477,6 +498,7 @@ static struct otg_ble_session *session_open(const char *adapter,bool legacy_hand
     struct otg_ble_session *s=&owner->session;
     s->fd=fd;s->alive=true;s->latency_fd=-1;
     s->directed_status=screen && (reply.data[0]&STATUS_DISCOVERY);
+    s->identity_with_name = (reply.data[0] & STATUS_IDENTITY_WITH_NAME) != 0;
     g_strlcpy(owner->adapter,adapter,sizeof(owner->adapter));
     const char *value=getenv("OTG_BLE_LATENCY_FD");
     if(value && *value) {
@@ -522,6 +544,11 @@ bool otg_ble_session_set_peer(struct otg_ble_session *s,const char *address)
 static bool session_register(void *ctx,uint16_t id,const uint8_t *data,uint16_t size)
 {return session_rpc(ctx,REGISTER,id,data,size);}
 
+const char *otg_ble_session_peer_name(const struct otg_ble_session *s)
+{
+    return s->ready && s->alive && s->peer_name[0] ? s->peer_name : NULL;
+}
+
 static const char *session_identity(void *ctx)
 {
     struct otg_ble_session *s=ctx;
@@ -530,14 +557,20 @@ static const char *session_identity(void *ctx)
         struct message reply;
         // POLL may already be in flight when the GUI first observes readiness.
         if (s->in_flight) {
-            if (!wait_reply(s->fd, &reply, s->request_deadline) || reply.size != 2) return NULL;
+            if (!wait_reply(s->fd, &reply, s->request_deadline) || !valid_reply(&reply)) return NULL;
             s->in_flight = false;
             s->ready = (reply.data[0] & STATUS_READY) != 0;
             if (!s->ready) return NULL;
         }
-        if (!request(s->fd,GET_IDENTITY,0,NULL,0,&reply) || reply.size!=17 || reply.id!=0)
-            return NULL;
+        const uint16_t op = s->identity_with_name ? GET_IDENTITY_WITH_NAME : GET_IDENTITY;
+        if (!request(s->fd, op, 0, NULL, 0, &reply)) return NULL;
         memcpy(s->identity,reply.data,17);s->identity[17]=0;
+        const size_t length = reply.size - 17;
+        s->peer_name[0] = 0;
+        if (length && g_utf8_validate((const char *)reply.data + 17, (gssize)length, NULL)) {
+            memcpy(s->peer_name, reply.data + 17, length);
+            s->peer_name[length] = 0;
+        }
     }
     return s->identity;
 }
@@ -570,7 +603,7 @@ static bool session_pump(struct otg_ble_session *s,bool poll_status)
         s->in_flight=false;s->ready=(reply.data[0]&STATUS_READY)!=0;
         s->waiting_for_subscriptions=(reply.data[0]&STATUS_WAITING_FOR_SUBSCRIPTIONS)!=0;
         if(!s->ready) {
-            s->count=0;s->have_pointer_state=false;s->interval_us=0;s->identity[0]=0;
+            s->count=0;s->have_pointer_state=false;s->interval_us=0;s->identity[0]=0;s->peer_name[0]=0;
         }
     }
     uint16_t op=s->directed_status?POLL_DIRECTED_SESSION:POLL_SESSION,id=0,size=0;
@@ -647,7 +680,7 @@ static void session_close(void *ctx)
     /* Discard unsent input on exit; DETACH itself releases keys/range. Consume
      * the outstanding reply first so it cannot be mistaken for DETACH's ACK. */
     s->count=0;
-    bool drained=!s->in_flight || wait_reply(s->fd,&reply,s->request_deadline);
+    bool drained=!s->in_flight || (wait_reply(s->fd,&reply,s->request_deadline) && valid_reply(&reply));
     if(!s->alive || !drained || !request(s->fd,DETACH,0,NULL,0,&reply))
         fprintf(stderr,"WARN: resident BLE detach was not acknowledged\n");
     close(s->fd);s->fd=-1;s->alive=s->ready=false;

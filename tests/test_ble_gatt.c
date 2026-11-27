@@ -38,12 +38,15 @@ static void manager_method(GDBusConnection *bus,const char *sender,const char *p
         const int unpaired=g_atomic_int_get(&mock->unpaired_mask);
         const char *addresses[]={"AA:BB:CC:DD:EE:FF","11:22:33:44:55:66","AA:BB:CC:DD:EE:FF",
             (unpaired&8)?"52:00:00:00:00:02":"22:33:44:55:66:77"};
+        const char *names[]={"Pixel 测试",NULL,"Offline bond","Discovered phone"};
         for(unsigned i=0;i<G_N_ELEMENTS(paths);i++) {
             if (i==2 && !privacy) continue;
             GVariantBuilder interfaces,properties;
             g_variant_builder_init(&interfaces,G_VARIANT_TYPE("a{sa{sv}}"));
             g_variant_builder_init(&properties,G_VARIANT_TYPE("a{sv}"));
             g_variant_builder_add(&properties,"{sv}","Address",g_variant_new_string(addresses[i]));
+            if (names[i]) g_variant_builder_add(&properties,"{sv}","Name",g_variant_new_string(names[i]));
+            if (i<2) g_variant_builder_add(&properties,"{sv}","Alias",g_variant_new_string(i ? "Second phone" : "Local alias"));
             g_variant_builder_add(&properties,"{sv}","Connected",g_variant_new_boolean(!!(g_atomic_int_get(&mock->connected_mask)&(1<<i))));
             g_variant_builder_add(&properties,"{sv}","Paired",g_variant_new_boolean(!(unpaired&(1<<i))));
             g_variant_builder_add(&interfaces,"{s@a{sv}}","org.bluez.Device1",g_variant_builder_end(&properties));
@@ -389,6 +392,10 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     CHECK(otg_ble_route_waiting_for_subscriptions(one) && otg_ble_route_waiting_for_subscriptions(two));
     int ap=get_report_fd(&hid,mock->bus,a,1),bk=get_report_fd(&hid,mock->bus,b,0);
     CHECK(directed_poll(&hid) && one->ready && two->ready);
+    char *one_name=otg_ble_route_dup_peer_name(&hid,one);
+    char *two_name=otg_ble_route_dup_peer_name(&hid,two);
+    CHECK(!g_strcmp0(one_name,"Pixel 测试") && !g_strcmp0(two_name,"Second phone"));
+    g_free(one_name);g_free(two_name);
     CHECK(!otg_ble_route_waiting_for_subscriptions(one) && !otg_ble_route_waiting_for_subscriptions(two));
     uint8_t neutral[8]={0},key[8]={0,0,30},drag[8]={3,1,32,0,42};
     expect_report(ak,neutral);expect_report(ap,neutral);expect_report(bk,neutral);expect_report(bp,neutral);
@@ -407,6 +414,9 @@ static void test_directed(GDBusConnection *bus,struct mock_bluez *mock)
     CHECK(directed_poll(&hid));
     struct otg_ble_route *three=otg_ble_route_claim_discovered(&hid);
     CHECK(three && !strcmp(otg_ble_route_identity(three),"22:33:44:55:66:77"));
+    char *three_name=otg_ble_route_dup_peer_name(&hid,three);
+    CHECK(!g_strcmp0(three_name,"Discovered phone"));
+    g_free(three_name);
     CHECK(directed_poll(&hid) && one->ready && two->ready && three->ready);
     expect_report(ck,neutral);expect_report(cp,neutral);
     otg_ble_route_send(three,1,key);expect_report(ck,key);

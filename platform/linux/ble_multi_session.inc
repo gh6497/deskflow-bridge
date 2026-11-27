@@ -89,10 +89,13 @@ static void multi_tick(struct service *s)
         /* Even a complete reconnect between two RPCs must be observed as a
          * disconnect. The false reply drops the bridge's old bounded FIFO. */
         if (generation!=c->generation) {ready=false;c->generation=generation;}
-        if (m.operation==GET_IDENTITY && !m.size && !m.id && c->route) {
+        if ((m.operation == GET_IDENTITY || m.operation == GET_IDENTITY_WITH_NAME) &&
+            !m.size && !m.id && c->route) {
             /* The route was claimed only after verifying the paired LE link.
              * Its identity stays pinned if the phone drops during this RPC. */
-            if (!send_message(c->fd,REPLY,0,otg_ble_route_identity(c->route),17)) multi_drop(s,c,false);
+            char *name = m.operation == GET_IDENTITY_WITH_NAME ? otg_ble_route_dup_peer_name(s->hid, c->route) : NULL;
+            if (!reply_identity(c->fd, otg_ble_route_identity(c->route), name)) multi_drop(s,c,false);
+            g_free(name);
             continue;
         }
         bool ok=false;
@@ -161,7 +164,7 @@ static bool multi_request(struct service *s,int fd,bool owner,const struct messa
     *slot=(struct directed_client){.fd=fd,.route=route,.last_request=g_get_monotonic_time()};
     multi->ever_attached=true;
     g_strlcpy(slot->screen,screen,sizeof(slot->screen));
-    if (!multi_reply(fd,true,STATUS_DISCOVERY,false)) multi_drop(s,slot,false);
+    if (!multi_reply(fd,true,STATUS_DISCOVERY | STATUS_IDENTITY_WITH_NAME,false)) multi_drop(s,slot,false);
     return true;
 reject:
     multi_reply(fd,false,0,idle);

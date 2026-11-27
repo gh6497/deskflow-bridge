@@ -201,9 +201,22 @@ QString actionDeviceName(const QVariantMap &profile)
     return alias.isEmpty() || alias == screen ? screen : QStringLiteral("%1 (%2)").arg(alias, screen);
 }
 
-QString bleScreenName(const QString &identity)
+QString bleScreenName(const QString &name, const QString &fallback)
 {
-    return identity.trimmed().toUpper().replace(':', '-');
+    static const QRegularExpression deskflowName("^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?"
+        "(?:\\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)*$");
+    static const QRegularExpression combiningMarks("\\p{M}+");
+    static const QRegularExpression unsupportedEdges("^[^A-Za-z0-9_]+|[^A-Za-z0-9_]+$");
+    static const QRegularExpression unsupported("[^A-Za-z0-9_-]+");
+    static const QRegularExpression asciiLetterOrDigit("[A-Za-z0-9]");
+    if (name.size() <= 63 && deskflowName.match(name).hasMatch() && name.contains(asciiLetterOrDigit)) return name;
+    auto screen = name.normalized(QString::NormalizationForm_KD).remove(combiningMarks);
+    screen.remove(unsupportedEdges);
+    screen.replace(unsupported, "_");
+    screen.truncate(63);
+    if (!screen.contains(asciiLetterOrDigit)) return fallback;
+    if (screen.endsWith('-')) screen[screen.size() - 1] = '_';
+    return screen;
 }
 
 } // namespace
@@ -2521,7 +2534,7 @@ bool MainWindow::confirmSharedBleService(const QString &adapter)
         QMessageBox::Cancel) == QMessageBox::Ok;
 }
 
-void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &identity)
+void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &identity, const QString &name)
 {
     if (m_closing || m_stoppingBleService) return;
     storeDevice();
@@ -2542,17 +2555,36 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
     m_session = m_connections.session(m_selectedId);
     if (!m_records.contains(id)) m_unsavedDevices.insert(id);
     auto &profile = m_records[id];
+    static const QRegularExpression controlCharacters("[\\p{Cc}\\p{Zl}\\p{Zp}]+");
+    static const QRegularExpression addressName("^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$");
+    auto displayName = name;
+    displayName.replace(controlCharacters, " ");
+    displayName = displayName.simplified();
+    if (addressName.match(displayName).hasMatch()) displayName.clear();
+    const auto addressScreen = QString(identity).replace(':', '-');
     if (profile.value("bleIdentity").toString().isEmpty()) {
-        const QString base = bleScreenName(identity);
-        QString name = base;
-        QStringList screens{m_computer->text().trimmed()};
+        const auto base = bleScreenName(displayName, addressScreen);
+        auto screen = base;
+        QSet<QString> screens{m_computer->text().trimmed().toCaseFolded()};
         for (auto it = m_records.cbegin(); it != m_records.cend(); ++it)
-            if (it.key() != id) screens << it->value("phone").toString();
-        for (int suffix = 2; screens.contains(name, Qt::CaseInsensitive); ++suffix)
-            name = base + '-' + QString::number(suffix);
+            if (it.key() != id) screens.insert(screenKey(it.value()));
+        for (int number = 2; screens.contains(screen.toCaseFolded()); ++number) {
+            const auto suffix = '-' + QString::number(number);
+            screen = base.left(63 - suffix.size());
+            if (screen.endsWith('.')) screen.chop(1);
+            screen += suffix;
+        }
         profile["transport"] = "ble";
         profile["bleIdentity"] = identity;
-        profile["alias"] = profile["phone"] = name;
+        profile["phone"] = screen;
+        profile["alias"] = displayName.isEmpty() ? screen : displayName;
+    } else if (!displayName.isEmpty()) {
+        const auto screen = profile.value("phone").toString();
+        const auto alias = profile.value("alias").toString();
+        static const QRegularExpression addressScreenPattern("^(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?:-[0-9]+)?$");
+        if ((alias.isEmpty() || alias == screen) && screen.startsWith(addressScreen, Qt::CaseInsensitive) &&
+            addressScreenPattern.match(screen).hasMatch())
+            profile["alias"] = displayName;
     }
     if (m_discoveryId == sourceId) m_discoveryId.clear();
     m_pendingBleIdentities[id] = identity;

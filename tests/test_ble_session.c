@@ -36,6 +36,8 @@ void otg_ble_route_enable_discovery(struct otg_ble_hid *b,bool enabled) {(void)b
 struct otg_ble_route *otg_ble_route_claim_discovered(struct otg_ble_hid *b)
 { return otg_ble_route_bind(b,"AA:BB:CC:DD:EE:03"); }
 const char *otg_ble_route_identity(const struct otg_ble_route *r) {return r->address;}
+char *otg_ble_route_dup_peer_name(const struct otg_ble_hid *b, const struct otg_ble_route *r)
+{ (void)b; return !strcmp(r->address, "AA:BB:CC:DD:EE:03") ? g_strdup("Pixel 测试") : NULL; }
 void otg_ble_route_unbind(struct otg_ble_route *r) {if(r)r->bound=false;}
 bool otg_ble_route_ready(const struct otg_ble_route *r,uint64_t *gen) {*gen=r->gen;return r->bound && !r->waiting;}
 bool otg_ble_route_waiting_for_subscriptions(const struct otg_ble_route *r) {return r && r->waiting;}
@@ -86,6 +88,7 @@ bool otg_ble_hid_set_session(struct otg_ble_hid *b,bool enabled)
 void otg_ble_hid_set_interval(struct otg_ble_hid *b,uint64_t us){b->interval=us;}
 const char *otg_ble_hid_identity(const struct otg_ble_hid *b)
 {return b && b->identity[0] ? b->identity : NULL;}
+char *otg_ble_hid_dup_peer_name(const struct otg_ble_hid *b) {(void)b;return NULL;}
 bool otg_ble_hid_set_peer(struct otg_ble_hid *b,const char *address)
 {(void)b;return strlen(address)==17;}
 
@@ -453,7 +456,11 @@ static void test_multi_process(bool cancel_startup)
         CHECK(session_rpc(first,REPORT,1,keys,8));
         keys[2]=5;CHECK(session_rpc(second,REPORT,1,keys,8));
         CHECK(session_rpc(third,POLL_SESSION,0,NULL,0) && third->ready);
+        struct message old_reply;
+        CHECK(request(third->fd, GET_IDENTITY, 0, NULL, 0, &old_reply) && old_reply.size == 17);
         CHECK(!strcmp(session_identity(third),"AA:BB:CC:DD:EE:03"));
+        CHECK(!g_strcmp0(otg_ble_session_peer_name(third), "Pixel 测试"));
+        CHECK(!strcmp(session_identity(first), a) && !otg_ble_session_peer_name(first));
         keys[2]=6;CHECK(session_rpc(third,REPORT,1,keys,8));
         close(first->fd);first->fd=-1;otg_ble_session_destroy(first);
         CHECK(otg_ble_service_stop("hci0")!=0);

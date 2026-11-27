@@ -2158,8 +2158,10 @@ private slots:
         qputenv("OTG_TEST_BLE_STATUS", "directed");
         const auto clearStatus = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_STATUS"); });
 #endif
+        const auto clearName = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_PHONE_NAME"); });
         QString phoneId;
-        for (int launch = 0; launch < 2; ++launch) {
+        for (int launch = 0; launch < 3; ++launch) {
+            if (launch) qputenv("OTG_TEST_BLE_PHONE_NAME", launch == 1 ? "Legacy Pixel" : "Renamed Pixel");
             AutoConnectTestWindow window;
             auto *list = window.findChild<QListWidget *>("deviceSidebar");
             auto *transport = window.findChild<QLabel *>("deviceTransport");
@@ -2175,6 +2177,9 @@ private slots:
             if (launch == 0) phoneId = id;
             QCOMPARE(id, phoneId);
             QTRY_COMPARE(manager->state(id), Session::State::Connected);
+            const auto currentPhone = list->findItems("*AA-BB-CC-DD-EE-FF*", Qt::MatchWildcard).value(0);
+            QVERIFY(currentPhone);
+            QCOMPARE(currentPhone->text().section('\n', 0, 0), launch ? "Legacy Pixel" : "AA-BB-CC-DD-EE-FF");
             QVERIFY(manager->state("initial") == Session::State::Idle);
             QCOMPARE(transport->text(), qtTrId("otg.transport.usb"));
             manager->stop(id);
@@ -2214,7 +2219,9 @@ private slots:
         qputenv("OTG_TEST_CLIENT_PEM", certificate.toUtf8());
         QFile queue(dir.filePath("phones"));
         QVERIFY(queue.open(QIODevice::WriteOnly));
-        QVERIFY(queue.write("AA:BB:CC:DD:EE:01\nAA:BB:CC:DD:EE:02\nAA:BB:CC:DD:EE:03\n") > 0);
+        QVERIFY(queue.write(QStringLiteral("AA:BB:CC:DD:EE:01\tPixel \"Test\"\n"
+                                           "AA:BB:CC:DD:EE:02\tPixel \"Test\"\n"
+                                           "AA:BB:CC:DD:EE:03\t测试手机\n").toUtf8()) > 0);
         queue.close();
         const auto stopMarker = dir.filePath("stopped");
 #ifdef Q_OS_WIN
@@ -2241,7 +2248,7 @@ private slots:
         bool selectedDiscovered = false;
         connect(manager, &ConnectionManager::changed, &window, [manager, list, &selectedDiscovered](const QString &id) {
             if (selectedDiscovered || manager->state(id) != Session::State::Connected) return;
-            const auto matches = list->findItems("*AA-BB-CC-DD-EE-01*", Qt::MatchWildcard);
+            const auto matches = list->findItems("* · Pixel_Test*", Qt::MatchWildcard);
             if (matches.isEmpty()) return;
             selectedDiscovered = true;
             list->setCurrentItem(matches.first()); // The new profile has no shared TLS fields.
@@ -2249,10 +2256,19 @@ private slots:
         window.findChild<QPushButton *>("startBleService")->click();
         QTRY_COMPARE(list->count(), 4);
         QStringList ids;
-        for (const auto &suffix : {QStringLiteral("01"), QStringLiteral("02"), QStringLiteral("03")}) {
-            const auto phones = list->findItems("*AA-BB-CC-DD-EE-" + suffix + "*", Qt::MatchWildcard);
-            QCOMPARE(phones.size(), 1);
-            ids << phones.first()->data(Qt::UserRole).toString();
+        const QList<QPair<QString, QString>> names{{QStringLiteral("Pixel \"Test\""), "Pixel_Test"},
+            {QStringLiteral("Pixel \"Test\""), "Pixel_Test-2"}, {QStringLiteral("测试手机"), "AA-BB-CC-DD-EE-03"}};
+        for (const auto &[displayName, screenName] : names) {
+            const auto matching = [&] {
+                for (int i = 0; i < list->count(); ++i) {
+                    const auto *phone = list->item(i);
+                    if (phone->text().section('\n', 1, 1).endsWith(" · " + screenName)) return phone;
+                }
+                return static_cast<const QListWidgetItem *>(nullptr);
+            };
+            QVERIFY(matching());
+            QCOMPARE(matching()->text().section('\n', 0, 0), displayName);
+            ids << matching()->data(Qt::UserRole).toString();
             QTRY_COMPARE(manager->state(ids.last()), Session::State::Connected);
         }
         QTRY_COMPARE(manager->activeBleSessions(), 4); // Three phones and a listener for the next one.
@@ -2263,8 +2279,8 @@ private slots:
         QCOMPARE(manager->state(ids[2]), Session::State::Connected);
         QVERIFY(window.findChild<QCheckBox *>("tlsEnabled")->isChecked());
         QCOMPARE(window.findChild<QLineEdit *>("tlsFingerprint")->text(), fingerprint);
-        const auto firstPhone = list->findItems("*AA-BB-CC-DD-EE-01*", Qt::MatchWildcard).first();
-        list->setCurrentItem(firstPhone);
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(Qt::UserRole).toString() == ids.front()) list->setCurrentRow(i);
         window.findChild<QPushButton *>("connectButton")->click();
         QTRY_COMPARE(manager->state(ids.front()), Session::State::Connected);
         ConnectionOptions usb;

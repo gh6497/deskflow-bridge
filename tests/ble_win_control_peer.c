@@ -43,6 +43,8 @@ struct otg_ble_win *otg_ble_win_create(const char *peer)
 struct otg_ble_win *otg_ble_win_create_session(const char *peer, const char *token)
 { (void)token; return otg_ble_win_create(peer); }
 int otg_ble_win_multi_service_run(const char *token) { (void)token; return 2; }
+const char *otg_ble_win_peer_name(struct otg_ble_win *b)
+{ (void)b; return "Pixel \"Test\" \\ BLE\nPhone"; }
 const struct otg_hid_transport_ops *otg_ble_win_ops(void)
 {
     static const struct otg_hid_transport_ops ops = {reg, send_report, poll_report, ready, close_report, identity};

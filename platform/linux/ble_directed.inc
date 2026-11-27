@@ -123,6 +123,11 @@ const char *otg_ble_route_identity(const struct otg_ble_route *r)
     return r->address;
 }
 
+char *otg_ble_route_dup_peer_name(const struct otg_ble_hid *b, const struct otg_ble_route *r)
+{
+    return r->paired ? dup_device_name(b, r->path) : NULL;
+}
+
 static bool directed_set_interval(struct otg_ble_hid *b, uint16_t handle, uint64_t us)
 {
     const uint64_t interval_ns=us*UINT64_C(1000);
