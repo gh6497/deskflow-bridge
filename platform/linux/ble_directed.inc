@@ -11,7 +11,7 @@ struct otg_ble_route {
     uint8_t value[2][8], leds;
     bool motion_pending;
     uint8_t motion[8];
-    uint64_t last_pointer_ns;
+    uint64_t pointer_slot_ns;
     uint64_t pointer_interval_ns;
 };
 
@@ -27,7 +27,7 @@ static void directed_reset(struct otg_ble_route *r)
     r->ready = false;
     memset(r->value, 0, sizeof(r->value));
     r->motion_pending=false;
-    r->last_pointer_ns=0;
+    r->pointer_slot_ns=0;
     r->pointer_interval_ns=0;
 }
 
@@ -157,21 +157,33 @@ bool otg_ble_route_waiting_for_subscriptions(const struct otg_ble_route *r)
     return r && r->paired && (r->fd[0] < 0 || r->fd[1] < 0);
 }
 
+static bool directed_take_motion_slot(struct otg_ble_route *r, uint64_t now)
+{
+    uint64_t interval = r->pointer_interval_ns ? r->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
+    return take_motion_slot(&r->pointer_slot_ns, now, interval);
+}
+
+static void directed_flush_motion(struct otg_ble_route *r, uint64_t now)
+{
+    if (!r->ready || !r->motion_pending || !directed_take_motion_slot(r, now)) return;
+    r->motion_pending = false;
+    directed_write(r, 1, r->motion);
+}
+
 void otg_ble_route_send(struct otg_ble_route *r, uint16_t id, const uint8_t data[8])
 {
     if (!r->ready || (id!=AOA_HID_ID_KEYBOARD && id!=AOA_HID_ID_MOUSE)) return;
     bool pointer=id==AOA_HID_ID_MOUSE;
     bool motion=pointer && !memcmp(data,r->value[1],2) && !data[6] && !data[7];
     uint64_t now=monotonic_ns();
-    const uint64_t interval=r->pointer_interval_ns ? r->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
-    if (motion && now-r->last_pointer_ns<interval) {
+    if (motion && !directed_take_motion_slot(r, now)) {
         memcpy(r->motion,data,8);
         r->motion_pending=true;
         return;
     }
     if (r->motion_pending && !motion && !directed_write(r,1,r->motion)) return;
     r->motion_pending=false;
-    if (pointer) r->last_pointer_ns=now;
+    if (pointer && !motion) r->pointer_slot_ns = now;
     directed_write(r,pointer,data);
 }
 
@@ -242,12 +254,7 @@ static void directed_refresh(struct otg_ble_hid *b, struct otg_ble_route *r,
         const uint8_t neutral[8]={0};
         r->ready=directed_write(r,0,neutral) && directed_write(r,1,neutral);
     } else if (!ready && r->ready) directed_release(r);
-    const uint64_t interval=r->pointer_interval_ns ? r->pointer_interval_ns : BLE_POINTER_INTERVAL_NS;
-    if (r->ready && r->motion_pending && monotonic_ns()-r->last_pointer_ns>=interval) {
-        r->motion_pending=false;
-        r->last_pointer_ns=monotonic_ns();
-        directed_write(r,1,r->motion);
-    }
+    if (r->motion_pending) directed_flush_motion(r, monotonic_ns());
 }
 
 static void directed_observe_advertisement(struct otg_ble_hid *b, const struct link_snapshot *links)
