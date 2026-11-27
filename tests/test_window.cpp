@@ -2026,13 +2026,13 @@ private slots:
         auto *autoAttach = window.findChild<QCheckBox *>("bleAutoAttach");
         QVERIFY(tabs->widget(0)->isAncestorOf(autoAttach));
         QVERIFY(tabs->widget(1)->isAncestorOf(stopService));
-        auto *adapter = window.findChild<QLineEdit *>("bleAdapter");
 #ifdef Q_OS_WIN
-        QVERIFY(!adapter);
+        QVERIFY(!window.findChild<QLineEdit *>("bleAdapter"));
         QVERIFY(!window.findChild<QCheckBox *>("bleIsolate"));
         QVERIFY(!window.findChild<QCheckBox *>("bleLegacyHandles"));
         QVERIFY(stopService->isEnabled()); // Starting Bluetooth discovery can also be stopped.
 #elif defined(Q_OS_LINUX)
+        auto *adapter = window.findChild<QLineEdit *>("bleAdapter");
         QVERIFY(tabs->widget(1)->isAncestorOf(adapter));
         QCOMPARE(adapter->text(), "hci1");
         auto *legacy = window.findChild<QCheckBox *>("bleLegacyHandles");
@@ -2255,20 +2255,21 @@ private slots:
         });
         window.findChild<QPushButton *>("startBleService")->click();
         QTRY_COMPARE(list->count(), 4);
+        const auto findPhone = [list](const QString &screenName) -> const QListWidgetItem * {
+            for (int i = 0; i < list->count(); ++i) {
+                const auto *phone = list->item(i);
+                if (phone->text().section('\n', 1, 1).endsWith(" · " + screenName)) return phone;
+            }
+            return nullptr;
+        };
         QStringList ids;
         const QList<QPair<QString, QString>> names{{QStringLiteral("Pixel \"Test\""), "Pixel_Test"},
             {QStringLiteral("Pixel \"Test\""), "Pixel_Test-2"}, {QStringLiteral("测试手机"), "AA-BB-CC-DD-EE-03"}};
         for (const auto &[displayName, screenName] : names) {
-            const auto matching = [&] {
-                for (int i = 0; i < list->count(); ++i) {
-                    const auto *phone = list->item(i);
-                    if (phone->text().section('\n', 1, 1).endsWith(" · " + screenName)) return phone;
-                }
-                return static_cast<const QListWidgetItem *>(nullptr);
-            };
-            QVERIFY(matching());
-            QCOMPARE(matching()->text().section('\n', 0, 0), displayName);
-            ids << matching()->data(Qt::UserRole).toString();
+            const auto *phone = findPhone(screenName);
+            QVERIFY(phone);
+            QCOMPARE(phone->text().section('\n', 0, 0), displayName);
+            ids << phone->data(Qt::UserRole).toString();
             QTRY_COMPARE(manager->state(ids.last()), Session::State::Connected);
         }
         QTRY_COMPARE(manager->activeBleSessions(), 4); // Three phones and a listener for the next one.
@@ -2575,10 +2576,19 @@ private slots:
             adbSerial->clear(); // Use the AOA serial as the local ADB target.
 #endif
             auto *adbEnabled = window.findChild<QCheckBox *>("adbEnabled");
-            auto *audio = window.findChild<QCheckBox *>("audioEnabled");
-            QVERIFY(adbEnabled && audio);
+            QVERIFY(adbEnabled);
             adbEnabled->setChecked(true);
-            audio->setChecked(true);
+#ifdef OTG_GUI_HAVE_AUDIO
+            auto *adbEnhancement = window.findChild<QCheckBox *>("audioEnabled");
+            QVERIFY(adbEnhancement);
+#else
+            // Unlock still uses ADB in USB-only builds, which lack audio forwarding.
+            auto *adbEnhancement = window.findChild<QCheckBox *>("unlockEnabled");
+            auto *pin = window.findChild<QLineEdit *>("unlockPin");
+            QVERIFY(adbEnhancement && pin);
+            pin->setText("1234");
+#endif
+            adbEnhancement->setChecked(true);
             // Reinsert restores the phone's settings, not unsaved form edits.
             width->setValue(999);
             multiplier->setValue(1.0);
@@ -2592,12 +2602,16 @@ private slots:
             monitor->poll();
             QTRY_COMPARE(session->state(), Session::State::Connected);
             QVERIFY(adbEnabled->isChecked());
-            QVERIFY(audio->isChecked());
+            QVERIFY(adbEnhancement->isChecked());
             QFile commands(commandLog);
             QVERIFY(commands.open(QIODevice::ReadOnly));
             const auto commandText = commands.readAll();
+#ifdef OTG_GUI_HAVE_AUDIO
             QVERIFY(commandText.contains("--audio"));
-            QVERIFY(commandText.contains("--adb"));
+#else
+            QVERIFY(!commandText.contains("--audio"));
+#endif
+            QVERIFY(commandText.contains("\"--adb\","));
 #ifdef Q_OS_WIN
             QVERIFY(commandText.contains("\"--adb-serial\",\"USB_ADB_ID\""));
             QVERIFY(!commandText.contains("\"--adb-serial\",\"TEST123\""));
