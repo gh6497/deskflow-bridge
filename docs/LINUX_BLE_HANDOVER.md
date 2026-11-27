@@ -149,7 +149,8 @@ deskflow-bridge --transport ble --ble-session --adapter hci0 --ble-legacy-handle
 - `platform/linux/ble_link.c` 对共享服务中每条已加密、本机为 peripheral 的已观测 LE 链路请求 7.5～15ms。
   通过专用 Unix datagram FD 传递带连接句柄的实测间隔，不接受子进程指定 HCI 命令/句柄。
 - Command Status 成功只表示请求被接受；必须看到 LE Connection Update Complete 才能确认
-  新参数。拒绝或 5 秒未确认时保留链路，不无限重试。
+  新参数。遇到 0x23 链路过程冲突、请求超时或实际间隔回退时，按 1 秒退避最多重试 3 次；
+  仍失败时保留连接并继续按实际间隔节流。新连接或后续回到目标区间后重新计算重试预算。
 
 ## 3. 新会话启动与检查
 

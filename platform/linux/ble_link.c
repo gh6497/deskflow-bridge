@@ -11,7 +11,19 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-struct link_state {bool used,encrypted,attempted;uint8_t role;uint16_t interval,latency;};
+#define BLE_INTERVAL_MIN 6
+#define BLE_INTERVAL_MAX 12
+#define BLE_INTERVAL_MAX_ATTEMPTS 3
+#define BLE_INTERVAL_RETRY_DELAY_US G_USEC_PER_SEC
+#define BLE_INTERVAL_RETRY_STATUS 0x23
+
+struct link_state {
+    bool used, encrypted;
+    uint8_t role;
+    uint16_t interval, latency;
+    unsigned attempts;
+    gint64 retry_at;
+};
 struct otg_ble_link {
     int hci,channel;uint16_t index,pending;
     bool ready,waiting,multi;gint64 deadline;
@@ -24,6 +36,25 @@ static unsigned single_link(struct otg_ble_link *b,uint16_t *handle)
     unsigned count=0;
     for(unsigned i=0;i<G_N_ELEMENTS(b->links);i++)if(b->links[i].used){count++;*handle=(uint16_t)i;}
     return count;
+}
+static bool interval_is_target(const struct link_state *link)
+{
+    return link->interval>=BLE_INTERVAL_MIN && link->interval<=BLE_INTERVAL_MAX && !link->latency;
+}
+static void schedule_retry(struct link_state *link,const char *reason)
+{
+    if(link->attempts>=BLE_INTERVAL_MAX_ATTEMPTS) {
+        fprintf(stderr,"WARN: BLE interval tuning exhausted after %u attempts (%s)\n",
+                link->attempts,reason);
+        return;
+    }
+    link->retry_at=g_get_monotonic_time()+BLE_INTERVAL_RETRY_DELAY_US;
+    fprintf(stderr,"INFO: BLE interval retry scheduled in 1s after %s (%u/%u)\n",
+            reason,link->attempts,BLE_INTERVAL_MAX_ATTEMPTS);
+}
+static bool retryable_status(uint8_t status)
+{
+    return status==BLE_INTERVAL_RETRY_STATUS;
 }
 static void publish(struct otg_ble_link *b,uint16_t handle)
 {
@@ -46,7 +77,11 @@ static void link_event(struct otg_ble_link *b,const uint8_t *packet,size_t size)
         uint16_t handle=get16(p+1);
         if(handle<4096)b->links[handle].encrypted=!p[0] && p[3];
     } else if(event==15 && size==4 && get16(p+2)==0x2013 && p[0] && b->waiting) {
-        fprintf(stderr,"WARN: BLE interval request rejected: status=0x%02x\n",p[0]);b->waiting=false;
+        uint16_t handle=b->pending;
+        fprintf(stderr,"WARN: BLE interval request rejected: status=0x%02x\n",p[0]);
+        b->waiting=false;
+        if(handle<4096 && b->links[handle].used && retryable_status(p[0]))
+            schedule_retry(&b->links[handle],"HCI status 0x23");
     } else if(event==0x3e && size) {
         if((p[0]==1 && size==19) || (p[0]==10 && size==31)) {
             uint16_t handle=get16(p+2);if(p[1] || handle>=4096)return;
@@ -55,46 +90,64 @@ static void link_event(struct otg_ble_link *b,const uint8_t *packet,size_t size)
             b->ready=false;
         } else if(p[0]==3 && size==10) {
             uint16_t handle=get16(p+2);if(handle>=4096 || !b->links[handle].used)return;
-            if(p[1])fprintf(stderr,"WARN: BLE interval update failed: status=0x%02x\n",p[1]);
-            else {
-                b->links[handle].interval=get16(p+4);b->links[handle].latency=get16(p+6);
-                 uint16_t only=0;if((b->multi || b->ready) &&
-                     (b->multi || (single_link(b,&only)==1 && only==handle)))publish(b,handle);
+            bool pending=b->waiting && b->pending==handle;
+            if(p[1]) {
+                fprintf(stderr,"WARN: BLE interval update failed: status=0x%02x\n",p[1]);
+                if(pending && retryable_status(p[1]))
+                    schedule_retry(&b->links[handle],"LE update status 0x23");
+            } else {
+                struct link_state *link=&b->links[handle];
+                link->interval=get16(p+4);link->latency=get16(p+6);
+                uint16_t only=0;if((b->multi || b->ready) &&
+                   (b->multi || (single_link(b,&only)==1 && only==handle)))publish(b,handle);
+                if(interval_is_target(link)) {
+                    link->attempts=0;link->retry_at=0;
+                } else {
+                    schedule_retry(link,"observed non-target interval");
+                }
             }
-            if(b->waiting && b->pending==handle)b->waiting=false;
+            if(pending)b->waiting=false;
         }
     }
 }
 static void negotiate(struct otg_ble_link *b,gint64 now)
 {
-    if(b->waiting && now>=b->deadline){fprintf(stderr,"WARN: BLE interval update not confirmed within 5s\n");b->waiting=false;}
+    if(b->waiting && now>=b->deadline) {
+        uint16_t handle=b->pending;
+        fprintf(stderr,"WARN: BLE interval update not confirmed within 5s\n");
+        b->waiting=false;
+        if(handle<4096 && b->links[handle].used)
+            schedule_retry(&b->links[handle],"update confirmation timeout");
+    }
     uint16_t handle=0;
     if (b->waiting) return;
     if (!b->multi) {
         if(!b->ready || single_link(b,&handle)!=1)return;
         struct link_state *link=&b->links[handle];
-        if(link->attempted || !link->encrypted || link->role!=1)return;
-        link->attempted=true;publish(b,handle);
-        if(link->interval>=6 && link->interval<=12 && !link->latency)return;
+        if(!link->encrypted || link->role!=1)return;
+        if(interval_is_target(link)) {link->attempts=0;link->retry_at=0;return;}
+        if(link->attempts>=BLE_INTERVAL_MAX_ATTEMPTS ||
+           (link->retry_at && now<link->retry_at))return;
     } else {
         bool found=false;
         for (unsigned i=0;i<G_N_ELEMENTS(b->links);i++) {
             struct link_state *candidate=&b->links[i];
-            if (candidate->used && !candidate->attempted && candidate->encrypted && candidate->role==1) {
+            if (candidate->used && candidate->encrypted && candidate->role==1 &&
+                !interval_is_target(candidate) && candidate->attempts<BLE_INTERVAL_MAX_ATTEMPTS &&
+                (!candidate->retry_at || now>=candidate->retry_at)) {
                 handle=(uint16_t)i;found=true;break;
             }
         }
         if (!found) return;
-        struct link_state *link=&b->links[handle];
-        link->attempted=true;publish(b,handle);
-        if(link->interval>=6 && link->interval<=12 && !link->latency) {
-            negotiate(b,now);
-            return;
-        }
     }
-    uint8_t cmd[18]={1,0x13,0x20,14};set16(cmd+4,handle);set16(cmd+6,6);set16(cmd+8,12);set16(cmd+12,500);
+    struct link_state *link=&b->links[handle];
+    publish(b,handle);
+    link->attempts++;
+    uint8_t cmd[18]={1,0x13,0x20,14};set16(cmd+4,handle);set16(cmd+6,BLE_INTERVAL_MIN);set16(cmd+8,BLE_INTERVAL_MAX);set16(cmd+12,500);
     if(send(b->hci,cmd,sizeof(cmd),MSG_DONTWAIT)!=(ssize_t)sizeof(cmd)) {
-        fprintf(stderr,"WARN: cannot send BLE interval request\n");return;
+        fprintf(stderr,"WARN: cannot send BLE interval request\n");
+        schedule_retry(link,"HCI command send failure");
+        return;
     }
     b->waiting=true;b->pending=handle;b->deadline=now+5000000;
     fprintf(stderr,"INFO: BLE requesting interval 7.5–15ms; waiting for controller confirmation\n");
