@@ -73,17 +73,20 @@ class LatencyTest(unittest.TestCase):
     def test_rejected_or_timeout_keeps_observed_interval(self):
         self.prepare()
         self.monitor.negotiate(0)
-        self.monitor.event(event(15, struct.pack('<BBH', 12, 1, 0x2013)))
+        self.monitor.event(event(15, struct.pack('<BBH', 0x23, 1, 0x2013)))
         self.assertIsNone(self.monitor.pending)
         self.assertEqual(len(self.channel.sent), 1)
-        self.assertIn('rejected', self.logs[-1])
+        self.assertTrue(any('rejected' in log for log in self.logs))
         self.monitor.negotiate(6)
         self.assertEqual(len(self.hci.sent), 1)
+        self.monitor.retry_at[2048] = 0
+        self.monitor.negotiate(7)
+        self.assertEqual(len(self.hci.sent), 2)
         self.setUp()
         self.prepare()
         self.monitor.negotiate(0)
         self.monitor.negotiate(6)
-        self.assertIn('not confirmed', self.logs[-1])
+        self.assertTrue(any('not confirmed' in log for log in self.logs))
         self.assertEqual(len(self.channel.sent), 1)
 
     def test_reconnect_discards_old_handle(self):

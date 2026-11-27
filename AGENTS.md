@@ -244,7 +244,8 @@ for f in platform/linux/*.c; do gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only
   桥接通过继承的 Unix datagram FD（`OTG_BLE_LATENCY_FD`）传递订阅就绪
   与实测连接间隔。对每条已加密、本机为 peripheral 的已观测 LE 连接请求 7.5～15ms；
   HCI Command Status 成功不等于参数已更新，必须等待 LE Connection Update Complete。
-  失败/超时保留连接；重连后重新判断，不接受子进程指定 HCI 命令或句柄。
+  0x23 冲突、请求超时或实际间隔回退按 1 秒退避最多重试 3 次；失败仍保留连接并按实际间隔节流，
+  重连后重新判断，不接受子进程指定 HCI 命令或句柄。
   `/run/deskflow-bridge-ble-hciN.state` 保存 root 专用、绑定适配器地址的原始快照；失败不覆盖，
   `--ble-restore --adapter hciN` 恢复，只有核对成功才删除；不要与历史 Python 隔离脚本并行。
   普通 `--transport ble` 不切换模式。手机掉线不注销 GATT：BlueZ 5.72 对 bonded peer 可能

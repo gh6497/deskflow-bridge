@@ -90,13 +90,26 @@ int main(void)
     link_event(b,updated,sizeof(updated));CHECK(!b->waiting);
     memset(message,0,sizeof(message));CHECK(recv(ipc[1],message,sizeof(message),0)>0);
     CHECK(!strcmp(message,"interval_us=7500\n"));
+    uint8_t rolled_back[]={4,0x3e,10,3,0,0,8,36,0,0,0,0xf4,1};
+    link_event(b,rolled_back,sizeof(rolled_back));
+    memset(message,0,sizeof(message));CHECK(recv(ipc[1],message,sizeof(message),0)>0);
+    CHECK(!strcmp(message,"interval_us=45000\n"));
+    b->links[2048].retry_at=0;
+    negotiate(b,1000);CHECK(b->waiting);
+    CHECK(recv(hci[1],packet,sizeof(packet),0)==18 && get16(packet+4)==2048);
     uint8_t disconnected[]={4,5,4,0,0,8,19};
     link_event(b,disconnected,sizeof(disconnected));CHECK(!b->ready && !b->links[2048].used);
     connect_event(b,2049);b->ready=true;negotiate(b,100);
     CHECK(recv(hci[1],packet,sizeof(packet),0)==18 && get16(packet+4)==2049);
-    uint8_t rejected[]={4,15,4,12,1,0x13,0x20};
+    uint8_t rejected[]={4,15,4,0x23,1,0x13,0x20};
     link_event(b,rejected,sizeof(rejected));CHECK(!b->waiting);
     negotiate(b,200);CHECK(recv(hci[1],packet,sizeof(packet),0)<0);
+    b->links[2049].retry_at=0;
+    negotiate(b,201);CHECK(b->waiting);
+    CHECK(recv(hci[1],packet,sizeof(packet),0)==18 && get16(packet+4)==2049);
+    uint8_t retry_updated[]={4,0x3e,10,3,0,0,8,6,0,0,0,0xf4,1};
+    set16(retry_updated+5,2049);
+    link_event(b,retry_updated,sizeof(retry_updated));CHECK(!b->waiting);
     connect_event(b,2050);b->ready=true;negotiate(b,300);
     CHECK(recv(hci[1],packet,sizeof(packet),0)<0); /* Ambiguous peers untouched. */
     while (recv(ipc[1],message,sizeof(message),MSG_DONTWAIT)>0) {}
