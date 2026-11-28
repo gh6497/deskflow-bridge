@@ -175,6 +175,28 @@ GUI 退出/EOF 同样清理，共享服务失败会终止其所属 BLE 会话，
 
 ## 当前排障记录
 
+<a id="windows-ble-driver"></a>
+
+### 2026-11-28 Realtek 适配器使用通用驱动时手机搜不到 BLE 广播
+
+实测环境为 Windows 11（内部版本 `26300.10075`）、Realtek RTL8822CE 蓝牙适配器
+（`USB\VID_13D3&PID_3549`）和 Redmi K20 Pro（Android 15）。
+
+- **更新前**，设备管理器显示 `Generic Bluetooth Adapter`，驱动由 Microsoft 提供，版本为
+  `10.0.26100.10068`。WinRT 报告适配器支持 BLE 外设角色，且广播状态为
+  `Started`（`advertisement status=2 BluetoothError=0`）。手机扫描收到了 571 条 BLE 广播，
+  其中没有这台电脑。打开 Windows 蓝牙设置后，手机能通过经典蓝牙搜到并配对电脑，桥接仍在等待键鼠订阅。
+- **更新驱动后**，同一桥接进程继续运行，手机随即扫描到可连接的电脑 BLE 广播。点选扫描结果后，
+  **测试 LE 连接**成功。此时电脑使用了会变化的 BLE 广播地址，手输适配器公开地址仍然超时。
+  设备管理器确认已启用 Realtek 驱动 `1.1072.2312.2501`，安装包的签名为 Microsoft Windows Hardware Compatibility Publisher。
+  [Microsoft Update Catalog 中对应硬件 ID 的驱动详情](https://www.catalog.update.microsoft.com/ScopedViewInline.aspx?updateid=52312be5-5599-44e6-93b0-ba600dc9be8b)
+- **完成键鼠接入**时，手机存在两个同名配对条目，系统重连走了经典蓝牙并报认证失败。仅清除
+  这台电脑和手机两端的这对配对记录，再从手机伴侣的 BLE 扫描结果重新配对。Android 识别到外接键鼠，
+  桥接确认两路订阅就绪并接入 Deskflow。Windows 读回的实际连接间隔从 45 ms 降至 15 ms。
+
+遇到同样的现象，可先在 Windows 设备管理器的「蓝牙」类别核对正在使用的驱动和硬件 ID，
+再从电脑厂商或 Windows Update 获取适用于该硬件 ID 的驱动。上面的驱动版本和验证结果对应这块适配器。
+
 2026-11-26，当前 Windows 主机同时连接 OPPO R17 与 Redmi K20 Pro，独立探针对 R17 发起
 `ThroughputOptimized` 请求后，Windows 读回间隔在 1 秒内从 45ms 降到 15ms，保持至第25秒且连接在线；
 关闭请求后5秒内恢复45ms。结束时 K20 Pro 仍为15ms。此结果验证该组合支持15ms，正式后端复用相同接口；
