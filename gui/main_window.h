@@ -11,6 +11,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QSet>
+#include <QUuid>
 #include <QVariantMap>
 
 class QCheckBox;
@@ -41,6 +42,9 @@ signals:
 protected:
     virtual bool trayAvailable() const;
     virtual QString bridgeExecutable() const;
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    virtual QUuid bleDeviceContainer(const QString &address) const;
+#endif
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;

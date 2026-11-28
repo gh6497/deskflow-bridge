@@ -64,8 +64,14 @@ static QString testPeerPath()
 class AutoConnectTestWindow : public TrayTestWindow {
 public:
     AutoConnectTestWindow() : AutoConnectTestWindow(prepareSettings()) {}
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    QHash<QString, QUuid> bleContainers;
+#endif
 protected:
     QString bridgeExecutable() const override { return testPeerPath(); }
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    QUuid bleDeviceContainer(const QString &address) const override { return bleContainers.value(address); }
+#endif
 private:
     explicit AutoConnectTestWindow(int) {}
     static int prepareSettings()
@@ -2314,6 +2320,78 @@ private slots:
         QVERIFY(!settings.contains("sharedBle/multiDevice"));
 #endif
     }
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    void windowsBleReusesProfileAfterAddressChange()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings settings;
+        settings.setValue("manageServer", false);
+        settings.setValue("adb", "");
+        const QString profileId = "saved-ble";
+        const QString screen = "My_Redmi";
+        const QString originalAddress = "45:A6:BC:2D:C2:01";
+        const QString rotatedAddress = "5B:A2:67:DA:74:02";
+        const QString otherAddress = "5B:A2:67:DA:74:03";
+        const QUuid container("6617c857-77c5-5e3c-a16e-b47c75ff0dc4");
+        const QUuid otherContainer("c1662b7a-85e4-46a4-9457-ba651306c7ac");
+        settings.beginWriteArray("devices", 2);
+        settings.setArrayIndex(0);
+        settings.setValue("id", "initial");
+        settings.setValue("profile", QVariantMap{{"transport", "usb"}, {"phone", "android"}});
+        settings.setArrayIndex(1);
+        settings.setValue("id", profileId);
+        settings.setValue("profile", QVariantMap{{"transport", "ble"}, {"phone", screen},
+            {"bleIdentity", originalAddress}, {"alias", "Redmi"}, {"originalWidth", 1200},
+            {"rightButtonAction", "normal"}});
+        settings.endArray();
+        settings.sync();
+
+        QFile queue(dir.filePath("phones"));
+        qputenv("OTG_TEST_BLE_DISCOVERY_QUEUE", queue.fileName().toUtf8());
+        const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_DISCOVERY_QUEUE"); });
+        for (const auto &address : {originalAddress, rotatedAddress, otherAddress}) {
+            const bool differentPhone = address == otherAddress;
+            QVERIFY(queue.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QVERIFY(queue.write(address.toLatin1() + "\tRedmi\n") > 0);
+            queue.close();
+
+            AutoConnectTestWindow window;
+            window.bleContainers.insert(address, differentPhone ? otherContainer : container);
+            auto *manager = window.findChild<ConnectionManager *>();
+            auto *list = window.findChild<QListWidget *>("deviceSidebar");
+            window.findChild<QPushButton *>("startBleService")->click();
+            if (differentPhone) {
+                QTRY_COMPARE(list->count(), 3);
+                QCOMPARE(manager->state(profileId), Session::State::Idle);
+                const auto phones = list->findItems("* · Redmi\n*", Qt::MatchWildcard);
+                QCOMPARE(phones.size(), 1);
+                QTRY_COMPARE(manager->state(phones.first()->data(Qt::UserRole).toString()), Session::State::Connected);
+            } else {
+                QTRY_COMPARE(manager->state(profileId), Session::State::Connected);
+                QCOMPARE(list->count(), 2);
+            }
+            window.findChild<QAction *>("trayQuit")->trigger();
+            QTRY_VERIFY(manager->settled());
+
+            QSettings saved;
+            const auto count = saved.beginReadArray("devices");
+            QVariantMap profile;
+            for (int i = 0; i < count; ++i) {
+                saved.setArrayIndex(i);
+                if (saved.value("id") == profileId) profile = saved.value("profile").toMap();
+            }
+            saved.endArray();
+            QCOMPARE(profile.value("phone").toString(), screen);
+            QCOMPARE(profile.value("originalWidth").toInt(), 1200);
+            QCOMPARE(profile.value("rightButtonAction").toString(), "normal");
+            QCOMPARE(profile.value("bleIdentity").toString(), differentPhone ? rotatedAddress : address);
+            QCOMPARE(QUuid(profile.value("bleWindowsContainer").toString()), container);
+        }
+    }
+#endif
     void sharedBleSettingsAcrossDevices()
     {
 #if !defined(Q_OS_LINUX) || !defined(OTG_GUI_HAVE_BLE)

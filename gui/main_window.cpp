@@ -8,6 +8,9 @@
 #include "build_version.h"
 #include "tls_certificate.h"
 #include "wireless_adb_dialog.h"
+#ifdef OTG_GUI_HAVE_BLE_WIN
+#include "ble_win_profile.h"
+#endif
 
 #include <QCheckBox>
 #include <QAction>
@@ -2534,18 +2537,36 @@ bool MainWindow::confirmSharedBleService(const QString &adapter)
         QMessageBox::Cancel) == QMessageBox::Ok;
 }
 
+#ifdef OTG_GUI_HAVE_BLE_WIN
+QUuid MainWindow::bleDeviceContainer(const QString &address) const
+{
+    return windowsBleDeviceContainer(address);
+}
+#endif
+
 void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &identity, const QString &name)
 {
     if (m_closing || m_stoppingBleService) return;
     storeDevice();
+#ifdef OTG_GUI_HAVE_BLE_WIN
+    const auto container = bleDeviceContainer(identity);
+#else
+    const QUuid container;
+#endif
     QString id;
+    QString addressMatch;
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
-        if (it->value("transport") == "ble" &&
-            !it->value("bleIdentity").toString().compare(identity, Qt::CaseInsensitive)) {
+        if (it->value("transport") != "ble") continue;
+        const QUuid savedContainer(it->value("bleWindowsContainer").toString());
+        if (!container.isNull() && container == savedContainer) {
             id = it.key();
             break;
         }
+        if (addressMatch.isEmpty() && (container.isNull() || savedContainer.isNull()) &&
+            !it->value("bleIdentity").toString().compare(identity, Qt::CaseInsensitive))
+            addressMatch = it.key();
     }
+    if (id.isEmpty()) id = addressMatch;
     if (id.isEmpty()) {
         const auto source = m_records.value(sourceId);
         id = source.isEmpty() || source.value("bleIdentity").toString().isEmpty() ?
@@ -2561,8 +2582,9 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
     displayName.replace(controlCharacters, " ");
     displayName = displayName.simplified();
     if (addressName.match(displayName).hasMatch()) displayName.clear();
-    const auto addressScreen = QString(identity).replace(':', '-');
-    if (profile.value("bleIdentity").toString().isEmpty()) {
+    auto savedAddress = profile.value("bleIdentity").toString();
+    if (savedAddress.isEmpty()) {
+        const auto addressScreen = QString(identity).replace(':', '-');
         const auto base = bleScreenName(displayName, addressScreen);
         auto screen = base;
         QSet<QString> screens{m_computer->text().trimmed().toCaseFolded()};
@@ -2575,17 +2597,19 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
             screen += suffix;
         }
         profile["transport"] = "ble";
-        profile["bleIdentity"] = identity;
         profile["phone"] = screen;
         profile["alias"] = displayName.isEmpty() ? screen : displayName;
     } else if (!displayName.isEmpty()) {
         const auto screen = profile.value("phone").toString();
         const auto alias = profile.value("alias").toString();
         static const QRegularExpression addressScreenPattern("^(?:[0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2}(?:-[0-9]+)?$");
-        if ((alias.isEmpty() || alias == screen) && screen.startsWith(addressScreen, Qt::CaseInsensitive) &&
+        if ((alias.isEmpty() || alias == screen) && screen.startsWith(savedAddress.replace(':', '-'), Qt::CaseInsensitive) &&
             addressScreenPattern.match(screen).hasMatch())
             profile["alias"] = displayName;
     }
+    // Keep the current address for transport targeting and the container for profile matching.
+    profile["bleIdentity"] = identity;
+    if (!container.isNull()) profile["bleWindowsContainer"] = container.toString(QUuid::WithoutBraces);
     if (m_discoveryId == sourceId) m_discoveryId.clear();
     m_pendingBleIdentities[id] = identity;
     if (m_selectedId.isEmpty()) selectDevice(id);
@@ -2678,6 +2702,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"alias", m_alias->text().trimmed()},
             {"transport", m_transport},
             {"bleIdentity", saved.value("bleIdentity").toString()},
+            {"bleWindowsContainer", saved.value("bleWindowsContainer").toString()},
             {"bleAutoAttach", m_bleAutoAttach->isChecked()},
             {"autoConnect", m_autoConnectEnabled->isChecked()},
             {"uhidUsbAutoConnect", m_uhidAutoConnectEnabled->isChecked()},

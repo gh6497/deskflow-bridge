@@ -72,6 +72,11 @@ GUI 退出/EOF 同样清理，共享服务失败会终止其所属 BLE 会话，
 尽力释放按键，保留 IPC/GATT，核对恢复后先释放再恢复输入。就绪变化时已进入IPC的旧动作被丢弃，不因此关闭会话。
 `verify multi subscriber: timed out` 表示身份核对延迟；真实通知超时仍执行原有失败/隔离流程。
 
+GUI 发现已配对且订阅键鼠的手机后，用当前的 BLE 地址查找 Windows 设备容器 ID。Windows 将新地址归入原设备容器时，
+GUI 复用原配置与 Deskflow 屏幕名，并更新该配置的连接地址。HID 发送仍核对在线地址与实时订阅。
+旧配置在保存的地址再次被发现时补存容器 ID。查不到容器时仍按地址匹配，设备名称只用于显示。
+如果取消配对已清除了 Windows 对旧地址的关联，GUI 会保留旧条目供用户处理。
+
 内部入口为 `--ble-win-multi-service TOKEN`（stdin EOF 停止）与
 `--gui --gui-ble-control --transport ble --ble-win-session TOKEN`，由 GUI 管理，不能与 Linux 服务参数混用。
 普通单手机 CLI 仍使用原路径。实际同时连接数量取决于适配器与驱动；离线模拟通过不代表多手机、重连、
