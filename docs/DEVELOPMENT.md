@@ -43,6 +43,8 @@ ctest --test-dir build --output-on-failure
 
 The same profile works on macOS and Windows; unsupported platform features are omitted by CMake. Windows uses the normal Visual Studio/vcpkg toolchain and should pass the appropriate toolchain file. macOS GUI builds require a matching Intel or Apple Silicon Qt installation.
 
+On Windows, building the GUI with shared Qt deploys the matching Qt DLLs and plugins beside `deskflow-bridge-gui.exe`. Open the executable in the build directory, or in the configuration subdirectory such as `build/Release` when using a multi-config generator.
+
 For a small command-line USB build:
 
 ```bash

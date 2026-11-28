@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Inspect build artifacts only; never launch ADB or access a device.
+foreach(name IN LISTS QT_RUNTIME_FILES)
+  if(NOT EXISTS "${GUI_DIR}/${name}")
+    message(FATAL_ERROR "GUI Qt runtime file missing: ${GUI_DIR}/${name}")
+  endif()
+endforeach()
 if(COMPANION_APK)
   set(apk "${GUI_DIR}/deskflow-bridge-companion.apk")
   if(NOT EXISTS "${apk}")

@@ -48,6 +48,8 @@ Start with keyboard and mouse control. Clipboard, audio and file sharing require
 
 Desktop packages contain the bridge, GUI runtime and ADB, but **do not include Deskflow**. You normally do not need to install scrcpy separately. GitHub's automatically generated `Source code` archives are not installers.
 
+If you build the Windows GUI from source, you can double-click `deskflow-bridge-gui.exe` in the build output. The build puts the Qt runtime beside the executable. Follow the [development guide](DEVELOPMENT.md#build-profiles).
+
 ### Pick a package for your computer
 
 | Computer | File to choose | How to start |
@@ -360,7 +362,7 @@ The phone appears in the device list once it subscribes to keyboard and pointer 
 
 On later connections, the app reuses the saved profile and its Deskflow screen name so your screen layout keeps working. When an older profile is rediscovered, its default address-based display name is replaced if the phone name is available. You can set the screen dimensions and turn **Automatically connect discovered phones to Deskflow** on or off in the profile. See the [Linux BLE notes](LINUX_BLE_HANDOVER.md) and [Windows Bluetooth guide](WINDOWS_BLE.md).
 
-On Windows, the bridge can recognize a phone after its private BLE address changes if Windows still associates it with the same device. An older profile is updated the next time it connects with its saved address and Windows can identify the device. If the address had already changed and the older entry remains, select the unused entry and click **Remove device**. A phone configured for both Bluetooth and ADB + UHID has a separate profile for each connection method.
+On Windows, the bridge uses the phone's fixed Bluetooth address when Windows supplies it, so the profile can be reused after a new pairing. If that address is unavailable, the bridge uses the device association from Windows or the current BLE address. Older profiles are updated when the bridge can identify them. If an unused entry remains, select it and click **Remove device**. A phone configured for both Bluetooth and ADB + UHID has a separate profile for each connection method.
 
 To change a connected phone's screen dimensions or mouse buttons, select it in the device list, click **Disconnect** and wait for disconnection to finish. After editing, click **Reconnect to Deskflow** for the selected phone. This button also works with automatic connection turned off. If the phone has lost its Bluetooth link, reconnect to the computer in the phone's Bluetooth settings.
 

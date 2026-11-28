@@ -13,6 +13,9 @@
 #include <QSet>
 #include <QUuid>
 #include <QVariantMap>
+#ifdef OTG_GUI_HAVE_BLE_WIN
+#include "ble_win_profile.h"
+#endif
 
 class QCheckBox;
 class QAction;
@@ -43,7 +46,7 @@ protected:
     virtual bool trayAvailable() const;
     virtual QString bridgeExecutable() const;
 #ifdef OTG_GUI_HAVE_BLE_WIN
-    virtual QUuid bleDeviceContainer(const QString &address) const;
+    virtual WindowsBleDeviceIdentity bleDeviceIdentity(const QString &address) const;
 #endif
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;

@@ -65,12 +65,15 @@ class AutoConnectTestWindow : public TrayTestWindow {
 public:
     AutoConnectTestWindow() : AutoConnectTestWindow(prepareSettings()) {}
 #ifdef OTG_GUI_HAVE_BLE_WIN
-    QHash<QString, QUuid> bleContainers;
+    QHash<QString, WindowsBleDeviceIdentity> bleIdentities;
 #endif
 protected:
     QString bridgeExecutable() const override { return testPeerPath(); }
 #ifdef OTG_GUI_HAVE_BLE_WIN
-    QUuid bleDeviceContainer(const QString &address) const override { return bleContainers.value(address); }
+    WindowsBleDeviceIdentity bleDeviceIdentity(const QString &address) const override
+    {
+        return bleIdentities.value(address);
+    }
 #endif
 private:
     explicit AutoConnectTestWindow(int) {}
@@ -2334,9 +2337,11 @@ private slots:
         const QString screen = "My_Redmi";
         const QString originalAddress = "45:A6:BC:2D:C2:01";
         const QString rotatedAddress = "5B:A2:67:DA:74:02";
+        const QString fallbackAddress = "5B:A2:67:DA:74:04";
         const QString otherAddress = "5B:A2:67:DA:74:03";
+        const QString publicAddress = "20:30:40:50:60:70";
         const QUuid container("6617c857-77c5-5e3c-a16e-b47c75ff0dc4");
-        const QUuid otherContainer("c1662b7a-85e4-46a4-9457-ba651306c7ac");
+        const QUuid newContainer("c1662b7a-85e4-46a4-9457-ba651306c7ac");
         settings.beginWriteArray("devices", 2);
         settings.setArrayIndex(0);
         settings.setValue("id", "initial");
@@ -2352,14 +2357,20 @@ private slots:
         QFile queue(dir.filePath("phones"));
         qputenv("OTG_TEST_BLE_DISCOVERY_QUEUE", queue.fileName().toUtf8());
         const auto restore = qScopeGuard([] { qunsetenv("OTG_TEST_BLE_DISCOVERY_QUEUE"); });
-        for (const auto &address : {originalAddress, rotatedAddress, otherAddress}) {
+        const QList<QPair<QString, WindowsBleDeviceIdentity>> discoveries{
+            {originalAddress, {container, publicAddress}},
+            {rotatedAddress, {newContainer, publicAddress}},
+            {fallbackAddress, {newContainer, {}}},
+            {otherAddress, {newContainer, "20:30:40:50:60:71"}}
+        };
+        for (const auto &[address, identity] : discoveries) {
             const bool differentPhone = address == otherAddress;
             QVERIFY(queue.open(QIODevice::WriteOnly | QIODevice::Truncate));
             QVERIFY(queue.write(address.toLatin1() + "\tRedmi\n") > 0);
             queue.close();
 
             AutoConnectTestWindow window;
-            window.bleContainers.insert(address, differentPhone ? otherContainer : container);
+            window.bleIdentities.insert(address, identity);
             auto *manager = window.findChild<ConnectionManager *>();
             auto *list = window.findChild<QListWidget *>("deviceSidebar");
             window.findChild<QPushButton *>("startBleService")->click();
@@ -2368,7 +2379,8 @@ private slots:
                 QCOMPARE(manager->state(profileId), Session::State::Idle);
                 const auto phones = list->findItems("* · Redmi\n*", Qt::MatchWildcard);
                 QCOMPARE(phones.size(), 1);
-                QTRY_COMPARE(manager->state(phones.first()->data(Qt::UserRole).toString()), Session::State::Connected);
+                const auto otherId = phones.first()->data(Qt::UserRole).toString();
+                QTRY_COMPARE(manager->state(otherId), Session::State::Connected);
             } else {
                 QTRY_COMPARE(manager->state(profileId), Session::State::Connected);
                 QCOMPARE(list->count(), 2);
@@ -2387,8 +2399,9 @@ private slots:
             QCOMPARE(profile.value("phone").toString(), screen);
             QCOMPARE(profile.value("originalWidth").toInt(), 1200);
             QCOMPARE(profile.value("rightButtonAction").toString(), "normal");
-            QCOMPARE(profile.value("bleIdentity").toString(), differentPhone ? rotatedAddress : address);
-            QCOMPARE(QUuid(profile.value("bleWindowsContainer").toString()), container);
+            QCOMPARE(profile.value("bleIdentity").toString(), differentPhone ? fallbackAddress : address);
+            QCOMPARE(profile.value("bleWindowsPublicAddress").toString(), publicAddress);
+            QCOMPARE(QUuid(profile.value("bleWindowsContainer").toString()), identity.container);
         }
     }
 #endif

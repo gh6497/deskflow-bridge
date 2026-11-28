@@ -163,6 +163,24 @@ qt_deploy_runtime_dependencies(
 )")
 install(SCRIPT ${deploy_script})
 
+if(WIN32 AND QT6_IS_SHARED_LIBS_BUILD)
+  # Run the same Qt deployment for the build-tree GUI and its bridge executable.
+  qt_generate_deploy_script(TARGET deskflow-bridge-gui OUTPUT_SCRIPT build_deploy_script
+    CONTENT "
+set(QT_DEPLOY_PREFIX \"$<TARGET_FILE_DIR:deskflow-bridge-gui>\")
+set(QT_DEPLOY_BIN_DIR \".\")
+set(QT_DEPLOY_LIB_DIR \".\")
+qt_deploy_runtime_dependencies(
+  EXECUTABLE \"$<TARGET_FILE:deskflow-bridge-gui>\"
+  ADDITIONAL_EXECUTABLES \"$<TARGET_FILE:deskflow-bridge>\"
+  GENERATE_QT_CONF
+  NO_TRANSLATIONS
+)")
+  add_custom_command(TARGET deskflow-bridge-gui POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -P "${build_deploy_script}"
+    VERBATIM)
+endif()
+
 set(ADB_BUNDLE_DIR "" CACHE PATH "Extracted Android platform-tools directory to include in packages")
 if(ADB_BUNDLE_DIR)
   if(NOT EXISTS "${ADB_BUNDLE_DIR}/adb${CMAKE_EXECUTABLE_SUFFIX}")
@@ -263,13 +281,20 @@ if(BUILD_TESTING)
   add_test(NAME usb_auto_connect COMMAND test_usb_auto_connect)
   add_test(NAME gui_window COMMAND test_window)
   add_test(NAME gui_version COMMAND deskflow-bridge-gui --version)
+  if(WIN32 AND QT6_IS_SHARED_LIBS_BUILD)
+    set(gui_qt_files qt.conf "$<TARGET_FILE_NAME:Qt6::Core>" "$<TARGET_FILE_NAME:Qt6::Gui>"
+      "$<TARGET_FILE_NAME:Qt6::Widgets>" "$<TARGET_FILE_NAME:Qt6::Network>")
+    if(TARGET Qt6::QWindowsIntegrationPlugin)
+      list(APPEND gui_qt_files "plugins/platforms/$<TARGET_FILE_NAME:Qt6::QWindowsIntegrationPlugin>")
+    endif()
+  endif()
   add_test(NAME gui_runtime_files COMMAND "${CMAKE_COMMAND}"
     "-DDATA_DIR=${OTG_GUI_BUILD_DATA_DIR}"
     "-DGUI_DIR=$<TARGET_FILE_DIR:deskflow-bridge-gui>"
     "-DHAVE_SCRCPY=$<OR:$<BOOL:${BUILD_AUDIO}>,$<BOOL:${BUILD_CLIPBOARD}>,$<BOOL:${BUILD_UHID}>>"
     "-DSERVER=${SCRCPY_SERVER}" "-DVERSION=${SCRCPY_VERSION}"
     "-DADB_DIR=${ADB_BUNDLE_DIR}" "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
-    "-DCOMPANION_APK=${companion_apk}"
+    "-DCOMPANION_APK=${companion_apk}" "-DQT_RUNTIME_FILES=${gui_qt_files}"
     -P "${PROJECT_SOURCE_DIR}/tests/test_gui_runtime.cmake")
   set_tests_properties(gui_version PROPERTIES
     PASS_REGULAR_EXPRESSION "deskflow-bridge-gui ${PROJECT_VERSION}")

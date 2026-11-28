@@ -8,9 +8,6 @@
 #include "build_version.h"
 #include "tls_certificate.h"
 #include "wireless_adb_dialog.h"
-#ifdef OTG_GUI_HAVE_BLE_WIN
-#include "ble_win_profile.h"
-#endif
 
 #include <QCheckBox>
 #include <QAction>
@@ -2538,9 +2535,9 @@ bool MainWindow::confirmSharedBleService(const QString &adapter)
 }
 
 #ifdef OTG_GUI_HAVE_BLE_WIN
-QUuid MainWindow::bleDeviceContainer(const QString &address) const
+WindowsBleDeviceIdentity MainWindow::bleDeviceIdentity(const QString &address) const
 {
-    return windowsBleDeviceContainer(address);
+    return windowsBleDeviceIdentity(address);
 }
 #endif
 
@@ -2549,23 +2546,32 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
     if (m_closing || m_stoppingBleService) return;
     storeDevice();
 #ifdef OTG_GUI_HAVE_BLE_WIN
-    const auto container = bleDeviceContainer(identity);
+    const auto [container, publicAddress] = bleDeviceIdentity(identity);
 #else
     const QUuid container;
+    const QString publicAddress;
 #endif
     QString id;
+    QString containerMatch;
     QString addressMatch;
     for (auto it = m_records.cbegin(); it != m_records.cend(); ++it) {
         if (it->value("transport") != "ble") continue;
-        const QUuid savedContainer(it->value("bleWindowsContainer").toString());
-        if (!container.isNull() && container == savedContainer) {
-            id = it.key();
-            break;
+        const auto savedPublicAddress = it->value("bleWindowsPublicAddress").toString();
+        if (!publicAddress.isEmpty() && !savedPublicAddress.isEmpty()) {
+            if (!publicAddress.compare(savedPublicAddress, Qt::CaseInsensitive)) {
+                id = it.key();
+                break;
+            }
+            continue;
         }
+        const QUuid savedContainer(it->value("bleWindowsContainer").toString());
+        if (containerMatch.isEmpty() && !container.isNull() && container == savedContainer)
+            containerMatch = it.key();
         if (addressMatch.isEmpty() && (container.isNull() || savedContainer.isNull()) &&
             !it->value("bleIdentity").toString().compare(identity, Qt::CaseInsensitive))
             addressMatch = it.key();
     }
+    if (id.isEmpty()) id = containerMatch;
     if (id.isEmpty()) id = addressMatch;
     if (id.isEmpty()) {
         const auto source = m_records.value(sourceId);
@@ -2607,8 +2613,9 @@ void MainWindow::acceptBleIdentity(const QString &sourceId, const QString &ident
             addressScreenPattern.match(screen).hasMatch())
             profile["alias"] = displayName;
     }
-    // Keep the current address for transport targeting and the container for profile matching.
+    // HID routes through the current, verified LE endpoint.
     profile["bleIdentity"] = identity;
+    if (!publicAddress.isEmpty()) profile["bleWindowsPublicAddress"] = publicAddress;
     if (!container.isNull()) profile["bleWindowsContainer"] = container.toString(QUuid::WithoutBraces);
     if (m_discoveryId == sourceId) m_discoveryId.clear();
     m_pendingBleIdentities[id] = identity;
@@ -2702,6 +2709,7 @@ QVariantMap MainWindow::deviceProfile() const
             {"alias", m_alias->text().trimmed()},
             {"transport", m_transport},
             {"bleIdentity", saved.value("bleIdentity").toString()},
+            {"bleWindowsPublicAddress", saved.value("bleWindowsPublicAddress").toString()},
             {"bleWindowsContainer", saved.value("bleWindowsContainer").toString()},
             {"bleAutoAttach", m_bleAutoAttach->isChecked()},
             {"autoConnect", m_autoConnectEnabled->isChecked()},

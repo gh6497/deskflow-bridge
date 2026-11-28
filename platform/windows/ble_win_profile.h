@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QString>
 #include <QUuid>
 
-QUuid windowsBleDeviceContainer(const QString &address);
+struct WindowsBleDeviceIdentity {
+    QUuid container;
+    QString publicAddress;
+};
+
+WindowsBleDeviceIdentity windowsBleDeviceIdentity(const QString &address);
